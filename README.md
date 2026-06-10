@@ -37,7 +37,7 @@ Glimpse fixes the **rendering surface**, not the model. Three ideas:
 2. **A real browser you already trust.** Instead of a bespoke GUI, Glimpse uses
    **Chrome over CDP**. The same channel that renders artifacts also lets the
    agent navigate, read, and screenshot live pages — one capability, two uses.
-3. **Live, append-only, zero-friction.** The agent runs one command; the
+3. **Live, replace-by-slug, zero-friction.** The agent runs one command; the
    dashboard polls a feed and opens new artifacts automatically. You never
    refresh, never copy-paste, never leave your editor's neighbor window.
 
@@ -59,7 +59,8 @@ flowchart LR
 - **`glimpse publish`** writes `artifacts/<slug>.html` and upserts `feed.json`.
 - A tiny **static server** (`python3 -m http.server`) serves the canvas dir.
 - **`index.html`** polls `feed.json` and renders the newest artifact in an
-  `<iframe>` (full JS/CSS isolation), live-reloading on change.
+  **sandboxed** `<iframe>` (`allow-scripts` only → opaque origin, so artifact JS
+  can't reach the shell or sibling artifacts), live-reloading on change.
 - **Chrome** is launched with `--remote-debugging-port` so the agent can open
   the canvas — and read/drive any other page — over CDP.
 
@@ -86,13 +87,14 @@ No framework, no build step, no database. ~1 HTML file + 1 shell script.
 ## Setup
 
 ### Requirements
-- **Node.js** (built-in WebSocket — Node 18+; tested on 22) — drives Chrome
+- **Node.js 22+** — uses the built-in global `WebSocket` to drive Chrome
+  (available unflagged from Node 22; earlier versions won't work without a shim)
 - **Python 3** — the static server
 - **Google Chrome** (or Chromium) — the canvas window + CDP
 
 ### Install
 ```bash
-git clone https://github.com/YOURNAME/glimpse.git
+git clone https://github.com/YushengAuggie/glimpse.git
 cd glimpse
 ./install.sh            # CLI → ~/.local/bin, canvas → ~/.glimpse, agent skills → ~/.claude/skills
 ```
@@ -154,9 +156,26 @@ browser's logins or tabs. Anything you load into that window, the agent can
 read and control. Only log into accounts there that you're comfortable letting
 your agent act on. See [`docs/DESIGN.md`](docs/DESIGN.md) for the threat model.
 
+### Don't commit secrets
+This repo ships a secret-scanning guard so nothing sensitive reaches GitHub:
+
+```bash
+scripts/setup-hooks.sh     # enable git hooks (also run by install.sh)
+```
+
+- **pre-commit** + **pre-push** hooks run [`scripts/check-secrets.sh`](scripts/check-secrets.sh),
+  which uses [gitleaks](https://github.com/gitleaks/gitleaks) when available and
+  falls back to a built-in regex scan otherwise.
+- `.gitignore` excludes `.env*`, keys, and credential files.
+- Run a manual scan any time: `scripts/check-secrets.sh all`.
+
+Override a false positive with `git commit --no-verify` (and only then).
+
 ## Docs
 - [`docs/DESIGN.md`](docs/DESIGN.md) — design rationale, alternatives, threat model
 - [`docs/USAGE.md`](docs/USAGE.md) — the full flow with examples
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — dev setup and PR checklist
+- [`SECURITY.md`](SECURITY.md) — security model and how to report issues
 
 ## License
-MIT
+MIT — see [`LICENSE`](LICENSE).

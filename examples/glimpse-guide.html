@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How to use Glimpse</title>
+<style>
+  :root{--bg:#f7f8fb;--card:#fff;--ink:#1d1d22;--dim:#5b6472;--line:#e6e6ee;
+        --accent:#3b5bdb;--accent-soft:#eef1ff;--good:#2f9e44;--amber:#e8590c;}
+  *{box-sizing:border-box;} body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.62 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+  .wrap{max-width:820px;margin:0 auto;padding:40px 26px 80px;}
+  h1{font-size:30px;margin:0 0 6px;letter-spacing:-.5px;}
+  .tag{color:var(--dim);font-size:15px;margin-bottom:22px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px 24px;margin:18px 0;box-shadow:0 1px 2px rgba(20,20,40,.04);}
+  h2{font-size:21px;margin:0 0 12px;letter-spacing:-.3px;}
+  h2 .e{margin-right:8px;}
+  p{margin:10px 0;} b{color:#11131a;}
+  .lead{font-size:18px;line-height:1.55;}
+  /* one-liner banner */
+  .hero{background:linear-gradient(135deg,#eef1ff,#f5f0ff);border:1px solid #dfe3ff;border-radius:14px;padding:20px 24px;margin:8px 0 4px;}
+  .hero p{margin:0;font-size:18px;}
+  /* user story */
+  .story{display:flex;gap:16px;align-items:flex-start;}
+  .avatar{flex:0 0 46px;height:46px;border-radius:50%;background:var(--accent);color:#fff;font-size:22px;display:flex;align-items:center;justify-content:center;}
+  .story .who{font-weight:700;margin-bottom:2px;}
+  .qa{margin:14px 0;padding:12px 16px;border-radius:10px;background:#fafbff;border:1px solid var(--line);}
+  .qa .q{font-weight:700;color:var(--accent);margin:0 0 4px;}
+  .qa p{margin:0;}
+  /* readable flow stepper (light, high-contrast) */
+  .flow{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch;margin:6px 0 2px;}
+  .step{flex:1 1 150px;background:#fff;border:1px solid var(--line);border-top:3px solid var(--accent);border-radius:12px;padding:14px 16px;}
+  .step .n{display:inline-block;font-size:12px;font-weight:700;color:#fff;background:var(--accent);border-radius:999px;padding:1px 9px;margin-bottom:8px;}
+  .step .h{font-weight:700;margin-bottom:4px;}
+  .step .d{color:var(--dim);font-size:14.5px;}
+  .arrow{align-self:center;color:#b9c0d4;font-size:22px;flex:0 0 auto;}
+  @media(max-width:680px){.arrow{display:none;} .step{flex-basis:100%;}}
+  ul{margin:8px 0 4px;padding-left:20px;} li{margin:6px 0;}
+  code{background:var(--accent-soft);color:#26408b;padding:2px 6px;border-radius:5px;font-size:13.5px;}
+  pre{background:#0f1115;color:#e6e8ee;border-radius:10px;padding:14px 16px;overflow:auto;font-size:13.5px;line-height:1.55;margin:8px 0;}
+  pre .c{color:#8a93a6;}
+  .use{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px;}
+  .use div{background:#fafbff;border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:14.5px;}
+  .use b{color:var(--accent);}
+  @media(max-width:680px){.use{grid-template-columns:1fr;}}
+  .foot{color:var(--dim);font-size:13.5px;text-align:center;margin-top:26px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>👁 How to use Glimpse</h1>
+  <div class="tag">You're reading this <i>inside</i> Glimpse — published from a terminal, rendered live in Chrome. That's the whole idea.</div>
+
+  <div class="hero"><p>💡 <b>In one line:</b> Glimpse is a <b>shared screen</b> between you and your AI agent. Instead of cramming everything into the terminal, the agent shows you clean, interactive pages — diagrams, tables, demos — in a real browser.</p></div>
+
+  <div class="card">
+    <h2><span class="e">🙋</span>A quick user story</h2>
+    <div class="story">
+      <div class="avatar">M</div>
+      <div>
+        <div class="who">Mia is prepping for system-design interviews.</div>
+        <p>She asks her agent: <i>“Find the latest OpenAI system-design question and explain what a great answer looks like.”</i></p>
+        <p>The agent researches the web, then — instead of dumping three screens of terminal text — it runs one command. A clean page opens in Mia's browser: a labeled <b>architecture diagram</b>, <b>tabbed deep-dives</b>, and collapsible <b>“red flags to avoid.”</b> She reads it like a doc, clicks through the tabs, and keeps it. When she asks a follow-up, the page <b>updates in place.</b></p>
+      </div>
+    </div>
+
+    <div class="qa">
+      <p class="q">(a) What's the story, simply?</p>
+      <p>You ask for something. The agent does the work and <b>hands you a web page to read</b>, not a wall of terminal text.</p>
+    </div>
+    <div class="qa">
+      <p class="q">(b) Why use it?</p>
+      <p>A terminal can't draw a diagram, show tabs, or let you collapse sections. So a smart agent is forced to either <b>dump everything</b> (overwhelming) or <b>over-summarize</b> (you lose detail). Neither is how a real colleague would show you their work — they'd open a doc or sketch on a whiteboard. Glimpse gives the agent that whiteboard.</p>
+    </div>
+    <div class="qa">
+      <p class="q">(c) What problem does it solve?</p>
+      <p>The <b>gap between how much an agent can produce and how little a terminal can show.</b> Glimpse closes it: the agent's best thinking becomes something you can actually read, click, and keep.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="e">🔁</span>The flow</h2>
+    <div class="flow">
+      <div class="step"><span class="n">1</span><div class="h">You ask</div><div class="d">“Put it on the canvas.”</div></div>
+      <div class="arrow">→</div>
+      <div class="step"><span class="n">2</span><div class="h">Agent builds</div><div class="d">Writes a self-contained HTML page and runs <code>glimpse&nbsp;publish</code>.</div></div>
+      <div class="arrow">→</div>
+      <div class="step"><span class="n">3</span><div class="h">You see it</div><div class="d">It pops into your browser in ~1s — read &amp; interact. No refresh.</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="e">🧭</span>When it helps</h2>
+    <div class="use">
+      <div><b>“Show me the architecture”</b><br>a real diagram, not ASCII art</div>
+      <div><b>“Compare these 3 options”</b><br>a side-by-side table</div>
+      <div><b>“Review my PR”</b><br>before/after panels + risk callouts</div>
+      <div><b>“Watch the build”</b><br>a dashboard that refreshes itself</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="e">⚡</span>Try it (3 steps)</h2>
+    <pre><span class="c"># 1) open the canvas in Chrome</span>
+glimpse open
+
+<span class="c"># 2) publish anything (a file, or pipe HTML straight in)</span>
+echo '&lt;h1&gt;hi 👋&lt;/h1&gt;' | glimpse publish hello "My first artifact"
+
+<span class="c"># 3) watch it appear in the sidebar — no refresh</span></pre>
+  </div>
+
+  <div class="foot">Repo: <code>~/Workspace/glimpse</code> · MIT · run <code>./install.sh</code> to set up on any machine</div>
+</div>
+</body>
+</html>

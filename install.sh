@@ -17,7 +17,10 @@ DO_SKILLS=1; MCP=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --no-skills) DO_SKILLS=0;;
-    --mcp) MCP="${2:-}"; shift;;
+    --mcp)
+      MCP="${2:-}"
+      case "$MCP" in claude|codex) ;; *) echo "--mcp requires 'claude' or 'codex'" >&2; exit 1;; esac
+      shift;;
     *) echo "unknown flag: $1" >&2; exit 1;;
   esac; shift
 done
@@ -38,12 +41,24 @@ if [ "$DO_SKILLS" = 1 ]; then
   cp -R "$REPO/skills/chrome-cdp" "$SKILLS_DIR/"
 fi
 
+if [ -n "$MCP" ] && ! command -v "$MCP" >/dev/null 2>&1; then
+  echo "⚠ '$MCP' CLI not found on PATH — skipping MCP registration" >&2; MCP=""
+fi
 if [ "$MCP" = "claude" ]; then
   echo "→ registering chrome-devtools MCP in Claude Code"
-  claude mcp add chrome-devtools --scope user -- npx chrome-devtools-mcp@latest --browser-url=http://127.0.0.1:9222 || true
+  claude mcp add chrome-devtools --scope user -- npx chrome-devtools-mcp@latest --browser-url=http://127.0.0.1:9222 \
+    || echo "⚠ MCP registration failed (see output above); continuing" >&2
 elif [ "$MCP" = "codex" ]; then
   echo "→ registering chrome-devtools MCP in Codex"
-  codex mcp add chrome-devtools -- npx chrome-devtools-mcp@latest --browser-url=http://127.0.0.1:9222 || true
+  codex mcp add chrome-devtools -- npx chrome-devtools-mcp@latest --browser-url=http://127.0.0.1:9222 \
+    || echo "⚠ MCP registration failed (see output above); continuing" >&2
+fi
+
+# Enable secret-scanning git hooks when installing from inside the repo clone.
+if git -C "$REPO" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "→ enabling secret-scanning git hooks"
+  git -C "$REPO" config core.hooksPath .githooks
+  chmod +x "$REPO"/.githooks/* "$REPO"/scripts/*.sh 2>/dev/null || true
 fi
 
 echo

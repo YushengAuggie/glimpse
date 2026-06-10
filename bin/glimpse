@@ -67,7 +67,8 @@ cmd_serve(){
     echo "canvas already serving at http://127.0.0.1:${PORT}/"; return
   fi
   have python3 || die "python3 is required for the static server"
-  nohup python3 -m http.server "$PORT" --directory "$GLIMPSE_DIR" >"$GLIMPSE_DIR/.server.log" 2>&1 &
+  # Bind to loopback only — the canvas, feed, and artifacts are local data.
+  nohup python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$GLIMPSE_DIR" >"$GLIMPSE_DIR/.server.log" 2>&1 &
   for _ in $(seq 1 20); do
     curl -fsS "http://127.0.0.1:${PORT}/feed.json" >/dev/null 2>&1 && { echo "canvas serving at http://127.0.0.1:${PORT}/  (root: $GLIMPSE_DIR)"; return; }
     sleep 0.3
@@ -77,13 +78,18 @@ cmd_serve(){
 
 cmd_chrome(){
   if curl -fsS "http://127.0.0.1:${CDP_PORT}/json/version" >/dev/null 2>&1; then
-    echo "chrome already debuggable on http://127.0.0.1:${CDP_PORT}"; return
+    echo "chrome already debuggable on http://127.0.0.1:${CDP_PORT}"
+    echo "  ⚠ reusing an existing CDP endpoint. If you did NOT start it with glimpse," >&2
+    echo "    it may be a different Chrome (e.g. your main profile, with your logins)." >&2
+    echo "    Set a different GLIMPSE_CDP_PORT to force a dedicated instance." >&2
+    return
   fi
   local chrome; chrome="$(detect_chrome)" || die "could not find Chrome; set GLIMPSE_CHROME=/path/to/chrome"
   mkdir -p "$PROFILE"
-  echo "launching Chrome (CDP :$CDP_PORT, profile: $PROFILE)"
-  "$chrome" --remote-debugging-port="$CDP_PORT" --user-data-dir="$PROFILE" \
-    --no-first-run --no-default-browser-check about:blank >/dev/null 2>&1 &
+  echo "launching Chrome (CDP 127.0.0.1:$CDP_PORT, profile: $PROFILE)"
+  # Bind the debug socket to loopback explicitly — never expose CDP on the LAN.
+  "$chrome" --remote-debugging-port="$CDP_PORT" --remote-debugging-address=127.0.0.1 \
+    --user-data-dir="$PROFILE" --no-first-run --no-default-browser-check about:blank >/dev/null 2>&1 &
   for _ in $(seq 1 30); do
     curl -fsS "http://127.0.0.1:${CDP_PORT}/json/version" >/dev/null 2>&1 && { echo "chrome ready on :$CDP_PORT"; return; }
     sleep 0.5
@@ -97,13 +103,14 @@ cdp_navigate(){
   CDP_PORT="$CDP_PORT" URL="$url" node --input-type=module <<'EOF'
 const base=`http://127.0.0.1:${process.env.CDP_PORT}`, url=process.env.URL;
 let t=await fetch(`${base}/json`).then(r=>r.json());
-let want; try{ want="localhost:"+new URL(url).port; }catch{ want=""; }
-let p=t.find(x=>x.type==="page"&&want&&x.url.includes(want))
+let host=""; try{ host=new URL(url).host; }catch{}
+const sameHost=(u)=>{ try{ return new URL(u).host===host; }catch{ return false; } };
+let p=t.find(x=>x.type==="page"&&host&&sameHost(x.url))
    || t.find(x=>x.type==="page")
    || await fetch(`${base}/json/new?about:blank`,{method:"PUT"}).then(r=>r.json()).catch(()=>fetch(`${base}/json/new?about:blank`).then(r=>r.json()));
 const ws=new WebSocket(p.webSocketDebuggerUrl);let id=0;const m=new Map();
 const send=(M,P={})=>new Promise(r=>{const i=++id;m.set(i,r);ws.send(JSON.stringify({id:i,method:M,params:P}));});
-await new Promise(r=>ws.addEventListener("open",r));
+await new Promise((res,rej)=>{ws.addEventListener("open",res);ws.addEventListener("error",()=>rej(new Error("CDP websocket error")));setTimeout(()=>rej(new Error("CDP open timeout")),8000);}).catch(e=>{console.error("glimpse:",e.message||e);process.exit(1);});
 ws.addEventListener("message",e=>{const d=JSON.parse(e.data);if(d.id&&m.has(d.id)){m.get(d.id)(d.result);m.delete(d.id);}});
 await send("Page.navigate",{url}); ws.close();
 EOF
@@ -122,6 +129,11 @@ cmd_open(){
 cmd_publish(){
   local slug="${1:-}" title="${2:-}" src="${3:-/dev/stdin}"
   [ -n "$slug" ] && [ -n "$title" ] || die "usage: glimpse publish <slug> <title> [file.html]"
+  # Slugs become filenames and go into the page — keep them strict (no path traversal).
+  case "$slug" in
+    *[!a-zA-Z0-9._-]*) die "invalid slug '$slug' (allowed: letters, digits, dot, underscore, dash)";;
+    ""|.|..|*..*)      die "invalid slug '$slug'";;
+  esac
   seed_root
   cp "$src" "$ARTIFACTS/${slug}.html"
   local ts; ts="$(date +%s)"
@@ -147,7 +159,7 @@ let t=await fetch(`${base}/json`).then(r=>r.json());
 let p=t.find(x=>x.type==="page")||await fetch(`${base}/json/new?about:blank`,{method:"PUT"}).then(r=>r.json()).catch(()=>fetch(`${base}/json/new?about:blank`).then(r=>r.json()));
 const ws=new WebSocket(p.webSocketDebuggerUrl);let id=0;const m=new Map();
 const send=(M,P={})=>new Promise(r=>{const i=++id;m.set(i,r);ws.send(JSON.stringify({id:i,method:M,params:P}));});
-await new Promise(r=>ws.addEventListener("open",r));
+await new Promise((res,rej)=>{ws.addEventListener("open",res);ws.addEventListener("error",()=>rej(new Error("CDP websocket error")));setTimeout(()=>rej(new Error("CDP open timeout")),8000);}).catch(e=>{console.error("glimpse:",e.message||e);process.exit(1);});
 ws.addEventListener("message",e=>{const d=JSON.parse(e.data);if(d.id&&m.has(d.id)){m.get(d.id)(d.result);m.delete(d.id);}});
 await send("Page.enable"); await send("Runtime.enable"); await send("Page.navigate",{url});
 await new Promise(r=>setTimeout(r,3500));
@@ -165,7 +177,7 @@ const base=`http://127.0.0.1:${process.env.CDP_PORT}`;
 let t=await fetch(`${base}/json`).then(r=>r.json());let p=t.find(x=>x.type==="page");
 const ws=new WebSocket(p.webSocketDebuggerUrl);let id=0;const m=new Map();
 const send=(M,P={})=>new Promise(r=>{const i=++id;m.set(i,r);ws.send(JSON.stringify({id:i,method:M,params:P}));});
-await new Promise(r=>ws.addEventListener("open",r));
+await new Promise((res,rej)=>{ws.addEventListener("open",res);ws.addEventListener("error",()=>rej(new Error("CDP websocket error")));setTimeout(()=>rej(new Error("CDP open timeout")),8000);}).catch(e=>{console.error("glimpse:",e.message||e);process.exit(1);});
 ws.addEventListener("message",e=>{const d=JSON.parse(e.data);if(d.id&&m.has(d.id)){m.get(d.id)(d.result);m.delete(d.id);}});
 await send("Page.enable");
 const {data}=await send("Page.captureScreenshot",{format:"png"});

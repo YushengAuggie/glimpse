@@ -5,3 +5,19 @@ feed.json
 .server.log
 *.png
 .DS_Store
+
+# Secrets / credentials — never commit these
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+secrets.env
+secrets.yaml
+secrets.yml
+secrets.json
+credentials.json
+*.local

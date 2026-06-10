@@ -33,12 +33,15 @@ Chrome via the **Chrome DevTools Protocol** wins because:
 
 ## Key design choices
 
-- **Append-only feed, not a protocol.** Publishing is just "write a file + add a
-  line to `feed.json`." The dashboard polls. This is trivially debuggable
-  (it's files on disk) and resilient (a crashed agent leaves a valid canvas).
-- **Artifacts are isolated in an `<iframe>`.** Each artifact brings its own
-  CSS/JS and can't break the shell or its siblings. The agent can use any CDN
-  (mermaid, chart libs) without coordination.
+- **Upsert-by-slug feed, not a protocol.** Publishing is just "write a file +
+  upsert an entry in `feed.json`" (same slug replaces in place). The dashboard
+  polls. This is trivially debuggable (it's files on disk) and resilient (a
+  crashed agent leaves a valid canvas).
+- **Artifacts run in a sandboxed `<iframe>`.** Each artifact is loaded with
+  `sandbox="allow-scripts"` (no `allow-same-origin`), giving it an opaque
+  origin: its JS runs (mermaid, chart libs from a CDN work) but it can't reach
+  the parent shell or fetch sibling artifacts. Slugs are validated to
+  `[A-Za-z0-9._-]` so they can't escape the artifacts directory.
 - **Polling over websockets/live-reload servers.** A 1.2s poll of a static JSON
   file needs no server logic, no socket lifecycle, no reconnect handling. The
   static server is literally `python3 -m http.server`.

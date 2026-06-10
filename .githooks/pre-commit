@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Block commits that contain secrets.
+exec "$(git rev-parse --show-toplevel)/scripts/check-secrets.sh" staged

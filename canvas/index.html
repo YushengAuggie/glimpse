@@ -75,7 +75,15 @@ function show(slug){
   current = slug;
   document.getElementById('title').textContent = a.title;
   document.getElementById('slug').textContent = '/artifacts/'+a.slug+'.html';
-  document.getElementById('stage').innerHTML = `<iframe src="artifacts/${a.slug}.html?v=${a.ts}"></iframe>`;
+  // Sandboxed iframe: allow-scripts WITHOUT allow-same-origin gives the artifact
+  // an opaque origin — it can run JS (mermaid etc.) but can't reach the parent
+  // shell or fetch sibling artifacts. Build via DOM, not innerHTML.
+  const stage = document.getElementById('stage');
+  stage.textContent = '';
+  const f = document.createElement('iframe');
+  f.setAttribute('sandbox', 'allow-scripts allow-popups');
+  f.src = 'artifacts/' + encodeURIComponent(a.slug) + '.html?v=' + a.ts;
+  stage.appendChild(f);
   render();
 }
 async function poll(){

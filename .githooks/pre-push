@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Backstop: scan full history before pushing anything to a remote.
+exec "$(git rev-parse --show-toplevel)/scripts/check-secrets.sh" all
