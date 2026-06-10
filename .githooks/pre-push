@@ -1,3 +1,4 @@
 #!/usr/bin/env bash
-# Backstop: scan full history before pushing anything to a remote.
+# Backstop before pushing. With gitleaks this scans full git history; without it,
+# the fallback scans tracked files only (install gitleaks for history coverage).
 exec "$(git rev-parse --show-toplevel)/scripts/check-secrets.sh" all

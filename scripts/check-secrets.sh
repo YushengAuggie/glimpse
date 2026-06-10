@@ -2,7 +2,7 @@
 # Secret scanner for the glimpse repo. Used by the git hooks and CI.
 #
 #   scripts/check-secrets.sh staged   # scan staged changes (pre-commit)
-#   scripts/check-secrets.sh all      # scan full git history (pre-push / CI)
+#   scripts/check-secrets.sh all      # gitleaks: full history; fallback: tracked files (pre-push/CI)
 #
 # Prefers gitleaks if installed; otherwise falls back to a built-in regex scan
 # so the guard still works on machines without gitleaks.

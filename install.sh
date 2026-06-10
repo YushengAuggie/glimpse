@@ -44,13 +44,14 @@ fi
 if [ -n "$MCP" ] && ! command -v "$MCP" >/dev/null 2>&1; then
   echo "⚠ '$MCP' CLI not found on PATH — skipping MCP registration" >&2; MCP=""
 fi
+MCP_PORT="${GLIMPSE_CDP_PORT:-9222}"
 if [ "$MCP" = "claude" ]; then
-  echo "→ registering chrome-devtools MCP in Claude Code"
-  claude mcp add chrome-devtools --scope user -- npx chrome-devtools-mcp@latest --browser-url=http://127.0.0.1:9222 \
+  echo "→ registering chrome-devtools MCP in Claude Code (port $MCP_PORT)"
+  claude mcp add chrome-devtools --scope user -- npx chrome-devtools-mcp@latest --browser-url=http://127.0.0.1:${MCP_PORT} \
     || echo "⚠ MCP registration failed (see output above); continuing" >&2
 elif [ "$MCP" = "codex" ]; then
-  echo "→ registering chrome-devtools MCP in Codex"
-  codex mcp add chrome-devtools -- npx chrome-devtools-mcp@latest --browser-url=http://127.0.0.1:9222 \
+  echo "→ registering chrome-devtools MCP in Codex (port $MCP_PORT)"
+  codex mcp add chrome-devtools -- npx chrome-devtools-mcp@latest --browser-url=http://127.0.0.1:${MCP_PORT} \
     || echo "⚠ MCP registration failed (see output above); continuing" >&2
 fi
 

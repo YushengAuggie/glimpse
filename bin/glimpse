@@ -117,8 +117,9 @@ EOF
 }
 
 cmd_open(){
-  local target="${1:-http://localhost:${PORT}/}"
-  [[ "$target" == \#* ]] && target="http://localhost:${PORT}/${target}"
+  # Use 127.0.0.1 to match the loopback bind (avoids localhost→::1 resolution misses).
+  local target="${1:-http://127.0.0.1:${PORT}/}"
+  [[ "$target" == \#* ]] && target="http://127.0.0.1:${PORT}/${target}"
   cmd_serve >/dev/null
   cmd_chrome >/dev/null
   have node || die "node is required to drive Chrome over CDP"
@@ -135,7 +136,13 @@ cmd_publish(){
     ""|.|..|*..*)      die "invalid slug '$slug'";;
   esac
   seed_root
-  cp "$src" "$ARTIFACTS/${slug}.html"
+  # Write with predictable perms. `cp /dev/stdin` can yield a read-only file
+  # (pipe mode), which then can't be overwritten on the next publish. Writing
+  # via a temp + `mv -f` gives 0644 and force-replaces even a read-only dest.
+  local dest="$ARTIFACTS/${slug}.html" tmp="$ARTIFACTS/.${slug}.html.tmp"
+  cat -- "$src" > "$tmp"
+  chmod 0644 "$tmp"
+  mv -f "$tmp" "$dest"
   local ts; ts="$(date +%s)"
   GLIMPSE_DIR="$GLIMPSE_DIR" SLUG="$slug" TITLE="$title" TS="$ts" python3 - <<'PY'
 import json, os
@@ -145,7 +152,10 @@ try: feed=json.load(open(fp))
 except Exception: feed={"artifacts":[]}
 arts=[a for a in feed.get("artifacts",[]) if a.get("slug")!=slug]
 arts.append({"slug":slug,"title":title,"ts":ts})
-json.dump({"artifacts":arts}, open(fp,"w"), indent=2)
+# Atomic write so a concurrent dashboard poll never sees partial JSON.
+tmp=fp+".tmp"
+with open(tmp,"w") as fh: json.dump({"artifacts":arts}, fh, indent=2)
+os.replace(tmp, fp)
 PY
   echo "published → http://127.0.0.1:${PORT}/#${slug}  (file: $ARTIFACTS/${slug}.html)"
 }
@@ -190,8 +200,9 @@ cmd_doctor(){
   echo "glimpse doctor"
   echo "  dir:        $GLIMPSE_DIR"
   echo "  canvas port: $PORT   cdp port: $CDP_PORT"
-  printf "  node:        "; have node && node --version || echo "MISSING (needed to drive Chrome)"
-  printf "  python3:     "; have python3 && python3 --version || echo "MISSING (needed for server)"
+  printf "  node:        "; if have node; then node --version; else echo "MISSING (needed to drive Chrome; v22+ for global WebSocket)"; fi
+  printf "  python3:     "; have python3 && python3 --version || echo "MISSING (needed for server; 3.8+ for --bind)"
+  printf "  curl:        "; have curl && echo "ok" || echo "MISSING (needed for readiness checks)"
   printf "  chrome:      "; detect_chrome || echo "NOT FOUND (set GLIMPSE_CHROME)"
   printf "  server:      "; curl -fsS "http://127.0.0.1:${PORT}/feed.json" >/dev/null 2>&1 && echo "up on :$PORT" || echo "down"
   printf "  chrome cdp:  "; curl -fsS "http://127.0.0.1:${CDP_PORT}/json/version" >/dev/null 2>&1 && echo "debuggable on :$CDP_PORT" || echo "down"

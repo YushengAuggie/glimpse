@@ -1,0 +1,24 @@
+name: ci
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so gitleaks can scan it
+
+      - name: Shell syntax (bash -n)
+        run: bash -n bin/glimpse install.sh scripts/*.sh .githooks/*
+
+      - name: shellcheck (non-blocking)
+        run: shellcheck -S warning bin/glimpse install.sh scripts/*.sh .githooks/* || true
+
+      - name: Secret scan (gitleaks, full history)
+        run: |
+          ver=8.30.1
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${ver}/gitleaks_${ver}_linux_x64.tar.gz" | tar -xz gitleaks
+          ./gitleaks git --no-banner --redact

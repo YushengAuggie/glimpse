@@ -81,7 +81,7 @@ function show(slug){
   const stage = document.getElementById('stage');
   stage.textContent = '';
   const f = document.createElement('iframe');
-  f.setAttribute('sandbox', 'allow-scripts allow-popups');
+  f.setAttribute('sandbox', 'allow-scripts');
   f.src = 'artifacts/' + encodeURIComponent(a.slug) + '.html?v=' + a.ts;
   stage.appendChild(f);
   render();
@@ -93,17 +93,22 @@ async function poll(){
     const sig = JSON.stringify(items.map(i=>[i.slug,i.ts]));
     document.getElementById('dot').classList.remove('stale');
     if(sig !== lastSig){
-      const prevTop = feed.length ? feed[0].slug : null;
       const firstLoad = (current === null);
+      // ts of the artifact currently on screen, from the OLD feed.
+      const prevTs = current ? (feed.find(a=>a.slug===current)||{}).ts : null;
       feed = items; render();
-      // On first load, honor a #slug in the URL if present.
       const hash = decodeURIComponent((location.hash||'').replace(/^#/,''));
+      const cur = feed.find(a=>a.slug===current);
       if(firstLoad && hash && feed.some(a=>a.slug===hash)){
-        pinned = true; show(hash);
-      } else {
-        const newest = feed[0];
-        if(newest && (!current || !pinned || newest.slug!==prevTop)) show(newest.slug);
+        pinned = true; show(hash);                 // deep-link on first load
+      } else if(cur && cur.ts !== prevTs){
+        show(cur.slug);                            // current artifact re-published → reload in place
+      } else if(!cur && feed.length){
+        show(feed[0].slug);                        // current artifact vanished → fall back to newest
+      } else if(!pinned && feed.length){
+        show(feed[0].slug);                        // not pinned → follow the newest
       }
+      // pinned + a *different* artifact changed → stay put (no surprise jumps)
       lastSig = sig;
     }
   } catch(e){ document.getElementById('dot').classList.add('stale'); }

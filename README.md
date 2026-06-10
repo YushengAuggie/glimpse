@@ -91,6 +91,8 @@ No framework, no build step, no database. ~1 HTML file + 1 shell script.
   (available unflagged from Node 22; earlier versions won't work without a shim)
 - **Python 3** — the static server
 - **Google Chrome** (or Chromium) — the canvas window + CDP
+- **OS:** macOS and Linux are first-class. On Windows use **WSL** or **Git Bash**
+  (the CLI is bash). `glimpse doctor` tells you what's missing.
 
 ### Install
 ```bash
@@ -111,9 +113,11 @@ glimpse doctor
 ### Use it
 ```bash
 glimpse open                                   # opens the canvas in Chrome
-glimpse publish hello "Hello" examples/job-scheduler.html
+glimpse publish guide "How to use Glimpse" examples/glimpse-guide.html
+glimpse publish demo  "Job Scheduler"      examples/job-scheduler.html
 ```
-You should see the artifact appear in the sidebar instantly.
+You should see the artifacts appear in the sidebar instantly. Start with the
+**How to use Glimpse** one — it explains the whole idea.
 
 ---
 
