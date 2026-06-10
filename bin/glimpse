@@ -1,0 +1,200 @@
+#!/usr/bin/env bash
+# glimpse — a live visual canvas for AI coding agents, driven over the Chrome
+# DevTools Protocol. Your agent publishes self-contained HTML artifacts to a
+# local dashboard that you watch update in a real Chrome window.
+#
+#   glimpse open [url|#slug]      bring everything up + navigate Chrome to the canvas
+#   glimpse publish <slug> <title> [file]   publish an HTML artifact (stdin if no file)
+#   glimpse serve                start the static server only
+#   glimpse chrome               launch a debuggable Chrome only
+#   glimpse read <url>           navigate Chrome to a URL and print its text
+#   glimpse shot <out.png> [url] screenshot the current (or given) page
+#   glimpse doctor               check dependencies and running state
+#   glimpse help
+#
+# Config via env (all optional):
+#   GLIMPSE_DIR        served root           (default: ~/.glimpse)
+#   GLIMPSE_PORT       canvas http port      (default: 4321)
+#   GLIMPSE_CDP_PORT   chrome debug port     (default: 9222)
+#   GLIMPSE_PROFILE    chrome profile dir    (default: $GLIMPSE_DIR/chrome-profile)
+#   GLIMPSE_CHROME     path to chrome binary (default: auto-detect)
+set -euo pipefail
+
+GLIMPSE_DIR="${GLIMPSE_DIR:-$HOME/.glimpse}"
+PORT="${GLIMPSE_PORT:-4321}"
+CDP_PORT="${GLIMPSE_CDP_PORT:-9222}"
+PROFILE="${GLIMPSE_PROFILE:-$GLIMPSE_DIR/chrome-profile}"
+ARTIFACTS="$GLIMPSE_DIR/artifacts"
+
+# Resolve this script's directory so we can find the bundled canvas/index.html
+# even when run straight from the repo (before install).
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"; SOURCE="$(readlink "$SOURCE")"; [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"; done
+SELF_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+
+die(){ echo "glimpse: $*" >&2; exit 1; }
+have(){ command -v "$1" >/dev/null 2>&1; }
+
+detect_chrome(){
+  if [ -n "${GLIMPSE_CHROME:-}" ]; then echo "$GLIMPSE_CHROME"; return; fi
+  local c
+  for c \
+    in "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+       "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary" \
+       "/Applications/Chromium.app/Contents/MacOS/Chromium" \
+       google-chrome google-chrome-stable chromium chromium-browser \
+       "/c/Program Files/Google/Chrome/Application/chrome.exe"; do
+    if [ -x "$c" ] || have "$c"; then command -v "$c" 2>/dev/null || echo "$c"; return; fi
+  done
+  return 1
+}
+
+seed_root(){
+  mkdir -p "$ARTIFACTS"
+  [ -f "$GLIMPSE_DIR/feed.json" ] || echo '{"artifacts":[]}' > "$GLIMPSE_DIR/feed.json"
+  if [ ! -f "$GLIMPSE_DIR/index.html" ]; then
+    if [ -f "$SELF_DIR/../canvas/index.html" ]; then
+      cp "$SELF_DIR/../canvas/index.html" "$GLIMPSE_DIR/index.html"
+    else
+      die "canvas/index.html not found next to the CLI; reinstall glimpse"
+    fi
+  fi
+}
+
+cmd_serve(){
+  seed_root
+  if curl -fsS "http://127.0.0.1:${PORT}/feed.json" >/dev/null 2>&1; then
+    echo "canvas already serving at http://127.0.0.1:${PORT}/"; return
+  fi
+  have python3 || die "python3 is required for the static server"
+  nohup python3 -m http.server "$PORT" --directory "$GLIMPSE_DIR" >"$GLIMPSE_DIR/.server.log" 2>&1 &
+  for _ in $(seq 1 20); do
+    curl -fsS "http://127.0.0.1:${PORT}/feed.json" >/dev/null 2>&1 && { echo "canvas serving at http://127.0.0.1:${PORT}/  (root: $GLIMPSE_DIR)"; return; }
+    sleep 0.3
+  done
+  die "static server did not come up on :$PORT (see $GLIMPSE_DIR/.server.log)"
+}
+
+cmd_chrome(){
+  if curl -fsS "http://127.0.0.1:${CDP_PORT}/json/version" >/dev/null 2>&1; then
+    echo "chrome already debuggable on http://127.0.0.1:${CDP_PORT}"; return
+  fi
+  local chrome; chrome="$(detect_chrome)" || die "could not find Chrome; set GLIMPSE_CHROME=/path/to/chrome"
+  mkdir -p "$PROFILE"
+  echo "launching Chrome (CDP :$CDP_PORT, profile: $PROFILE)"
+  "$chrome" --remote-debugging-port="$CDP_PORT" --user-data-dir="$PROFILE" \
+    --no-first-run --no-default-browser-check about:blank >/dev/null 2>&1 &
+  for _ in $(seq 1 30); do
+    curl -fsS "http://127.0.0.1:${CDP_PORT}/json/version" >/dev/null 2>&1 && { echo "chrome ready on :$CDP_PORT"; return; }
+    sleep 0.5
+  done
+  die "Chrome did not expose the debug port within 15s"
+}
+
+# Navigate the debuggable Chrome to a URL (reuses a tab, else creates one).
+cdp_navigate(){
+  local url="$1"
+  CDP_PORT="$CDP_PORT" URL="$url" node --input-type=module <<'EOF'
+const base=`http://127.0.0.1:${process.env.CDP_PORT}`, url=process.env.URL;
+let t=await fetch(`${base}/json`).then(r=>r.json());
+let want; try{ want="localhost:"+new URL(url).port; }catch{ want=""; }
+let p=t.find(x=>x.type==="page"&&want&&x.url.includes(want))
+   || t.find(x=>x.type==="page")
+   || await fetch(`${base}/json/new?about:blank`,{method:"PUT"}).then(r=>r.json()).catch(()=>fetch(`${base}/json/new?about:blank`).then(r=>r.json()));
+const ws=new WebSocket(p.webSocketDebuggerUrl);let id=0;const m=new Map();
+const send=(M,P={})=>new Promise(r=>{const i=++id;m.set(i,r);ws.send(JSON.stringify({id:i,method:M,params:P}));});
+await new Promise(r=>ws.addEventListener("open",r));
+ws.addEventListener("message",e=>{const d=JSON.parse(e.data);if(d.id&&m.has(d.id)){m.get(d.id)(d.result);m.delete(d.id);}});
+await send("Page.navigate",{url}); ws.close();
+EOF
+}
+
+cmd_open(){
+  local target="${1:-http://localhost:${PORT}/}"
+  [[ "$target" == \#* ]] && target="http://localhost:${PORT}/${target}"
+  cmd_serve >/dev/null
+  cmd_chrome >/dev/null
+  have node || die "node is required to drive Chrome over CDP"
+  cdp_navigate "$target"
+  echo "canvas open in Chrome → $target"
+}
+
+cmd_publish(){
+  local slug="${1:-}" title="${2:-}" src="${3:-/dev/stdin}"
+  [ -n "$slug" ] && [ -n "$title" ] || die "usage: glimpse publish <slug> <title> [file.html]"
+  seed_root
+  cp "$src" "$ARTIFACTS/${slug}.html"
+  local ts; ts="$(date +%s)"
+  GLIMPSE_DIR="$GLIMPSE_DIR" SLUG="$slug" TITLE="$title" TS="$ts" python3 - <<'PY'
+import json, os
+root=os.environ["GLIMPSE_DIR"]; slug=os.environ["SLUG"]; title=os.environ["TITLE"]; ts=int(os.environ["TS"])
+fp=os.path.join(root,"feed.json")
+try: feed=json.load(open(fp))
+except Exception: feed={"artifacts":[]}
+arts=[a for a in feed.get("artifacts",[]) if a.get("slug")!=slug]
+arts.append({"slug":slug,"title":title,"ts":ts})
+json.dump({"artifacts":arts}, open(fp,"w"), indent=2)
+PY
+  echo "published → http://127.0.0.1:${PORT}/#${slug}  (file: $ARTIFACTS/${slug}.html)"
+}
+
+cmd_read(){
+  local url="${1:?usage: glimpse read <url>}"
+  cmd_chrome >/dev/null
+  CDP_PORT="$CDP_PORT" URL="$url" node --input-type=module <<'EOF'
+const base=`http://127.0.0.1:${process.env.CDP_PORT}`, url=process.env.URL;
+let t=await fetch(`${base}/json`).then(r=>r.json());
+let p=t.find(x=>x.type==="page")||await fetch(`${base}/json/new?about:blank`,{method:"PUT"}).then(r=>r.json()).catch(()=>fetch(`${base}/json/new?about:blank`).then(r=>r.json()));
+const ws=new WebSocket(p.webSocketDebuggerUrl);let id=0;const m=new Map();
+const send=(M,P={})=>new Promise(r=>{const i=++id;m.set(i,r);ws.send(JSON.stringify({id:i,method:M,params:P}));});
+await new Promise(r=>ws.addEventListener("open",r));
+ws.addEventListener("message",e=>{const d=JSON.parse(e.data);if(d.id&&m.has(d.id)){m.get(d.id)(d.result);m.delete(d.id);}});
+await send("Page.enable"); await send("Runtime.enable"); await send("Page.navigate",{url});
+await new Promise(r=>setTimeout(r,3500));
+const {result}=await send("Runtime.evaluate",{expression:"JSON.stringify({title:document.title,url:location.href,text:document.body.innerText.slice(0,8000)})",returnByValue:true});
+console.log(result.value); ws.close();
+EOF
+}
+
+cmd_shot(){
+  local out="${1:?usage: glimpse shot <out.png> [url]}" url="${2:-}"
+  cmd_chrome >/dev/null
+  [ -n "$url" ] && cdp_navigate "$url" && sleep 2
+  CDP_PORT="$CDP_PORT" OUT="$out" node --input-type=module <<'EOF'
+const base=`http://127.0.0.1:${process.env.CDP_PORT}`;
+let t=await fetch(`${base}/json`).then(r=>r.json());let p=t.find(x=>x.type==="page");
+const ws=new WebSocket(p.webSocketDebuggerUrl);let id=0;const m=new Map();
+const send=(M,P={})=>new Promise(r=>{const i=++id;m.set(i,r);ws.send(JSON.stringify({id:i,method:M,params:P}));});
+await new Promise(r=>ws.addEventListener("open",r));
+ws.addEventListener("message",e=>{const d=JSON.parse(e.data);if(d.id&&m.has(d.id)){m.get(d.id)(d.result);m.delete(d.id);}});
+await send("Page.enable");
+const {data}=await send("Page.captureScreenshot",{format:"png"});
+const fs=await import("fs"); fs.writeFileSync(process.env.OUT, Buffer.from(data,"base64"));
+console.log("saved", process.env.OUT); ws.close();
+EOF
+}
+
+cmd_doctor(){
+  echo "glimpse doctor"
+  echo "  dir:        $GLIMPSE_DIR"
+  echo "  canvas port: $PORT   cdp port: $CDP_PORT"
+  printf "  node:        "; have node && node --version || echo "MISSING (needed to drive Chrome)"
+  printf "  python3:     "; have python3 && python3 --version || echo "MISSING (needed for server)"
+  printf "  chrome:      "; detect_chrome || echo "NOT FOUND (set GLIMPSE_CHROME)"
+  printf "  server:      "; curl -fsS "http://127.0.0.1:${PORT}/feed.json" >/dev/null 2>&1 && echo "up on :$PORT" || echo "down"
+  printf "  chrome cdp:  "; curl -fsS "http://127.0.0.1:${CDP_PORT}/json/version" >/dev/null 2>&1 && echo "debuggable on :$CDP_PORT" || echo "down"
+}
+
+usage(){ sed -n '2,30p' "$SOURCE" | sed 's/^# \{0,1\}//'; }
+
+case "${1:-help}" in
+  open)    shift; cmd_open "$@";;
+  publish) shift; cmd_publish "$@";;
+  serve)   shift; cmd_serve "$@";;
+  chrome)  shift; cmd_chrome "$@";;
+  read)    shift; cmd_read "$@";;
+  shot)    shift; cmd_shot "$@";;
+  doctor)  shift; cmd_doctor "$@";;
+  help|-h|--help) usage;;
+  *) die "unknown command '${1}'. Try: glimpse help";;
+esac

@@ -1,0 +1,7 @@
+# Runtime canvas data (lives in ~/.glimpse by default, but ignore if pointed here)
+.glimpse/
+artifacts/
+feed.json
+.server.log
+*.png
+.DS_Store

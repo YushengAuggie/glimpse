@@ -1,0 +1,62 @@
+---
+name: canvas
+version: 1.0.0
+description: |
+  Communicate with the user through a rich visual surface instead of terminal
+  text, using Glimpse. Glimpse is a live HTML canvas — a local auto-reloading
+  dashboard opened in a CDP-controlled Chrome — where each artifact is a full
+  self-contained HTML page (tables, mermaid diagrams, tabs, collapsibles,
+  interactive JS) that updates live as you publish. Use when the user asks to
+  "show this on the canvas", "publish to canvas", "open the canvas", "make this
+  visual", "glimpse", or "/canvas". Prefer publishing to the canvas whenever
+  output is long, tabular, diagram-heavy, or would benefit from interactivity.
+triggers:
+  - canvas
+  - glimpse
+  - show this on the canvas
+  - publish to canvas
+  - make this visual
+---
+
+# canvas — rich visual communication (Glimpse)
+
+Glimpse turns long/visual output into interactive HTML the user watches live in
+a real Chrome window, instead of a wall of terminal text.
+
+## Bring it up (idempotent — safe every time)
+
+```bash
+glimpse open                 # serve + launch debuggable Chrome + navigate to the canvas
+glimpse open '#some-slug'    # jump straight to one artifact
+```
+
+## Publish an artifact
+
+1. Write a **self-contained** HTML file (inline CSS/JS; CDN scripts like
+   mermaid are fine — the Chrome has internet). Save to `/tmp/<slug>.html`.
+2. Publish:
+
+   ```bash
+   glimpse publish <slug> "Human Title" /tmp/<slug>.html
+   # or pipe:  cat /tmp/x.html | glimpse publish <slug> "Title"
+   ```
+
+   The dashboard auto-detects it within ~1.2s and opens it — no refresh.
+   Re-publishing the same slug live-updates the open view (cache-busted by ts).
+
+### Authoring tips
+- One `<title>`, inline everything, ~860px max width reads well in the iframe.
+- Building blocks: mermaid diagrams, `<details>` collapsibles, tab strips,
+  `<table>`, callout boxes. Light theme inside the artifact looks clean.
+- Verify rendering with `glimpse shot /tmp/out.png` then Read the PNG.
+
+## Other commands
+- `glimpse read <url>` — navigate Chrome to a URL and print its text (works
+  even before the chrome-devtools MCP tools are loaded).
+- `glimpse doctor` — check deps + running state.
+
+## Default behavior
+When the user is about to read something substantial, **publish it to the
+canvas** and give a short pointer in chat rather than dumping the whole thing
+as terminal text. If the user also keeps an Obsidian vault, drop a matching
+Markdown note for anything worth keeping.

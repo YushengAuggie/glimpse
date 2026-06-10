@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Design a Job Scheduler — Interviewer's Guide</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root{
+    --bg:#fbfbfd; --card:#fff; --ink:#1d1d22; --dim:#6b7280; --line:#e6e6ee;
+    --accent:#3b5bdb; --good:#2f9e44; --bad:#e03131; --warn:#e8590c;
+    --chip:#eef1ff;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;}
+  .wrap{max-width:860px;margin:0 auto;padding:40px 28px 80px;}
+  header h1{font-size:30px;margin:0 0 6px;letter-spacing:-.5px;}
+  .meta{color:var(--dim);font-size:14px;margin-bottom:8px;}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 28px;}
+  .chip{background:var(--chip);color:var(--accent);border-radius:999px;padding:4px 12px;font-size:13px;font-weight:600;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px 24px;margin:18px 0;
+    box-shadow:0 1px 2px rgba(20,20,40,.03);}
+  h2{font-size:20px;margin:0 0 12px;letter-spacing:-.3px;}
+  h3{font-size:16px;margin:18px 0 8px;}
+  p{margin:10px 0;} ul{margin:8px 0 8px 2px;padding-left:20px;} li{margin:5px 0;}
+  .lead{font-size:17px;color:#34343c;}
+  .callout{border-left:4px solid var(--accent);background:#f5f7ff;border-radius:8px;padding:12px 16px;margin:14px 0;}
+  .callout.good{border-color:var(--good);background:#f2fbf4;}
+  .callout.bad{border-color:var(--bad);background:#fff5f5;}
+  /* mermaid */
+  .diagram{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow:auto;text-align:center;}
+  /* tabs */
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;border-bottom:1px solid var(--line);padding-bottom:10px;}
+  .tab{padding:8px 14px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;color:var(--dim);border:1px solid transparent;}
+  .tab:hover{background:#f1f3f9;}
+  .tab.active{background:var(--accent);color:#fff;}
+  .panel{display:none;} .panel.active{display:block;}
+  .qa{font-weight:600;color:var(--accent);margin-top:4px;}
+  table{border-collapse:collapse;width:100%;font-size:14.5px;margin:8px 0;}
+  th,td{border:1px solid var(--line);padding:9px 11px;text-align:left;vertical-align:top;}
+  th{background:#f3f4fb;font-weight:700;}
+  /* collapsibles */
+  details{border:1px solid var(--line);border-radius:10px;margin:10px 0;background:#fff;overflow:hidden;}
+  summary{cursor:pointer;padding:13px 16px;font-weight:600;list-style:none;display:flex;align-items:center;gap:10px;}
+  summary::-webkit-details-marker{display:none;}
+  summary .ar{transition:transform .15s;color:var(--dim);} details[open] summary .ar{transform:rotate(90deg);}
+  details .body{padding:0 16px 14px;}
+  .flag summary{color:var(--bad);} .flag{border-color:#f1c0c0;}
+  .src{color:var(--dim);font-size:13px;margin-top:30px;text-align:center;}
+  kbd{background:#eef1ff;border-radius:5px;padding:1px 6px;font-size:13px;color:var(--accent);font-weight:600;}
+  .score{display:inline-block;width:22px;height:22px;border-radius:50%;background:var(--good);color:#fff;text-align:center;line-height:22px;font-size:12px;font-weight:700;margin-right:8px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Design a Job Scheduler</h1>
+    <div class="meta">Interviewer's guide · sourced from Hello Interview · last asked Late May 2026</div>
+    <div class="chips">
+      <span class="chip">OpenAI</span><span class="chip">Robinhood</span>
+      <span class="chip">DoorDash</span><span class="chip">NVIDIA</span>
+      <span class="chip">Palo Alto Networks</span><span class="chip">115 reports</span>
+    </div>
+  </header>
+
+  <div class="card">
+    <h2>Problem overview</h2>
+    <p class="lead">Design a <b>distributed job scheduler</b> (think Airflow / Quartz / AWS EventBridge) that triggers and runs jobs reliably at large scale.</p>
+    <ul>
+      <li><b>Throughput:</b> 10,000+ jobs/sec, with <b>sub-2s</b> trigger precision</li>
+      <li><b>Job types:</b> immediate, future one-shot, recurring (cron), and ad-hoc</li>
+      <li><b>Reliability:</b> at-least-once execution, retries w/ backoff, timeouts, per-job concurrency limits</li>
+      <li><b>History:</b> searchable execution history (timestamps, attempts, outcome, logs) for <b>1 year</b></li>
+    </ul>
+    <div class="callout"><b>The whole problem in one line:</b> separate <b>scheduling</b> from <b>execution</b>, then make each side independently scalable and fault-tolerant.</div>
+  </div>
+
+  <div class="card">
+    <h2>Reference architecture</h2>
+    <p>The shape I'm hoping the candidate converges on:</p>
+    <div class="diagram">
+      <pre class="mermaid">
+flowchart LR
+  U([User / API]) --> API[Job API]
+  API --> META[(Job Store\n+ history)]
+  SCH[Scheduler / Dispatcher\nstateless, sharded] -->|polls due jobs\ntime-bucketed| META
+  SCH -->|enqueue| Q[[Durable Queue\nKafka / SQS]]
+  Q --> W1[Worker]
+  Q --> W2[Worker]
+  Q --> W3[Worker]
+  W1 -->|status, logs| META
+  W2 -->|status, logs| META
+  W3 -->|leases / heartbeats| ZK[(Coordination\nleases)]
+  META --> COLD[(Cold history\nS3 / Parquet)]
+  classDef hot fill:#eef1ff,stroke:#3b5bdb,color:#1d1d22;
+  classDef store fill:#f2fbf4,stroke:#2f9e44,color:#1d1d22;
+  class SCH,Q hot; class META,COLD,ZK store;
+      </pre>
+    </div>
+    <p style="color:var(--dim);font-size:14px;">If they keep scheduling and execution in one component, that's the first thing to push on.</p>
+  </div>
+
+  <div class="card">
+    <h2>What I want to hear — by phase</h2>
+
+    <h3>1 · Requirements &amp; scoping <span style="color:var(--dim);font-weight:400">(first ~5 min)</span></h3>
+    <ul>
+      <li>Restates the <b>functional core</b>: create job (immediate/future/cron), ad-hoc submit, view status + history, configure retry/timeout/concurrency.</li>
+      <li>Pins <b>non-functionals with numbers</b>: 10k/s, &lt;2s jitter, at-least-once, 1-yr retention, HA. Jumping to boxes without an SLA = weaker signal.</li>
+      <li>Back-of-envelope: 10k/s → ~<b>864M runs/day</b> → this drives the hot/cold history decision later.</li>
+    </ul>
+
+    <h3>2 · The key insight: decouple scheduler from workers</h3>
+    <table>
+      <tr><th>Component</th><th>Responsibility</th><th>Signal</th></tr>
+      <tr><td><b>Scheduler / dispatcher</b></td><td>Find <i>due</i> jobs, enqueue them</td><td>Should be <b>stateless</b> &amp; sharded — no SPOF</td></tr>
+      <tr><td><b>Queue</b></td><td>Buffer that absorbs bursts</td><td>Kafka / SQS / Redis Streams</td></tr>
+      <tr><td><b>Worker pool</b></td><td>Execute, report status</td><td>Scales independently of scheduling</td></tr>
+      <tr><td><b>Metadata store</b></td><td>Job defs + run history</td><td>Hot store + cold archive</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>3 · The deep dives <span style="color:var(--dim);font-weight:400;font-size:15px">— where the score is decided</span></h2>
+    <div class="tabs" id="tabs">
+      <div class="tab active" data-p="d1">Dispatch @ 10k/s</div>
+      <div class="tab" data-p="d2">At-least-once</div>
+      <div class="tab" data-p="d3">Worker lifecycle</div>
+      <div class="tab" data-p="d4">1-year history</div>
+    </div>
+    <div class="panel active" id="d1">
+      <div class="qa">Q: Dispatch 10k jobs/sec with &lt;2s precision without melting the data store?</div>
+      <p><b>Strong answer:</b> Don't poll one hot table with <code>SELECT … WHERE due</code>. Use <b>time-bucketed / sharded partitions</b> indexed on next-run-time, or a tiered design: durable store for the long tail + an in-memory <b>timing wheel / sorted set</b> for the imminent window. Pre-fetch the next minute into memory.</p>
+    </div>
+    <div class="panel" id="d2">
+      <div class="qa">Q: Provide at-least-once execution while preventing duplicate harm?</div>
+      <p><b>Strong answer:</b> Accept that crashes ⇒ duplicates. Make handlers <b>idempotent</b> via dedup keys / idempotency tokens; use visibility timeouts + leases so a slow worker can't cause a double-run. Say it plainly: <i>“exactly-once delivery is impractical; I get exactly-once <u>effects</u> via idempotency.”</i></p>
+    </div>
+    <div class="panel" id="d3">
+      <div class="qa">Q: Manage worker lifecycle, scaling, and safe draining at this throughput?</div>
+      <p><b>Strong answer:</b> Heartbeats + leases; reassign jobs from dead workers; autoscale on <b>queue depth</b>; <b>graceful drain</b> on deploy (stop pulling, finish in-flight, ack).</p>
+    </div>
+    <div class="panel" id="d4">
+      <div class="qa">Q: Keep 1 year of history searchable at this volume?</div>
+      <p><b>Strong answer:</b> <b>Hot/cold split</b> — recent runs in a fast queryable store (Postgres/Cassandra), older runs aged to cheap cold storage (S3/Parquet) with partition pruning for search.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>4 · Red flags that drop the score</h2>
+    <details class="flag"><summary><span class="ar">▸</span>Polling a single jobs table for due jobs</summary>
+      <div class="body">Hot partition, lock contention, missed precision under spikes. The single biggest tell of inexperience on this problem.</div></details>
+    <details class="flag"><summary><span class="ar">▸</span>Claiming exactly-once without idempotency / dedup</summary>
+      <div class="body">Crashes and retries make duplicates inevitable → double-charges, double-emails, corrupted state.</div></details>
+    <details class="flag"><summary><span class="ar">▸</span>No backpressure / capacity planning</summary>
+      <div class="body">The <b>“thundering herd”</b> at the top of every minute (everyone's <code>0 * * * *</code> fires at once) → cascading retries, correlated failure. Want to hear jitter/spreading, rate limits, queue-depth autoscaling.</div></details>
+  </div>
+
+  <div class="card">
+    <h2>5 · Bonus signals <span style="color:var(--dim);font-weight:400;font-size:15px">(senior / staff)</span></h2>
+    <ul>
+      <li><span class="score">+</span>Names the <b>top-of-minute burst</b> unprompted and spreads load.</li>
+      <li><span class="score">+</span>Distinguishes <b>delivery guarantee</b> vs <b>execution guarantee</b>.</li>
+      <li><span class="score">+</span>Discusses <b>observability</b>: per-run logs, status transitions, alerting on stuck/failed jobs.</li>
+      <li><span class="score">+</span><b>Multi-tenant fairness</b> / per-job concurrency caps so one noisy job can't starve others.</li>
+    </ul>
+  </div>
+
+  <div class="src">Free-tier content from hellointerview.com · 13 community solutions + a premium FAANG breakdown sit behind login.</div>
+</div>
+
+<script>
+  mermaid.initialize({startOnLoad:true, theme:'neutral'});
+  const tabs=document.getElementById('tabs');
+  tabs.addEventListener('click',e=>{
+    const t=e.target.closest('.tab'); if(!t)return;
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById(t.dataset.p).classList.add('active');
+  });
+</script>
+</body>
+</html>

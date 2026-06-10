@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glimpse</title>
+<style>
+  :root {
+    --bg:#0f1115; --panel:#161922; --panel2:#1c2030; --line:#272c3a;
+    --text:#e6e8ee; --dim:#9aa3b2; --accent:#7aa2f7; --accent2:#9ece6a;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--text);
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif; }
+  .app { display:grid; grid-template-columns:280px 1fr; height:100vh; }
+  aside { background:var(--panel); border-right:1px solid var(--line); display:flex; flex-direction:column; min-width:0; }
+  .brand { padding:16px 18px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:10px; }
+  .brand b { font-size:15px; letter-spacing:.3px; }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--accent2); box-shadow:0 0 8px var(--accent2); }
+  .dot.stale { background:#e0af68; box-shadow:none; }
+  .list { overflow:auto; padding:8px; flex:1; }
+  .item { padding:10px 12px; border-radius:8px; cursor:pointer; border:1px solid transparent; }
+  .item:hover { background:var(--panel2); }
+  .item.active { background:var(--panel2); border-color:var(--line); }
+  .item .t { font-weight:600; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .item .m { color:var(--dim); font-size:12px; margin-top:2px; }
+  .empty { color:var(--dim); padding:24px 16px; font-size:14px; }
+  .foot { padding:10px 16px; border-top:1px solid var(--line); color:var(--dim); font-size:12px; display:flex; justify-content:space-between; align-items:center;}
+  main { min-width:0; display:flex; flex-direction:column; }
+  .bar { padding:12px 18px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:12px; background:var(--panel); }
+  .bar h1 { font-size:15px; margin:0; font-weight:600; }
+  .bar .url { color:var(--dim); font-size:12px; margin-left:auto; }
+  iframe { border:0; width:100%; height:100%; background:#fff; }
+  .welcome { padding:48px; color:var(--dim); max-width:640px; }
+  .welcome h2 { color:var(--text); }
+  code { background:var(--panel2); padding:2px 6px; border-radius:5px; font-size:13px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <div class="brand"><span class="dot" id="dot"></span><b>👁&nbsp; Glimpse</b></div>
+    <div class="list" id="list"><div class="empty">No artifacts yet…</div></div>
+    <div class="foot"><span id="count">0 artifacts</span><span id="clock"></span></div>
+  </aside>
+  <main>
+    <div class="bar"><h1 id="title">Welcome</h1><span class="url" id="slug"></span></div>
+    <div id="stage" style="flex:1; min-height:0;">
+      <div class="welcome">
+        <h2>This is your live canvas.</h2>
+        <p>When your agent publishes an artifact it appears in the sidebar and opens here automatically — no refresh needed. Each artifact is a full HTML page, so diagrams, tabs, and interactive demos all work.</p>
+        <p>Publish from the CLI: <code>glimpse publish &lt;slug&gt; "Title" page.html</code></p>
+      </div>
+    </div>
+  </main>
+</div>
+<script>
+let feed = [], current = null, lastSig = "", pinned = false;
+function fmt(ts){ try { return new Date(ts*1000).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); } catch(e){ return ""; } }
+function render(){
+  const list = document.getElementById('list');
+  document.getElementById('count').textContent = feed.length + (feed.length===1?' artifact':' artifacts');
+  if(!feed.length){ list.innerHTML = '<div class="empty">No artifacts yet…</div>'; return; }
+  list.innerHTML = '';
+  for(const a of feed){
+    const el = document.createElement('div');
+    el.className = 'item' + (a.slug===current ? ' active':'');
+    el.innerHTML = `<div class="t">${a.title.replace(/</g,'&lt;')}</div><div class="m">${fmt(a.ts)}</div>`;
+    el.onclick = () => { pinned = true; show(a.slug); };
+    list.appendChild(el);
+  }
+}
+function show(slug){
+  const a = feed.find(x=>x.slug===slug); if(!a) return;
+  current = slug;
+  document.getElementById('title').textContent = a.title;
+  document.getElementById('slug').textContent = '/artifacts/'+a.slug+'.html';
+  document.getElementById('stage').innerHTML = `<iframe src="artifacts/${a.slug}.html?v=${a.ts}"></iframe>`;
+  render();
+}
+async function poll(){
+  try {
+    const r = await fetch('feed.json?v='+Date.now());
+    const items = ((await r.json()).artifacts||[]).sort((x,y)=>y.ts-x.ts);
+    const sig = JSON.stringify(items.map(i=>[i.slug,i.ts]));
+    document.getElementById('dot').classList.remove('stale');
+    if(sig !== lastSig){
+      const prevTop = feed.length ? feed[0].slug : null;
+      const firstLoad = (current === null);
+      feed = items; render();
+      // On first load, honor a #slug in the URL if present.
+      const hash = decodeURIComponent((location.hash||'').replace(/^#/,''));
+      if(firstLoad && hash && feed.some(a=>a.slug===hash)){
+        pinned = true; show(hash);
+      } else {
+        const newest = feed[0];
+        if(newest && (!current || !pinned || newest.slug!==prevTop)) show(newest.slug);
+      }
+      lastSig = sig;
+    }
+  } catch(e){ document.getElementById('dot').classList.add('stale'); }
+}
+setInterval(()=>{ document.getElementById('clock').textContent = new Date().toLocaleTimeString(); }, 1000);
+setInterval(poll, 1200); poll();
+</script>
+</body>
+</html>
