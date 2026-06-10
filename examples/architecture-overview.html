@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture Overview — Thumbnail Service</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root{--bg:#f7f8fb;--card:#fff;--ink:#1d1d22;--dim:#5b6472;--line:#e6e6ee;
+        --accent:#3b5bdb;--accent-soft:#eef1ff;--good:#2f9e44;--amber:#e8590c;}
+  *{box-sizing:border-box;} body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+  .wrap{max-width:840px;margin:0 auto;padding:40px 26px 80px;}
+  h1{font-size:28px;margin:0 0 4px;letter-spacing:-.5px;}
+  .tag{color:var(--dim);font-size:14px;margin-bottom:20px;}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 24px;}
+  .chip{background:var(--accent-soft);color:var(--accent);border-radius:999px;padding:4px 12px;font-size:13px;font-weight:600;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px 24px;margin:18px 0;box-shadow:0 1px 2px rgba(20,20,40,.04);}
+  h2{font-size:20px;margin:0 0 12px;letter-spacing:-.3px;}
+  p{margin:10px 0;} ul{margin:8px 0 4px;padding-left:20px;} li{margin:6px 0;}
+  .lead{font-size:17px;color:#34343c;}
+  .diagram{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;text-align:center;overflow:auto;}
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;border-bottom:1px solid var(--line);padding-bottom:10px;}
+  .tab{padding:8px 14px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;color:var(--dim);border:1px solid transparent;}
+  .tab:hover{background:#f1f3f9;} .tab.active{background:var(--accent);color:#fff;}
+  .panel{display:none;} .panel.active{display:block;}
+  table{border-collapse:collapse;width:100%;font-size:14.5px;margin:6px 0;}
+  th,td{border:1px solid var(--line);padding:9px 11px;text-align:left;vertical-align:top;}
+  th{background:#f3f4fb;font-weight:700;}
+  code{background:var(--accent-soft);color:#26408b;padding:2px 6px;border-radius:5px;font-size:13.5px;}
+  details{border:1px solid var(--line);border-radius:10px;margin:10px 0;background:#fff;}
+  summary{cursor:pointer;padding:12px 16px;font-weight:600;}
+  .callout{border-left:4px solid var(--good);background:#f2fbf4;border-radius:8px;padding:12px 16px;margin:12px 0;}
+  .foot{color:var(--dim);font-size:13px;text-align:center;margin-top:26px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Architecture Overview — Thumbnail Service</h1>
+  <div class="tag">Internal design doc · rendered on the Glimpse canvas · example artifact</div>
+  <div class="chips"><span class="chip">Go</span><span class="chip">S3</span><span class="chip">SQS</span><span class="chip">Postgres</span><span class="chip">~2k req/s</span></div>
+
+  <div class="card">
+    <h2>What it does</h2>
+    <p class="lead">A small service that turns uploaded images into resized thumbnails. Users upload an image; the service stores the original, generates several sizes asynchronously, and serves them from a CDN.</p>
+    <div class="callout"><b>Design goal:</b> keep the upload path fast by doing the heavy resizing work off the request, with retries and a clear record of each job's status.</div>
+  </div>
+
+  <div class="card">
+    <h2>System diagram</h2>
+    <div class="diagram">
+      <pre class="mermaid">
+flowchart LR
+  U([Client]) -->|upload| API[Upload API]
+  API -->|store original| S3[(Object store)]
+  API -->|enqueue job| Q[[Queue]]
+  API -->|record| DB[(Jobs DB)]
+  Q --> W1[Resizer worker]
+  Q --> W2[Resizer worker]
+  W1 -->|write sizes| S3
+  W1 -->|update status| DB
+  S3 --> CDN[(CDN)]
+  CDN --> U
+  classDef hot fill:#eef1ff,stroke:#3b5bdb,color:#1d1d22;
+  classDef store fill:#f2fbf4,stroke:#2f9e44,color:#1d1d22;
+  class API,Q,W1,W2 hot; class S3,DB,CDN store;
+      </pre>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Components</h2>
+    <div class="tabs" id="tabs">
+      <div class="tab active" data-p="t1">Upload API</div>
+      <div class="tab" data-p="t2">Queue + workers</div>
+      <div class="tab" data-p="t3">Storage &amp; CDN</div>
+    </div>
+    <div class="panel active" id="t1">
+      <p>Stateless HTTP service. Validates the file, streams the original to object storage, writes a <code>jobs</code> row (<code>status=pending</code>), enqueues a resize job, and returns immediately with a job id.</p>
+    </div>
+    <div class="panel" id="t2">
+      <p>Workers pull jobs from the queue, generate each configured size, write them to storage, and flip the job to <code>done</code> (or <code>failed</code> after N retries). Scale workers on queue depth.</p>
+    </div>
+    <div class="panel" id="t3">
+      <p>Originals and thumbnails live in one bucket under predictable keys (<code>img/{id}/{size}.webp</code>). The CDN caches by key; cache busting is just a new id, so we never overwrite.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Endpoints</h2>
+    <table>
+      <tr><th>Method</th><th>Path</th><th>Purpose</th></tr>
+      <tr><td><code>POST</code></td><td><code>/v1/images</code></td><td>Upload an original, returns a job id</td></tr>
+      <tr><td><code>GET</code></td><td><code>/v1/images/:id</code></td><td>Job status + ready sizes</td></tr>
+      <tr><td><code>GET</code></td><td><code>/v1/images/:id/:size</code></td><td>Redirect to the CDN URL for a size</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Operational notes</h2>
+    <details><summary>How are failures handled?</summary>
+      <div style="padding:0 16px 14px">Jobs retry with backoff up to 3 times; after that they're marked <code>failed</code> and surfaced on a small ops dashboard. The original is always kept, so a failed job can be re-queued by hand.</div></details>
+    <details><summary>What about duplicate uploads?</summary>
+      <div style="padding:0 16px 14px">The upload API hashes the file and reuses an existing id if the same bytes were already processed — cheap dedupe that avoids redundant resize work.</div></details>
+    <details><summary>Where are the bottlenecks?</summary>
+      <div style="padding:0 16px 14px">Resize CPU on the workers. It scales horizontally on queue depth; the API and storage are well within headroom at current traffic.</div></details>
+  </div>
+
+  <div class="foot">Example artifact for Glimpse · everything here is fictional documentation to show off layout</div>
+</div>
+<script>
+  mermaid.initialize({startOnLoad:true, theme:'neutral'});
+  document.getElementById('tabs').addEventListener('click',e=>{
+    const t=e.target.closest('.tab'); if(!t)return;
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active'); document.getElementById(t.dataset.p).classList.add('active');
+  });
+</script>
+</body>
+</html>

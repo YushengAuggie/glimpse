@@ -12,10 +12,10 @@ setup also lets your agent *read* and *control* real web pages.
 ┌─ localhost:4321 (Chrome) ────────────────────────────┐
 │  👁 Glimpse                            [● auto-reload]│
 │ ┌──────────┬────────────────────────────────────────┐│
-│ │ Artifacts│  Design a Job Scheduler                 ││
-│ │ • Job Sch│  ▸ Overview                             ││
-│ │ • Research  ▾ Architecture   [live mermaid diagram]││
-│ │ • Diff   │  ▸ Deep dives (tabs)                    ││
+│ │ Artifacts│  Architecture Overview                  ││
+│ │ • Arch   │  ▸ What it does                         ││
+│ │ • Report │  ▾ System diagram [live mermaid diagram]││
+│ │ • Diff   │  ▸ Components (tabs)                    ││
 │ └──────────┴────────────────────────────────────────┘│
 └───────────────────────────────────────────────────────┘
 ```
@@ -70,8 +70,8 @@ No framework, no build step, no database. ~1 HTML file + 1 shell script.
 
 ## How people use it
 
-- **System design / interview prep** — render a question breakdown with a
-  mermaid architecture diagram and tabbed deep-dives (see `examples/`).
+- **Architecture & design docs** — explain a service with a mermaid diagram,
+  tabbed components, and collapsible operational notes (see `examples/`).
 - **Research reports** — long, cited findings as a scrollable, sectioned page
   instead of a 3-screen terminal dump.
 - **Code review & diffs** — before/after panels, risk callouts, file trees.
@@ -114,7 +114,7 @@ glimpse doctor
 ```bash
 glimpse open                                   # opens the canvas in Chrome
 glimpse publish guide "How to use Glimpse" examples/glimpse-guide.html
-glimpse publish demo  "Job Scheduler"      examples/job-scheduler.html
+glimpse publish demo  "Architecture"       examples/architecture-overview.html
 ```
 You should see the artifacts appear in the sidebar instantly. Start with the
 **How to use Glimpse** one — it explains the whole idea.

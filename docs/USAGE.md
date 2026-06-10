@@ -29,7 +29,7 @@ glimpse open       # opens the empty canvas in Chrome
 Publish the bundled example to see a real artifact:
 
 ```bash
-glimpse publish job-scheduler "Design a Job Scheduler" examples/job-scheduler.html
+glimpse publish arch "Architecture Overview" examples/architecture-overview.html
 ```
 
 It should appear in the sidebar within ~1 second and open automatically.

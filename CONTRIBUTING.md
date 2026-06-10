@@ -24,7 +24,7 @@ glimpse doctor
 - Run `bash -n bin/glimpse scripts/*.sh .githooks/*` (syntax check). If you have
   [shellcheck](https://www.shellcheck.net/), run it too.
 - Run `scripts/check-secrets.sh all` — it must pass.
-- Manually verify the flow: `glimpse open`, then `glimpse publish demo "Demo" examples/job-scheduler.html`.
+- Manually verify the flow: `glimpse open`, then `glimpse publish demo "Demo" examples/architecture-overview.html`.
 - Keep changes focused; explain the "why" in the PR description.
 
 ## Reporting bugs
