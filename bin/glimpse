@@ -5,7 +5,10 @@
 #
 #   glimpse open [url|#slug]      bring everything up + navigate Chrome to the canvas
 #   glimpse publish <slug> <title> [file]   publish an HTML artifact (stdin if no file)
+#   glimpse ask <slug> <title> [file] [--timeout N]   publish an interactive artifact,
+#                                block until the user responds, print {"slug","value"} JSON
 #   glimpse serve                start the static server only
+#   glimpse stop                 stop the static server
 #   glimpse chrome               launch a debuggable Chrome only
 #   glimpse read <url>           navigate Chrome to a URL and print its text
 #   glimpse shot <out.png> [url] screenshot the current (or given) page
@@ -25,6 +28,9 @@ PORT="${GLIMPSE_PORT:-4321}"
 CDP_PORT="${GLIMPSE_CDP_PORT:-9222}"
 PROFILE="${GLIMPSE_PROFILE:-$GLIMPSE_DIR/chrome-profile}"
 ARTIFACTS="$GLIMPSE_DIR/artifacts"
+export GLIMPSE_DIR PORT CDP_PORT
+case "$PORT" in *[!0-9]*|"") echo "glimpse: GLIMPSE_PORT must be numeric" >&2; exit 1;; esac
+case "$CDP_PORT" in *[!0-9]*|"") echo "glimpse: GLIMPSE_CDP_PORT must be numeric" >&2; exit 1;; esac
 
 # Resolve this script's directory so we can find the bundled canvas/index.html
 # even when run straight from the repo (before install).
@@ -35,6 +41,12 @@ SELF_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 die(){ echo "glimpse: $*" >&2; exit 1; }
 have(){ command -v "$1" >/dev/null 2>&1; }
 
+require_node(){
+  have node || die "node is required to drive Chrome over CDP (need v22+ for global WebSocket)"
+  node -e 'process.exit(parseInt(process.version.slice(1),10)>=22?0:1)' 2>/dev/null \
+    || die "node $(node --version) is too old — CDP needs node 22+ (global WebSocket). Please upgrade node."
+}
+
 detect_chrome(){
   if [ -n "${GLIMPSE_CHROME:-}" ]; then echo "$GLIMPSE_CHROME"; return; fi
   local c
@@ -42,8 +54,7 @@ detect_chrome(){
     in "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
        "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary" \
        "/Applications/Chromium.app/Contents/MacOS/Chromium" \
-       google-chrome google-chrome-stable chromium chromium-browser \
-       "/c/Program Files/Google/Chrome/Application/chrome.exe"; do
+       google-chrome google-chrome-stable chromium chromium-browser; do
     if [ -x "$c" ] || have "$c"; then command -v "$c" 2>/dev/null || echo "$c"; return; fi
   done
   return 1
@@ -61,6 +72,68 @@ seed_root(){
   fi
 }
 
+# Upsert one artifact into feed.json under an exclusive lock (serializes the
+# read-modify-write so concurrent publishes can't drop each other's entry).
+# args: slug title ts pending(0|1)
+feed_upsert(){
+  SLUG="$1" TITLE="$2" TS="$3" PENDING="${4:-0}" python3 - <<'PY'
+import json, os, fcntl
+root=os.environ["GLIMPSE_DIR"]; slug=os.environ["SLUG"]; title=os.environ["TITLE"]
+ts=int(os.environ["TS"]); pending=os.environ["PENDING"]=="1"
+fp=os.path.join(root,"feed.json")
+lf=open(fp+".lock","w"); fcntl.flock(lf, fcntl.LOCK_EX)
+try:
+    try: feed=json.load(open(fp))
+    except Exception: feed={"artifacts":[]}
+    arts=[a for a in feed.get("artifacts",[]) if a.get("slug")!=slug]
+    e={"slug":slug,"title":title,"ts":ts}
+    if pending: e["pending"]=True
+    arts.append(e)
+    tmp=fp+".tmp"
+    with open(tmp,"w") as fh: json.dump({"artifacts":arts}, fh, indent=2)
+    os.replace(tmp, fp)          # atomic: a poll never sees partial JSON
+finally:
+    fcntl.flock(lf, fcntl.LOCK_UN); lf.close()
+PY
+}
+
+# Shared Chrome DevTools Protocol client. `cdpConnect(pick)` finds a target
+# (pick = Array.find predicate over /json) or opens a new tab, with per-call
+# timeouts, error rejection, and a close handler so nothing hangs forever.
+read -r -d '' CDP_HELPER <<'JS' || true
+const base=`http://127.0.0.1:${process.env.CDP_PORT}`;
+async function cdpConnect(pick){
+  const targets=await fetch(`${base}/json`).then(r=>r.json());
+  let p = pick ? targets.find(pick) : null;
+  if(!p) p = await fetch(`${base}/json/new?about:blank`,{method:"PUT"}).then(r=>r.json())
+              .catch(()=>fetch(`${base}/json/new?about:blank`).then(r=>r.json()));
+  if(!p || !p.webSocketDebuggerUrl) throw new Error("no CDP target available");
+  const ws=new WebSocket(p.webSocketDebuggerUrl); const m=new Map(); let id=0;
+  await new Promise((res,rej)=>{ ws.addEventListener("open",res);
+    ws.addEventListener("error",()=>rej(new Error("CDP websocket error")));
+    setTimeout(()=>rej(new Error("CDP open timeout")),8000); });
+  const evw=[];
+  ws.addEventListener("message",e=>{ const d=JSON.parse(e.data);
+    if(d.id){ const h=m.get(d.id); if(h){ m.delete(d.id); clearTimeout(h.to);
+      d.error?h.rej(new Error(d.error.message)):h.res(d.result); } }
+    else if(d.method){ for(let i=evw.length-1;i>=0;i--) if(evw[i].method===d.method){
+      const w=evw.splice(i,1)[0]; clearTimeout(w.to); w.res(d.params); } }
+  });
+  ws.addEventListener("close",()=>{ for(const h of m.values()){clearTimeout(h.to);h.rej(new Error("CDP connection closed"));} m.clear(); });
+  const send=(M,P={})=>new Promise((res,rej)=>{ const i=++id;
+    const to=setTimeout(()=>{m.delete(i);rej(new Error(M+" timeout"));},15000);
+    m.set(i,{res,rej,to}); ws.send(JSON.stringify({id:i,method:M,params:P})); });
+  const waitEvent=(method,ms=10000)=>new Promise((res,rej)=>{ const w={method,res,rej};
+    w.to=setTimeout(()=>{const i=evw.indexOf(w);if(i>=0)evw.splice(i,1);rej(new Error(method+" timeout"));},ms);
+    evw.push(w); });
+  return { target:p, send, waitEvent, close:()=>ws.close() };
+}
+function fail(e){ console.error("glimpse:", (e&&e.message)||e, "— is Chrome running? try: glimpse chrome"); process.exit(1); }
+JS
+
+# run_cdp <js-body>  — wraps the body in an async IIFE with the helper + error trap.
+run_cdp(){ require_node; node --input-type=module -e "$CDP_HELPER"$'\n'"(async()=>{ try{ $1 }catch(e){ fail(e) } })()"; }
+
 cmd_serve(){
   seed_root
   if curl -fsS "http://127.0.0.1:${PORT}/feed.json" >/dev/null 2>&1; then
@@ -69,11 +142,18 @@ cmd_serve(){
   have python3 || die "python3 is required for the static server"
   # Bind to loopback only — the canvas, feed, and artifacts are local data.
   nohup python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$GLIMPSE_DIR" >"$GLIMPSE_DIR/.server.log" 2>&1 &
+  echo $! > "$GLIMPSE_DIR/.server.pid"
   for _ in $(seq 1 20); do
     curl -fsS "http://127.0.0.1:${PORT}/feed.json" >/dev/null 2>&1 && { echo "canvas serving at http://127.0.0.1:${PORT}/  (root: $GLIMPSE_DIR)"; return; }
     sleep 0.3
   done
-  die "static server did not come up on :$PORT (see $GLIMPSE_DIR/.server.log)"
+  die "static server did not come up on :$PORT (see $GLIMPSE_DIR/.server.log) — is the port already in use?"
+}
+
+cmd_stop(){
+  local pid; pid="$(cat "$GLIMPSE_DIR/.server.pid" 2>/dev/null || true)"
+  if [ -n "$pid" ] && kill "$pid" 2>/dev/null; then echo "stopped canvas server (pid $pid)"; else echo "no tracked canvas server running"; fi
+  rm -f "$GLIMPSE_DIR/.server.pid"
 }
 
 cmd_chrome(){
@@ -97,123 +177,160 @@ cmd_chrome(){
   die "Chrome did not expose the debug port within 15s"
 }
 
-# Navigate the debuggable Chrome to a URL (reuses a tab, else creates one).
-cdp_navigate(){
-  local url="$1"
-  CDP_PORT="$CDP_PORT" URL="$url" node --input-type=module <<'EOF'
-const base=`http://127.0.0.1:${process.env.CDP_PORT}`, url=process.env.URL;
-let t=await fetch(`${base}/json`).then(r=>r.json());
-let host=""; try{ host=new URL(url).host; }catch{}
-const sameHost=(u)=>{ try{ return new URL(u).host===host; }catch{ return false; } };
-let p=t.find(x=>x.type==="page"&&host&&sameHost(x.url))
-   || t.find(x=>x.type==="page")
-   || await fetch(`${base}/json/new?about:blank`,{method:"PUT"}).then(r=>r.json()).catch(()=>fetch(`${base}/json/new?about:blank`).then(r=>r.json()));
-const ws=new WebSocket(p.webSocketDebuggerUrl);let id=0;const m=new Map();
-const send=(M,P={})=>new Promise(r=>{const i=++id;m.set(i,r);ws.send(JSON.stringify({id:i,method:M,params:P}));});
-await new Promise((res,rej)=>{ws.addEventListener("open",res);ws.addEventListener("error",()=>rej(new Error("CDP websocket error")));setTimeout(()=>rej(new Error("CDP open timeout")),8000);}).catch(e=>{console.error("glimpse:",e.message||e);process.exit(1);});
-ws.addEventListener("message",e=>{const d=JSON.parse(e.data);if(d.id&&m.has(d.id)){m.get(d.id)(d.result);m.delete(d.id);}});
-await send("Page.navigate",{url}); ws.close();
-EOF
-}
-
 cmd_open(){
   # Use 127.0.0.1 to match the loopback bind (avoids localhost→::1 resolution misses).
   local target="${1:-http://127.0.0.1:${PORT}/}"
   [[ "$target" == \#* ]] && target="http://127.0.0.1:${PORT}/${target}"
   cmd_serve >/dev/null
   cmd_chrome >/dev/null
-  have node || die "node is required to drive Chrome over CDP"
-  cdp_navigate "$target"
+  # Reuse a canvas tab if one exists, else open a new one — never hijack an
+  # unrelated tab the user opened in this profile.
+  URL="$target" run_cdp '
+    const url=process.env.URL; let host=""; try{host=new URL(url).host;}catch{}
+    const same=(u)=>{ try{ return new URL(u).host===host; }catch{ return false; } };
+    const {send,close}=await cdpConnect(x=>x.type==="page" && host && same(x.url));
+    await send("Page.navigate",{url}); close();
+  '
   echo "canvas open in Chrome → $target"
 }
 
 cmd_publish(){
   local slug="${1:-}" title="${2:-}" src="${3:-/dev/stdin}"
   [ -n "$slug" ] && [ -n "$title" ] || die "usage: glimpse publish <slug> <title> [file.html]"
-  # Slugs become filenames and go into the page — keep them strict (no path traversal).
-  case "$slug" in
-    *[!a-zA-Z0-9._-]*) die "invalid slug '$slug' (allowed: letters, digits, dot, underscore, dash)";;
-    ""|.|..|*..*)      die "invalid slug '$slug'";;
-  esac
+  _validate_slug "$slug"
   seed_root
+  _write_artifact "$slug" "$src"
+  feed_upsert "$slug" "$title" "$(date +%s)" 0
+  echo "published → http://127.0.0.1:${PORT}/#${slug}  (file: $ARTIFACTS/${slug}.html)"
+}
+
+_validate_slug(){
+  # Slugs become filenames and go into the page — keep them strict (no traversal,
+  # and bounded so the temp filename can't blow past the 255-byte limit).
+  local s="$1"
+  case "$s" in
+    *[!a-zA-Z0-9._-]*) die "invalid slug '$s' (allowed: letters, digits, dot, underscore, dash)";;
+    ""|.|..|*..*)      die "invalid slug '$s'";;
+  esac
+  [ "${#s}" -le 200 ] || die "slug too long (max 200 chars)"
+}
+
+_write_artifact(){
   # Write with predictable perms. `cp /dev/stdin` can yield a read-only file
-  # (pipe mode), which then can't be overwritten on the next publish. Writing
-  # via a temp + `mv -f` gives 0644 and force-replaces even a read-only dest.
+  # (pipe mode) that can't be overwritten next time. temp + `mv -f` gives 0644.
+  local slug="$1" src="$2"
   local dest="$ARTIFACTS/${slug}.html" tmp="$ARTIFACTS/.${slug}.html.tmp"
   cat -- "$src" > "$tmp"
   chmod 0644 "$tmp"
   mv -f "$tmp" "$dest"
-  local ts; ts="$(date +%s)"
-  GLIMPSE_DIR="$GLIMPSE_DIR" SLUG="$slug" TITLE="$title" TS="$ts" python3 - <<'PY'
-import json, os
-root=os.environ["GLIMPSE_DIR"]; slug=os.environ["SLUG"]; title=os.environ["TITLE"]; ts=int(os.environ["TS"])
-fp=os.path.join(root,"feed.json")
-try: feed=json.load(open(fp))
-except Exception: feed={"artifacts":[]}
-arts=[a for a in feed.get("artifacts",[]) if a.get("slug")!=slug]
-arts.append({"slug":slug,"title":title,"ts":ts})
-# Atomic write so a concurrent dashboard poll never sees partial JSON.
-tmp=fp+".tmp"
-with open(tmp,"w") as fh: json.dump({"artifacts":arts}, fh, indent=2)
-os.replace(tmp, fp)
-PY
-  echo "published → http://127.0.0.1:${PORT}/#${slug}  (file: $ARTIFACTS/${slug}.html)"
+}
+
+cmd_ask(){
+  local timeout=300; local -a pos=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --timeout) timeout="${2:-}"; shift 2 || die "usage: glimpse ask <slug> <title> [file.html] [--timeout N]";;
+      *) pos+=("$1"); shift;;
+    esac
+  done
+  local slug="${pos[0]:-}" title="${pos[1]:-}" src="${pos[2]:-/dev/stdin}"
+  [ -n "$slug" ] && [ -n "$title" ] || die "usage: glimpse ask <slug> <title> [file.html] [--timeout N]"
+  case "$timeout" in *[!0-9]*|"") die "--timeout must be a number of seconds";; esac
+  _validate_slug "$slug"
+  seed_root
+  _write_artifact "$slug" "$src"
+  feed_upsert "$slug" "$title" "$(date +%s)" 1     # pending=1 → "awaiting you" badge
+  cmd_serve >/dev/null
+  cmd_chrome >/dev/null
+  echo "glimpse: waiting for your response in the canvas (timeout ${timeout}s)…" >&2
+  local rc=0
+  # Navigate AND poll the SAME canvas tab in one CDP session — picking different
+  # tabs for navigate vs read is the bug that made earlier asks time out.
+  SLUG="$slug" TIMEOUT_MS="$((timeout*1000))" run_cdp '
+    const slug=process.env.SLUG, port=process.env.PORT;
+    const url="http://127.0.0.1:"+port+"/#"+slug;
+    const isCanvas=(u)=>{ try{ const h=new URL(u).host; return h==="127.0.0.1:"+port||h==="localhost:"+port; }catch{ return false; } };
+    // prefer a 127.0.0.1 canvas tab, then any canvas tab; cdpConnect creates one if none.
+    let {send,waitEvent,close}=await cdpConnect(x=>x.type==="page" && isCanvas(x.url));
+    const loaded=waitEvent("Page.loadEventFired",12000).catch(()=>{});
+    await send("Page.enable"); await send("Runtime.enable");
+    await send("Page.navigate",{url}); await loaded;
+    try{ await send("Page.bringToFront"); }catch(_){}
+    const since=Date.now(), deadline=since+Number(process.env.TIMEOUT_MS); let out=null;
+    while(Date.now()<deadline){
+      const r=await send("Runtime.evaluate",{expression:"JSON.stringify((window.__glimpse_responses||{})["+JSON.stringify(slug)+"]||null)",returnByValue:true});
+      const v=(r&&r.result&&r.result.value)?JSON.parse(r.result.value):null;
+      if(v&&v.ts>=since){ out=v; break; }
+      await new Promise(z=>setTimeout(z,500));
+    }
+    close();
+    if(out){ console.log(JSON.stringify({slug, value: out.value})); }
+    else { console.error("glimpse: ask timed out after "+(Number(process.env.TIMEOUT_MS)/1000)+"s"); process.exit(2); }
+  ' || rc=$?
+  feed_upsert "$slug" "$title" "$(date +%s)" 0      # clear the pending badge
+  return $rc
 }
 
 cmd_read(){
   local url="${1:?usage: glimpse read <url>}"
   cmd_chrome >/dev/null
-  CDP_PORT="$CDP_PORT" URL="$url" node --input-type=module <<'EOF'
-const base=`http://127.0.0.1:${process.env.CDP_PORT}`, url=process.env.URL;
-let t=await fetch(`${base}/json`).then(r=>r.json());
-let p=t.find(x=>x.type==="page")||await fetch(`${base}/json/new?about:blank`,{method:"PUT"}).then(r=>r.json()).catch(()=>fetch(`${base}/json/new?about:blank`).then(r=>r.json()));
-const ws=new WebSocket(p.webSocketDebuggerUrl);let id=0;const m=new Map();
-const send=(M,P={})=>new Promise(r=>{const i=++id;m.set(i,r);ws.send(JSON.stringify({id:i,method:M,params:P}));});
-await new Promise((res,rej)=>{ws.addEventListener("open",res);ws.addEventListener("error",()=>rej(new Error("CDP websocket error")));setTimeout(()=>rej(new Error("CDP open timeout")),8000);}).catch(e=>{console.error("glimpse:",e.message||e);process.exit(1);});
-ws.addEventListener("message",e=>{const d=JSON.parse(e.data);if(d.id&&m.has(d.id)){m.get(d.id)(d.result);m.delete(d.id);}});
-await send("Page.enable"); await send("Runtime.enable"); await send("Page.navigate",{url});
-await new Promise(r=>setTimeout(r,3500));
-const {result}=await send("Runtime.evaluate",{expression:"JSON.stringify({title:document.title,url:location.href,text:document.body.innerText.slice(0,8000)})",returnByValue:true});
-console.log(result.value); ws.close();
-EOF
+  URL="$url" run_cdp '
+    const url=process.env.URL;
+    const {send,waitEvent,close}=await cdpConnect(x=>x.type==="page");
+    await send("Page.enable"); await send("Runtime.enable");
+    const loaded=waitEvent("Page.loadEventFired",12000).catch(()=>{});
+    await send("Page.navigate",{url});
+    await loaded; await new Promise(r=>setTimeout(r,300));
+    const {result}=await send("Runtime.evaluate",{expression:"JSON.stringify({title:document.title,url:location.href,text:(document.body?document.body.innerText:\"\").slice(0,8000)})",returnByValue:true});
+    console.log(result.value); close();
+  '
 }
 
 cmd_shot(){
   local out="${1:?usage: glimpse shot <out.png> [url]}" url="${2:-}"
   cmd_chrome >/dev/null
-  [ -n "$url" ] && cdp_navigate "$url" && sleep 2
-  CDP_PORT="$CDP_PORT" OUT="$out" node --input-type=module <<'EOF'
-const base=`http://127.0.0.1:${process.env.CDP_PORT}`;
-let t=await fetch(`${base}/json`).then(r=>r.json());let p=t.find(x=>x.type==="page");
-const ws=new WebSocket(p.webSocketDebuggerUrl);let id=0;const m=new Map();
-const send=(M,P={})=>new Promise(r=>{const i=++id;m.set(i,r);ws.send(JSON.stringify({id:i,method:M,params:P}));});
-await new Promise((res,rej)=>{ws.addEventListener("open",res);ws.addEventListener("error",()=>rej(new Error("CDP websocket error")));setTimeout(()=>rej(new Error("CDP open timeout")),8000);}).catch(e=>{console.error("glimpse:",e.message||e);process.exit(1);});
-ws.addEventListener("message",e=>{const d=JSON.parse(e.data);if(d.id&&m.has(d.id)){m.get(d.id)(d.result);m.delete(d.id);}});
-await send("Page.enable");
-const {data}=await send("Page.captureScreenshot",{format:"png"});
-const fs=await import("fs"); fs.writeFileSync(process.env.OUT, Buffer.from(data,"base64"));
-console.log("saved", process.env.OUT); ws.close();
-EOF
+  [ -n "$url" ] && { URL="$url" run_cdp '
+    const url=process.env.URL;
+    const {send,waitEvent,close}=await cdpConnect(x=>x.type==="page");
+    await send("Page.enable");
+    const loaded=waitEvent("Page.loadEventFired",12000).catch(()=>{});
+    await send("Page.navigate",{url}); await loaded; await new Promise(r=>setTimeout(r,400)); close();
+  '; }
+  OUT="$out" run_cdp '
+    const {send,close}=await cdpConnect(x=>x.type==="page");
+    await send("Page.enable");
+    const {data}=await send("Page.captureScreenshot",{format:"png"});
+    const fs=await import("fs"); fs.writeFileSync(process.env.OUT, Buffer.from(data,"base64"));
+    console.log("saved", process.env.OUT); close();
+  '
 }
 
 cmd_doctor(){
+  local fail=0
   echo "glimpse doctor"
   echo "  dir:        $GLIMPSE_DIR"
   echo "  canvas port: $PORT   cdp port: $CDP_PORT"
-  printf "  node:        "; if have node; then node --version; else echo "MISSING (needed to drive Chrome; v22+ for global WebSocket)"; fi
-  printf "  python3:     "; have python3 && python3 --version || echo "MISSING (needed for server; 3.8+ for --bind)"
-  printf "  curl:        "; have curl && echo "ok" || echo "MISSING (needed for readiness checks)"
-  printf "  chrome:      "; detect_chrome || echo "NOT FOUND (set GLIMPSE_CHROME)"
+  printf "  node:        "
+  if have node; then
+    printf "%s" "$(node --version)"
+    if node -e 'process.exit(parseInt(process.version.slice(1),10)>=22?0:1)' 2>/dev/null; then echo ""; else echo "  ⚠ <22 — CDP commands need node 22+"; fail=1; fi
+  else echo "MISSING (needed to drive Chrome; v22+)"; fail=1; fi
+  printf "  python3:     "; if have python3; then python3 --version; else echo "MISSING (needed for server; 3.8+ for --bind)"; fail=1; fi
+  printf "  curl:        "; if have curl; then echo "ok"; else echo "MISSING (needed for readiness checks)"; fail=1; fi
+  printf "  chrome:      "; if detect_chrome; then :; else echo "NOT FOUND (set GLIMPSE_CHROME)"; fail=1; fi
   printf "  server:      "; curl -fsS "http://127.0.0.1:${PORT}/feed.json" >/dev/null 2>&1 && echo "up on :$PORT" || echo "down"
   printf "  chrome cdp:  "; curl -fsS "http://127.0.0.1:${CDP_PORT}/json/version" >/dev/null 2>&1 && echo "debuggable on :$CDP_PORT" || echo "down"
+  return $fail
 }
 
-usage(){ sed -n '2,30p' "$SOURCE" | sed 's/^# \{0,1\}//'; }
+usage(){ awk 'NR==1{next} /^#/{sub(/^# ?/,"");print;next} {exit}' "$SOURCE"; }
 
 case "${1:-help}" in
   open)    shift; cmd_open "$@";;
   publish) shift; cmd_publish "$@";;
+  ask)     shift; cmd_ask "$@";;
   serve)   shift; cmd_serve "$@";;
+  stop)    shift; cmd_stop "$@";;
   chrome)  shift; cmd_chrome "$@";;
   read)    shift; cmd_read "$@";;
   shot)    shift; cmd_shot "$@";;

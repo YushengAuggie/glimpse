@@ -32,6 +32,7 @@ install -m 0755 "$REPO/bin/glimpse" "$PREFIX/glimpse"
 echo "→ seeding canvas at $GLIMPSE_DIR"
 mkdir -p "$GLIMPSE_DIR/artifacts"
 cp "$REPO/canvas/index.html" "$GLIMPSE_DIR/index.html"
+cp -R "$REPO/examples" "$GLIMPSE_DIR/"           # so the quickstart works from any CWD
 [ -f "$GLIMPSE_DIR/feed.json" ] || echo '{"artifacts":[]}' > "$GLIMPSE_DIR/feed.json"
 
 if [ "$DO_SKILLS" = 1 ]; then
@@ -64,5 +65,11 @@ fi
 
 echo
 echo "✓ installed."
-case ":$PATH:" in *":$PREFIX:"*) :;; *) echo "  ⚠ $PREFIX is not on your PATH — add it to your shell profile.";; esac
+case ":$PATH:" in
+  *":$PREFIX:"*) :;;
+  *) echo "  ⚠ $PREFIX is not on your PATH. Add it:"
+     echo "      echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.zshrc   # or ~/.bashrc"
+     echo "      then restart your shell";;
+esac
 echo "  Try:  glimpse doctor   then   glimpse open"
+echo "  Uninstall:  rm -f $PREFIX/glimpse && rm -rf $GLIMPSE_DIR $SKILLS_DIR/canvas $SKILLS_DIR/chrome-cdp"

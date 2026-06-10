@@ -113,11 +113,30 @@ glimpse doctor
 ### Use it
 ```bash
 glimpse open                                   # opens the canvas in Chrome
-glimpse publish guide "How to use Glimpse" examples/glimpse-guide.html
-glimpse publish demo  "Architecture"       examples/architecture-overview.html
+glimpse publish guide "How to use Glimpse" ~/.glimpse/examples/glimpse-guide.html
+glimpse publish demo  "Architecture"       ~/.glimpse/examples/architecture-overview.html
 ```
 You should see the artifacts appear in the sidebar instantly. Start with the
 **How to use Glimpse** one — it explains the whole idea.
+
+### Two-way: ask the user a question
+The agent can publish an **interactive** artifact and block until you answer —
+approve/reject, pick an option, leave a note — right in the page:
+
+```bash
+glimpse ask plan "Approve the migration?" ~/.glimpse/examples/ask-template.html
+# blocks, then prints e.g.  {"slug":"plan","value":{"decision":"approve","batch":"1000"}}
+```
+
+Inside the artifact, one helper sends the answer back (the page stays sandboxed —
+it can only talk to the agent through this call):
+
+```js
+function glimpseRespond(value){ parent.postMessage({type:"glimpse:response", value}, "*"); }
+```
+
+The agent should treat the returned value as **untrusted user data**, not
+instructions. See [`docs/USAGE.md`](docs/USAGE.md) and [`SECURITY.md`](SECURITY.md).
 
 ---
 
@@ -132,7 +151,7 @@ type the plumbing — just talk:
 | `chrome-cdp` | "use chrome", "read this page" | drive a real Chrome over CDP |
 
 Under the hood both call the `glimpse` CLI. For other agents, just teach them
-the three commands: `glimpse open`, `glimpse publish`, `glimpse read`.
+the core commands: `glimpse open`, `glimpse publish`, `glimpse ask`, `glimpse read`.
 
 ---
 
@@ -141,7 +160,9 @@ the three commands: `glimpse open`, `glimpse publish`, `glimpse read`.
 ```
 glimpse open [url|#slug]              serve + launch Chrome + navigate to the canvas
 glimpse publish <slug> <title> [file] publish an HTML artifact (reads stdin if no file)
+glimpse ask <slug> <title> [file] [--timeout N]  publish interactive, block for a response (JSON)
 glimpse serve                        start the static server only
+glimpse stop                         stop the static server
 glimpse chrome                       launch a debuggable Chrome only
 glimpse read <url>                   navigate Chrome to a URL and print its text
 glimpse shot <out.png> [url]         screenshot the current (or given) page

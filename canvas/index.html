@@ -7,7 +7,7 @@
 <style>
   :root {
     --bg:#0f1115; --panel:#161922; --panel2:#1c2030; --line:#272c3a;
-    --text:#e6e8ee; --dim:#9aa3b2; --accent:#7aa2f7; --accent2:#9ece6a;
+    --text:#e6e8ee; --dim:#aeb6c6; --accent:#7aa2f7; --accent2:#9ece6a; --amber:#e0af68;
   }
   * { box-sizing:border-box; }
   html,body { margin:0; height:100%; background:var(--bg); color:var(--text);
@@ -16,20 +16,28 @@
   aside { background:var(--panel); border-right:1px solid var(--line); display:flex; flex-direction:column; min-width:0; }
   .brand { padding:16px 18px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:10px; }
   .brand b { font-size:15px; letter-spacing:.3px; }
-  .dot { width:8px; height:8px; border-radius:50%; background:var(--accent2); box-shadow:0 0 8px var(--accent2); }
-  .dot.stale { background:#e0af68; box-shadow:none; }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--accent2); box-shadow:0 0 8px var(--accent2); flex:0 0 auto; }
+  .dot.stale { background:var(--amber); box-shadow:none; }
   .list { overflow:auto; padding:8px; flex:1; }
-  .item { padding:10px 12px; border-radius:8px; cursor:pointer; border:1px solid transparent; }
+  .item { padding:10px 12px; border-radius:8px; cursor:pointer; border:1px solid transparent; outline:none; }
   .item:hover { background:var(--panel2); }
+  .item:focus-visible { border-color:var(--accent); }
   .item.active { background:var(--panel2); border-color:var(--line); }
-  .item .t { font-weight:600; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .item .m { color:var(--dim); font-size:12px; margin-top:2px; }
+  .item.flash { animation:flash 0.9s ease-out; }
+  @keyframes flash { 0%{ border-color:var(--accent2); background:#22301f; } 100%{ } }
+  .item .t { font-weight:550; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .item .m { color:var(--dim); font-size:12px; margin-top:2px; display:flex; gap:6px; align-items:center; }
+  .badge { font-size:10.5px; font-weight:700; border-radius:5px; padding:1px 6px; text-transform:uppercase; letter-spacing:.3px; }
+  .badge.await { background:#3a2e15; color:var(--amber); }
+  .badge.done { background:#1f2e1c; color:var(--accent2); }
   .empty { color:var(--dim); padding:24px 16px; font-size:14px; }
   .foot { padding:10px 16px; border-top:1px solid var(--line); color:var(--dim); font-size:12px; display:flex; justify-content:space-between; align-items:center;}
   main { min-width:0; display:flex; flex-direction:column; }
   .bar { padding:12px 18px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:12px; background:var(--panel); }
-  .bar h1 { font-size:15px; margin:0; font-weight:600; }
-  .bar .url { color:var(--dim); font-size:12px; margin-left:auto; }
+  .bar h1 { font-size:16px; margin:0; font-weight:650; }
+  .bar .pin { font-size:11px; color:var(--dim); border:1px solid var(--line); border-radius:6px; padding:1px 7px; }
+  .bar .note { margin-left:auto; font-size:12.5px; color:var(--accent2); opacity:0; transition:opacity .2s; }
+  .bar .note.show { opacity:1; }
   iframe { border:0; width:100%; height:100%; background:#fff; }
   .welcome { padding:48px; color:var(--dim); max-width:640px; }
   .welcome h2 { color:var(--text); }
@@ -39,79 +47,112 @@
 <body>
 <div class="app">
   <aside>
-    <div class="brand"><span class="dot" id="dot"></span><b>👁&nbsp; Glimpse</b></div>
-    <div class="list" id="list"><div class="empty">No artifacts yet…</div></div>
-    <div class="foot"><span id="count">0 artifacts</span><span id="clock"></span></div>
+    <div class="brand"><span class="dot" id="dot" role="img" aria-label="connection: live"></span><b><span aria-hidden="true">👁&nbsp;</span>Glimpse</b></div>
+    <div class="list" id="list" role="list"><div class="empty">No artifacts yet…</div></div>
+    <div class="foot"><span id="count">0 artifacts</span><span id="clock" aria-hidden="true"></span></div>
   </aside>
   <main>
-    <div class="bar"><h1 id="title">Welcome</h1><span class="url" id="slug"></span></div>
+    <div class="bar"><h1 id="title">Welcome</h1><span class="pin" id="pin" hidden>pinned</span><span class="note" id="note">✓ response recorded</span></div>
     <div id="stage" style="flex:1; min-height:0;">
       <div class="welcome">
         <h2>This is your live canvas.</h2>
         <p>When your agent publishes an artifact it appears in the sidebar and opens here automatically — no refresh needed. Each artifact is a full HTML page, so diagrams, tabs, and interactive demos all work.</p>
-        <p>Publish from the CLI: <code>glimpse publish &lt;slug&gt; "Title" page.html</code></p>
+        <p>Publish from the CLI: <code>glimpse publish &lt;slug&gt; "Title" page.html</code>. For a question you answer in the page, the agent uses <code>glimpse ask</code>.</p>
       </div>
     </div>
   </main>
 </div>
 <script>
 let feed = [], current = null, lastSig = "", pinned = false;
+// Responses captured from artifacts (browser → agent). The CLI reads this via CDP.
+window.__glimpse_responses = window.__glimpse_responses || {};
+
 function fmt(ts){ try { return new Date(ts*1000).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); } catch(e){ return ""; } }
+function answered(slug){ return !!window.__glimpse_responses[slug]; }
+
 function render(){
   const list = document.getElementById('list');
   document.getElementById('count').textContent = feed.length + (feed.length===1?' artifact':' artifacts');
   if(!feed.length){ list.innerHTML = '<div class="empty">No artifacts yet…</div>'; return; }
-  list.innerHTML = '';
+  list.textContent = '';
   for(const a of feed){
     const el = document.createElement('div');
     el.className = 'item' + (a.slug===current ? ' active':'');
-    el.innerHTML = `<div class="t">${a.title.replace(/</g,'&lt;')}</div><div class="m">${fmt(a.ts)}</div>`;
-    el.onclick = () => { pinned = true; show(a.slug); };
+    el.setAttribute('role','listitem'); el.tabIndex = 0;
+    const t = document.createElement('div'); t.className='t'; t.textContent = a.title;
+    const meta = document.createElement('div'); meta.className='m';
+    const when = document.createElement('span'); when.textContent = fmt(a.ts); meta.appendChild(when);
+    if(a.pending && !answered(a.slug)){ const b=document.createElement('span'); b.className='badge await'; b.textContent='awaiting you'; meta.appendChild(b); }
+    else if(answered(a.slug)){ const b=document.createElement('span'); b.className='badge done'; b.textContent='answered'; meta.appendChild(b); }
+    el.append(t, meta);
+    const open = ()=>{ pinned = true; show(a.slug); };
+    el.onclick = open;
+    el.onkeydown = (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); open(); } };
     list.appendChild(el);
   }
 }
+
 function show(slug){
   const a = feed.find(x=>x.slug===slug); if(!a) return;
   current = slug;
   document.getElementById('title').textContent = a.title;
-  document.getElementById('slug').textContent = '/artifacts/'+a.slug+'.html';
-  // Sandboxed iframe: allow-scripts WITHOUT allow-same-origin gives the artifact
-  // an opaque origin — it can run JS (mermaid etc.) but can't reach the parent
-  // shell or fetch sibling artifacts. Build via DOM, not innerHTML.
+  document.getElementById('pin').hidden = !pinned;
+  // Sandboxed iframe: allow-scripts WITHOUT allow-same-origin → opaque origin.
+  // The artifact can run JS (mermaid etc.) and postMessage UP to us, but cannot
+  // reach this shell, fetch siblings, or read the page. Build via DOM, not innerHTML.
   const stage = document.getElementById('stage');
   stage.textContent = '';
   const f = document.createElement('iframe');
   f.setAttribute('sandbox', 'allow-scripts');
+  f.title = a.title;
   f.src = 'artifacts/' + encodeURIComponent(a.slug) + '.html?v=' + a.ts;
   stage.appendChild(f);
   render();
 }
+
+// browser → agent: receive a response from the currently-shown artifact.
+window.addEventListener('message', (e)=>{
+  if(e.origin !== "null") return;                 // only opaque-origin (sandboxed) iframes
+  const f = document.querySelector('#stage iframe');
+  if(!f || e.source !== f.contentWindow) return;  // must be the artifact on screen
+  const d = e.data;
+  if(!d || d.type !== "glimpse:response") return;
+  let value = d.value;
+  try { if(JSON.stringify(value).length > 64*1024) return; } catch(_){ return; }   // size cap
+  if(!current) return;
+  window.__glimpse_responses[current] = { value: value, ts: Date.now() };
+  const note = document.getElementById('note'); note.classList.add('show');
+  setTimeout(()=>note.classList.remove('show'), 2500);
+  render();
+});
+
+function flashItem(slug){
+  const items = document.querySelectorAll('.item');
+  for(const el of items){ if(el.querySelector('.t')?.textContent === (feed.find(a=>a.slug===slug)||{}).title){ el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); } }
+}
+
 async function poll(){
   try {
     const r = await fetch('feed.json?v='+Date.now());
     const items = ((await r.json()).artifacts||[]).sort((x,y)=>y.ts-x.ts);
-    const sig = JSON.stringify(items.map(i=>[i.slug,i.ts]));
+    const sig = JSON.stringify(items.map(i=>[i.slug,i.ts,!!i.pending]));
     document.getElementById('dot').classList.remove('stale');
+    document.getElementById('dot').setAttribute('aria-label','connection: live');
     if(sig !== lastSig){
       const firstLoad = (current === null);
-      // ts of the artifact currently on screen, from the OLD feed.
       const prevTs = current ? (feed.find(a=>a.slug===current)||{}).ts : null;
       feed = items; render();
       const hash = decodeURIComponent((location.hash||'').replace(/^#/,''));
       const cur = feed.find(a=>a.slug===current);
-      if(firstLoad && hash && feed.some(a=>a.slug===hash)){
-        pinned = true; show(hash);                 // deep-link on first load
-      } else if(cur && cur.ts !== prevTs){
-        show(cur.slug);                            // current artifact re-published → reload in place
-      } else if(!cur && feed.length){
-        show(feed[0].slug);                        // current artifact vanished → fall back to newest
-      } else if(!pinned && feed.length){
-        show(feed[0].slug);                        // not pinned → follow the newest
-      }
-      // pinned + a *different* artifact changed → stay put (no surprise jumps)
+      if(firstLoad && hash && feed.some(a=>a.slug===hash)){ pinned = true; show(hash); }
+      else if(cur && cur.ts !== prevTs){ show(cur.slug); flashItem(cur.slug); }   // re-published → reload in place
+      else if(!cur && feed.length){ show(feed[0].slug); }                          // current vanished → newest
+      else if(!pinned && feed.length){ show(feed[0].slug); }                       // not pinned → follow newest
       lastSig = sig;
     }
-  } catch(e){ document.getElementById('dot').classList.add('stale'); }
+  } catch(e){
+    const dot=document.getElementById('dot'); dot.classList.add('stale'); dot.setAttribute('aria-label','connection: lost');
+  }
 }
 setInterval(()=>{ document.getElementById('clock').textContent = new Date().toLocaleTimeString(); }, 1000);
 setInterval(poll, 1200); poll();

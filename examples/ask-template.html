@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Approve the migration plan?</title>
+<style>
+  :root{--bg:#f7f8fb;--card:#fff;--ink:#1d1d22;--dim:#5b6472;--line:#e6e6ee;
+        --accent:#3b5bdb;--soft:#eef1ff;--good:#2f9e44;--red:#e03131;}
+  *{box-sizing:border-box;} body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+  .wrap{max-width:680px;margin:0 auto;padding:40px 26px;}
+  h1{font-size:24px;margin:0 0 14px;letter-spacing:-.4px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px 24px;margin:16px 0;box-shadow:0 1px 2px rgba(20,20,40,.04);}
+  p{margin:8px 0;} ul{padding-left:20px;} li{margin:5px 0;}
+  .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;}
+  button{font:inherit;font-weight:600;border-radius:9px;padding:10px 18px;border:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer;}
+  button:hover{background:#f1f3f9;}
+  button.primary{background:var(--good);border-color:var(--good);color:#fff;}
+  button.danger{background:#fff;border-color:#f1c0c0;color:var(--red);}
+  label.opt{display:flex;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:9px;margin:6px 0;cursor:pointer;}
+  label.opt:hover{background:#fafbff;}
+  input[type=text]{width:100%;font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:9px;}
+  .sent{display:none;margin-top:14px;color:var(--good);font-weight:600;}
+  .sent.show{display:block;}
+  code{background:var(--soft);color:#26408b;padding:2px 6px;border-radius:5px;font-size:13.5px;}
+  .hint{color:var(--dim);font-size:13px;margin-top:10px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Approve the migration plan?</h1>
+
+  <div class="card">
+    <p>The agent proposes:</p>
+    <ul>
+      <li>Add a <code>thumbnails</code> table and backfill in batches of 1,000</li>
+      <li>Dual-write for one week, then cut reads over</li>
+      <li>Keep originals; no destructive deletes</li>
+    </ul>
+
+    <h3>Decision</h3>
+    <div class="row">
+      <button class="primary" onclick="glimpseRespond({decision:'approve'})">Approve</button>
+      <button class="danger" onclick="glimpseRespond({decision:'reject'})">Reject</button>
+    </div>
+
+    <h3 style="margin-top:18px">Or pick a batch size</h3>
+    <label class="opt"><input type="radio" name="batch" value="500"> 500 (slower, safer)</label>
+    <label class="opt"><input type="radio" name="batch" value="1000" checked> 1,000 (default)</label>
+    <label class="opt"><input type="radio" name="batch" value="5000"> 5,000 (faster, heavier)</label>
+    <div class="row"><button onclick="glimpseRespond({decision:'approve', batch:document.querySelector('input[name=batch]:checked').value})">Approve with this batch size</button></div>
+
+    <h3 style="margin-top:18px">Or leave a note</h3>
+    <input type="text" id="note" placeholder="e.g. run it after 6pm">
+    <div class="row"><button onclick="glimpseRespond({decision:'approve', note:document.getElementById('note').value})">Send note</button></div>
+
+    <div class="sent" id="sent">✓ Sent to the agent — you can close this.</div>
+    <p class="hint">This page is sandboxed; it talks to the agent only through <code>glimpseRespond()</code>.</p>
+  </div>
+</div>
+
+<script>
+  // The one function an interactive artifact needs. The Glimpse shell receives
+  // this message (validating it came from this sandboxed frame) and hands the
+  // value back to the agent's blocking `glimpse ask` call.
+  function glimpseRespond(value){
+    parent.postMessage({ type: "glimpse:response", value: value }, "*");
+    document.getElementById('sent').classList.add('show');
+  }
+</script>
+</body>
+</html>
