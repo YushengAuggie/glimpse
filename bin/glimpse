@@ -7,6 +7,10 @@
 #   glimpse publish <slug> <title> [file]   publish an HTML artifact (stdin if no file)
 #   glimpse ask <slug> <title> [file] [--timeout N]   publish an interactive artifact,
 #                                block until the user responds, print {"slug","value"} JSON
+#   glimpse list                 list artifacts (pinned first)
+#   glimpse rm <slug>...         delete artifacts (from the feed + disk)
+#   glimpse clear --all | --keep N   prune artifacts (pinned are always kept)
+#   glimpse pin <slug> | unpin <slug>   pin to the top of the sidebar (persists)
 #   glimpse serve                start the static server only
 #   glimpse stop                 stop the static server
 #   glimpse chrome               launch a debuggable Chrome only
@@ -66,8 +70,10 @@ seed_root(){
   if [ ! -f "$GLIMPSE_DIR/index.html" ]; then
     if [ -f "$SELF_DIR/../canvas/index.html" ]; then
       cp "$SELF_DIR/../canvas/index.html" "$GLIMPSE_DIR/index.html"
+    elif [ -f "$HOME/.glimpse/index.html" ]; then
+      cp "$HOME/.glimpse/index.html" "$GLIMPSE_DIR/index.html"   # reuse the installed copy for a custom GLIMPSE_DIR
     else
-      die "canvas/index.html not found next to the CLI; reinstall glimpse"
+      die "canvas/index.html not found; reinstall glimpse"
     fi
   fi
 }
@@ -85,13 +91,55 @@ lf=open(fp+".lock","w"); fcntl.flock(lf, fcntl.LOCK_EX)
 try:
     try: feed=json.load(open(fp))
     except Exception: feed={"artifacts":[]}
+    old=next((a for a in feed.get("artifacts",[]) if a.get("slug")==slug), {})
     arts=[a for a in feed.get("artifacts",[]) if a.get("slug")!=slug]
     e={"slug":slug,"title":title,"ts":ts}
     if pending: e["pending"]=True
+    if old.get("pinned"): e["pinned"]=True       # preserve a pin across re-publish
     arts.append(e)
     tmp=fp+".tmp"
     with open(tmp,"w") as fh: json.dump({"artifacts":arts}, fh, indent=2)
     os.replace(tmp, fp)          # atomic: a poll never sees partial JSON
+finally:
+    fcntl.flock(lf, fcntl.LOCK_UN); lf.close()
+PY
+}
+
+# Mutate feed.json under an exclusive lock. ACTION (env) ∈ remove|removeall|keep|pin|unpin.
+# For remove/removeall/keep it prints the removed slugs (one per line) so the
+# caller can delete the matching artifact files.
+_feed_op(){
+  python3 - <<'PY'
+import json, os, fcntl
+root=os.environ["GLIMPSE_DIR"]; action=os.environ["ACTION"]
+fp=os.path.join(root,"feed.json"); lf=open(fp+".lock","w"); fcntl.flock(lf, fcntl.LOCK_EX)
+try:
+    try: arts=json.load(open(fp)).get("artifacts",[])
+    except Exception: arts=[]
+    removed=[]
+    if action=="remove":
+        s=set(os.environ.get("SLUGS","").split())
+        removed=[a["slug"] for a in arts if a["slug"] in s]
+        arts=[a for a in arts if a["slug"] not in s]
+    elif action=="removeall":
+        removed=[a["slug"] for a in arts]; arts=[]
+    elif action=="keep":
+        n=int(os.environ["KEEP"])
+        order=sorted(arts, key=lambda a:a.get("ts",0), reverse=True)
+        keep=[a for a in order if a.get("pinned")] + [a for a in order if not a.get("pinned")][:n]
+        ks={a["slug"] for a in keep}
+        removed=[a["slug"] for a in arts if a["slug"] not in ks]
+        arts=[a for a in arts if a["slug"] in ks]
+    elif action in ("pin","unpin"):
+        sl=os.environ["SLUG"]
+        for a in arts:
+            if a["slug"]==sl:
+                if action=="pin": a["pinned"]=True
+                else: a.pop("pinned", None)
+    tmp=fp+".tmp"
+    with open(tmp,"w") as fh: json.dump({"artifacts":arts}, fh, indent=2)
+    os.replace(tmp, fp)
+    for r in removed: print(r)
 finally:
     fcntl.flock(lf, fcntl.LOCK_UN); lf.close()
 PY
@@ -323,12 +371,58 @@ cmd_doctor(){
   return $fail
 }
 
+cmd_list(){
+  GLIMPSE_DIR="$GLIMPSE_DIR" python3 - <<'PY'
+import json, os, time
+fp=os.path.join(os.environ["GLIMPSE_DIR"],"feed.json")
+try: arts=json.load(open(fp)).get("artifacts",[])
+except Exception: arts=[]
+arts=sorted(arts, key=lambda a:(not a.get("pinned"), -a.get("ts",0)))
+if not arts: print("(no artifacts)"); raise SystemExit
+now=time.time()
+for a in arts:
+    age=now-a.get("ts",now)
+    d=("%dm"%(age//60)) if age<3600 else (("%dh"%(age//3600)) if age<86400 else ("%dd"%(age//86400)))
+    mark="*" if a.get("pinned") else " "
+    pend=" [awaiting]" if a.get("pending") else ""
+    print("%s %-26s %4s  %s%s" % (mark, a["slug"], d, a.get("title","")[:48], pend))
+PY
+}
+
+cmd_rm(){
+  [ $# -ge 1 ] || die "usage: glimpse rm <slug>..."
+  local s; for s in "$@"; do _validate_slug "$s"; done
+  local removed; removed="$(ACTION=remove SLUGS="$*" _feed_op)"
+  local r n=0; for r in $removed; do rm -f "$ARTIFACTS/$r.html"; n=$((n+1)); done
+  echo "removed $n artifact(s)${removed:+: $(echo $removed | tr '\n' ' ')}"
+}
+
+cmd_clear(){
+  local mode n
+  case "${1:-}" in
+    --all)  mode=removeall;;
+    --keep) n="${2:-}"; mode=keep; case "$n" in *[!0-9]*|"") die "--keep needs a number, e.g. glimpse clear --keep 10";; esac;;
+    *) die "usage: glimpse clear --all | --keep N   (pinned artifacts are always kept)";;
+  esac
+  local removed; removed="$(ACTION=$mode KEEP="${n:-0}" _feed_op)"
+  local r cnt=0; for r in $removed; do rm -f "$ARTIFACTS/$r.html"; cnt=$((cnt+1)); done
+  echo "removed $cnt artifact(s)$([ "$mode" = keep ] && echo " (kept newest $n + pinned)")"
+}
+
+cmd_pin(){   local s="${1:?usage: glimpse pin <slug>}";   _validate_slug "$s"; ACTION=pin   SLUG="$s" _feed_op >/dev/null; echo "pinned $s";   }
+cmd_unpin(){ local s="${1:?usage: glimpse unpin <slug>}"; _validate_slug "$s"; ACTION=unpin SLUG="$s" _feed_op >/dev/null; echo "unpinned $s"; }
+
 usage(){ awk 'NR==1{next} /^#/{sub(/^# ?/,"");print;next} {exit}' "$SOURCE"; }
 
 case "${1:-help}" in
   open)    shift; cmd_open "$@";;
   publish) shift; cmd_publish "$@";;
   ask)     shift; cmd_ask "$@";;
+  list|ls) shift; cmd_list "$@";;
+  rm)      shift; cmd_rm "$@";;
+  clear)   shift; cmd_clear "$@";;
+  pin)     shift; cmd_pin "$@";;
+  unpin)   shift; cmd_unpin "$@";;
   serve)   shift; cmd_serve "$@";;
   stop)    shift; cmd_stop "$@";;
   chrome)  shift; cmd_chrome "$@";;

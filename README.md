@@ -155,12 +155,28 @@ the core commands: `glimpse open`, `glimpse publish`, `glimpse ask`, `glimpse re
 
 ---
 
+## Keeping the sidebar tidy
+
+The sidebar reflects `feed.json`. As it grows, manage it two ways:
+
+- **Trim the data** (CLI owns writes): `glimpse rm <slug>`, `glimpse clear --keep 15`
+  (drops all but the newest 15; **pinned artifacts are always kept**), or
+  `glimpse pin <slug>` to keep something at the top. You can just tell the agent
+  *"clear the old artifacts"* / *"pin the architecture doc."*
+- **Tame the view** (in the canvas, no deletion): a **filter box** at the top, a
+  **📌 Pinned** section, and older items collapsed behind a **"N older"** toggle —
+  so the list stays short even with a hundred artifacts.
+
 ## CLI reference
 
 ```
 glimpse open [url|#slug]              serve + launch Chrome + navigate to the canvas
 glimpse publish <slug> <title> [file] publish an HTML artifact (reads stdin if no file)
 glimpse ask <slug> <title> [file] [--timeout N]  publish interactive, block for a response (JSON)
+glimpse list                         list artifacts (pinned first)
+glimpse rm <slug>...                 delete artifacts (feed + disk)
+glimpse clear --all | --keep N       prune artifacts (pinned always kept)
+glimpse pin <slug> | unpin <slug>    pin to the top of the sidebar (persists)
 glimpse serve                        start the static server only
 glimpse stop                         stop the static server
 glimpse chrome                       launch a debuggable Chrome only

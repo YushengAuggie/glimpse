@@ -5,6 +5,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 ### Added
+- **Sidebar management**: `glimpse list`, `glimpse rm <slug>...`,
+  `glimpse clear --all|--keep N` (pinned always kept), `glimpse pin/unpin <slug>`
+  (persists across re-publish). Canvas gains a filter box, a 📌 Pinned section,
+  and older items collapsed behind a "N older" toggle.
 - **Two-way `glimpse ask`** — publish an interactive artifact and block until the
   user answers (approve/reject, pick-one, note), returned as JSON. The artifact
   stays in the `allow-scripts` sandbox and replies via `postMessage` →
