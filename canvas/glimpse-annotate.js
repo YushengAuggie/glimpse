@@ -216,7 +216,9 @@
     ".toolbar{ position:fixed; pointer-events:auto; z-index:2147483647; display:none;",
     "  background:" + (dark ? "#1c2030" : "#1a1d24") + "; border-radius:7px; box-shadow:0 4px 14px rgba(0,0,0,.4); }",
     ".toolbar button{ background:transparent; color:#fff; border:0; padding:6px 12px; font-weight:600; }",
+    ".toolbar button:hover{ color:#7aa2f7; }",
     ".toolbar button:focus-visible{ outline:2px solid #7aa2f7; outline-offset:-2px; }",
+    ".toolbar .sep{ display:inline-block; width:1px; height:14px; background:rgba(255,255,255,.22); vertical-align:middle; }",
     ".hint{ position:fixed; right:16px; bottom:16px; pointer-events:none; z-index:2147483646;",
     "  background:" + (dark ? "rgba(28,32,48,.95)" : "rgba(26,29,36,.92)") + "; color:#fff; font-size:12px;",
     "  padding:7px 12px; border-radius:7px; transition:opacity .4s; }",
@@ -228,7 +230,12 @@
   var toolbar = el("div", "toolbar"); toolbar.setAttribute("role", "toolbar");
   toolbar.setAttribute("aria-label", "Annotation actions");
   var askBtn = el("button"); askBtn.textContent = "Ask"; askBtn.type = "button";
-  toolbar.appendChild(askBtn); shadow.appendChild(toolbar);
+  askBtn.title = "Ask your own question about the selection";
+  var sep = el("span", "sep"); sep.setAttribute("aria-hidden", "true");
+  var explainBtn = el("button"); explainBtn.textContent = "Explain"; explainBtn.type = "button";
+  explainBtn.title = "Get a short, example-based explanation";
+  toolbar.appendChild(askBtn); toolbar.appendChild(sep); toolbar.appendChild(explainBtn);
+  shadow.appendChild(toolbar);
 
   (document.body || document.documentElement).appendChild(host);
 
@@ -249,6 +256,7 @@
   // Keep the selection alive when the user clicks Ask (mousedown would otherwise
   // collapse it before the click handler runs).
   askBtn.addEventListener("mousedown", function (e) { e.preventDefault(); });
+  explainBtn.addEventListener("mousedown", function (e) { e.preventDefault(); });
 
   document.addEventListener("selectionchange", debounce(function () {
     var sel = document.getSelection();
@@ -278,14 +286,23 @@
   }
   function hideToolbar() { toolbar.style.display = "none"; }
 
-  askBtn.addEventListener("click", function () {
-    if (!pendingRange) return;
+  function captureSelection() {
+    if (!pendingRange) return null;
     var anchor = captureAnchor(pendingRange);
     // Prefer the anchor's clean `exact` (badge digits excluded) over the raw
     // selection string for the displayed quote.
     var quote = (anchor && anchor.exact) ? anchor.exact : pendingRange.toString();
+    return { anchor: anchor, quote: quote };
+  }
+  askBtn.addEventListener("click", function () {
+    var s = captureSelection(); if (!s) return;
     hideToolbar();
-    openComposer(anchor, quote);
+    openComposer(s.anchor, s.quote);          // type your own question
+  });
+  explainBtn.addEventListener("click", function () {
+    var s = captureSelection(); if (!s) return;
+    hideToolbar();
+    quickAsk(s.anchor, s.quote, "Explain this briefly, using a concrete example.");
   });
 
   function openComposer(anchor, quote) {
@@ -297,6 +314,15 @@
     renderAll();
     var b = bubbleEl(cid); if (!b) return;
     var ta = b.querySelector("textarea"); if (ta) { ta.focus(); }
+  }
+
+  // One-click question with a canned prompt (the Explain button): create the
+  // thread entry and submit immediately, skipping the composer.
+  function quickAsk(anchor, quote, text) {
+    var cid = uuid();
+    questions[cid] = { cid: cid, anchor: anchor, quote: quote, text: "", status: "composing", answers: [], num: order.length + 1, color: hueFor(order.length), unanchored: !anchor };
+    order.push(cid);
+    submit(cid, text);
   }
 
   /* =========================================================================
