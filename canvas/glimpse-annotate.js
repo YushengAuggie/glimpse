@@ -304,6 +304,18 @@
    * ======================================================================= */
   var repositionQueued = false, narrowMode = false;
   function renderAll() {
+    // Preserve an in-progress compose across the teardown below — a periodic
+    // liveness/thread push must never eat what the user is typing.
+    var focusCid = null, caretA = 0, caretB = 0;
+    var ae = shadow.activeElement;
+    if (ae && ae.tagName === "TEXTAREA" && ae.closest) {
+      var ab = ae.closest(".bubble");
+      if (ab && ab.id.indexOf("glb-") === 0) {
+        focusCid = ab.id.slice(4);
+        try { caretA = ae.selectionStart; caretB = ae.selectionEnd; } catch (e) {}
+        var fq = questions[focusCid]; if (fq) fq.draft = ae.value;
+      }
+    }
     setObserving(false);
     unwrapMarks();
     var model = buildSegments();
@@ -337,6 +349,12 @@
     for (var j = 0; j < order.length; j++) {
       renderBubble(questions[order[j]], narrowMode, firstMarks[order[j]]);
     }
+    // restore the compose textarea's focus + caret if it was active
+    if (focusCid && questions[focusCid] && questions[focusCid].status === "composing") {
+      var rb = shadow.getElementById("glb-" + focusCid);
+      var rta = rb && rb.querySelector("textarea");
+      if (rta) { rta.focus(); try { rta.setSelectionRange(caretA, caretB); } catch (e) {} }
+    }
     queueReposition();
   }
 
@@ -358,6 +376,8 @@
       var ta = document.createElement("textarea");
       ta.setAttribute("aria-label", "Your question about the selected text");
       ta.placeholder = "Ask about this…";
+      ta.value = q.draft || "";                       // survive re-renders mid-type
+      ta.addEventListener("input", function () { q.draft = ta.value; });
       ta.addEventListener("keydown", function (e) {
         if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(q.cid, ta.value); }
       });
@@ -477,7 +497,8 @@
     } else if (d.type === "glimpse:thread") {
       ingestThread(d.turns || []);
     } else if (d.type === "glimpse:liveness") {
-      bridgeLive = d.state !== "offline"; renderAllSoft();
+      var nowLive = d.state !== "offline";
+      if (nowLive !== bridgeLive) { bridgeLive = nowLive; renderAllSoft(); }   // only on change (posted every ~1.5s)
     }
   });
 
