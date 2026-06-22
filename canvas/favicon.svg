@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <title>Glimpse</title>
+
+  <!-- Dark rounded-square tile — visible on both light and dark tab bars -->
+  <rect width="32" height="32" rx="6" fill="#0f1115"/>
+
+  <!-- Eye lozenge: fill lifted to #1e2535 so the eye-white reads even at 16px;
+       stroke 2 stays crisp (1px @16, 2px @retina) instead of going sub-pixel. -->
+  <path d="M 4,16 C 8,8 24,8 28,16 C 24,24 8,24 4,16 Z"
+        fill="#1e2535" stroke="#7aa2f7" stroke-width="2"
+        stroke-linejoin="round"/>
+
+  <!-- Iris: solid blue-violet disc -->
+  <circle cx="16" cy="16" r="7" fill="#7aa2f7"/>
+
+  <!-- Pupil: dark void at center (r=4 lands on a whole pixel at common sizes) -->
+  <circle cx="16" cy="16" r="4" fill="#0f1115"/>
+</svg>

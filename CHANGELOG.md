@@ -5,6 +5,22 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 ### Added
+- **Highlight-to-chat**: select any passage in an artifact and ask the agent about
+  it; the answer threads as an inline margin comment anchored to the highlight, and
+  the conversation is persisted per-document (`~/.glimpse/threads/<slug>.json`) so it
+  survives refreshes and new sessions. New CLI verbs `glimpse bridge` (streams
+  questions as JSON lines, run under an agent Monitor), `glimpse reply <slug>
+  "answer" --to <turnId>`, `glimpse thread <slug> [--json|--clear]`, `glimpse threads`.
+  The selection helper (`canvas/glimpse-annotate.js`) is auto-injected at render time
+  (artifacts on disk stay pristine) inside a Shadow DOM; disable with `--no-annotate`
+  or `GLIMPSE_ANNOTATE=0`. A header pill shows whether an agent is listening and
+  toggles a reading mode. The bridge *pulls* questions over the existing CDP channel
+  (no new inbound endpoint); questions are durable the instant they're asked, and
+  delivery is idempotent across bridge restarts (cursor + seen-set in `bridge.state`).
+  `rm`/`clear` clean up the matching thread file; thread turns are secret-scrubbed,
+  size-capped, `0600`, and written atomically under `flock`.
+- **Brand icon**: `canvas/favicon.svg` (tab icon, wired into the canvas) and
+  `assets/glimpse-icon.svg` (README / social) — a flat eye-on-dark-tile mark.
 - **Sidebar management**: `glimpse list`, `glimpse rm <slug>...`,
   `glimpse clear --all|--keep N` (pinned always kept), `glimpse pin/unpin <slug>`
   (persists across re-publish). Canvas gains a filter box, a 📌 Pinned section,

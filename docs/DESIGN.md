@@ -62,6 +62,28 @@ Chrome via the **Chrome DevTools Protocol** wins because:
   network (e.g. CDN scripts). If you care, audit artifacts or run offline.
 - Glimpse never touches your real/default Chrome profile.
 
+### Highlight-to-chat trust boundaries
+The two-way highlight-chat path adds bidirectional `postMessage` and a long-lived
+reader, but **opens no new network surface**. The boundaries it relies on:
+- **Sandbox unchanged.** The selection helper runs inside the same `allow-scripts`,
+  opaque-origin iframe. The shell→iframe direction is authenticated by a per-iframe
+  **channelId nonce** (an opaque-origin frame must be targeted with `"*"`, so the
+  nonce — not the origin — is the real guard); the iframe→shell direction keeps the
+  existing origin-`null` + source + size-cap checks. All turn text is rendered with
+  `textContent` only.
+- **The bridge pulls, never listens.** `glimpse bridge` reads the in-page outbox over
+  the already-open CDP channel and pins to the canvas tab by **exact origin**,
+  re-verified each poll — so a different page in the CDP Chrome (e.g. one opened via
+  `glimpse read`) cannot feed questions to the agent.
+- **Questions are untrusted input to the agent.** A passage + question is
+  page-authored data; the agent answers it but must not treat it as instructions.
+  (The future edit-in-place mode will gate any file write behind an explicit diff +
+  approval and confine rewrites to the artifact's own source.)
+- **The thread store is local plaintext outside git.** `~/.glimpse/threads/*.json` is
+  `0600`, written atomically under `flock`, and each turn is scrubbed against the same
+  secret patterns as the commit guard before it is persisted — but it is *not* covered
+  by the git secret-scan, so don't highlight live secrets expecting them to be caught.
+
 ## Non-goals
 - Not a notebook, not a BI tool, not a replacement for your editor.
 - Not multi-user or hosted. It's a personal, local agent↔human screen.

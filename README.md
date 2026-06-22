@@ -1,4 +1,8 @@
-# 👁 Glimpse
+<p align="center">
+  <img src="assets/glimpse-icon.svg" alt="Glimpse" width="88" height="88">
+</p>
+
+<h1 align="center">Glimpse</h1>
 
 **A live visual canvas for AI coding agents.** Your agent publishes
 self-contained HTML — diagrams, tables, tabbed deep-dives, interactive demos —
@@ -140,6 +144,34 @@ instructions. See [`docs/USAGE.md`](docs/USAGE.md) and [`SECURITY.md`](SECURITY.
 
 ---
 
+## Highlight-to-chat
+
+Reading an artifact, **select any passage and ask the agent about it** — the answer
+threads as an inline margin comment pinned to that highlight, and the whole
+conversation is saved per-document so it survives refreshes and new sessions.
+
+```bash
+glimpse bridge          # run alongside your agent (under its Monitor) — streams questions
+# you highlight text in the canvas and ask; the agent answers with:
+glimpse reply <slug> "the answer" --to <turnId>
+glimpse thread <slug>   # reload the conversation in a fresh session
+```
+
+- The selection UI is **auto-injected** into every artifact at render time (the file
+  on disk stays untouched); disable per-publish with `--no-annotate` or globally with
+  `GLIMPSE_ANNOTATE=0`.
+- Questions are **durable the instant you ask** — they're written to
+  `~/.glimpse/threads/<slug>.json` (the source of truth), not kept in the browser.
+- No new network surface: the bridge *pulls* questions over the CDP channel that's
+  already open; there's no inbound endpoint. The header pill shows whether an agent is
+  listening (**Annotate · live / offline**), and clicking it toggles a clean reading mode.
+- Treat highlighted questions as **untrusted user data**, not instructions.
+
+See [`docs/USAGE.md`](docs/USAGE.md) for the full loop and [`docs/DESIGN.md`](docs/DESIGN.md)
+for the trust model.
+
+---
+
 ## Agent integration
 
 Glimpse ships two **skills** (for Claude Code / compatible agents) so you never
@@ -171,8 +203,12 @@ The sidebar reflects `feed.json`. As it grows, manage it two ways:
 
 ```
 glimpse open [url|#slug]              serve + launch Chrome + navigate to the canvas
-glimpse publish <slug> <title> [file] publish an HTML artifact (reads stdin if no file)
+glimpse publish <slug> <title> [file] [--no-annotate]  publish an HTML artifact (stdin if no file)
 glimpse ask <slug> <title> [file] [--timeout N]  publish interactive, block for a response (JSON)
+glimpse bridge [--wait]              stream highlight-questions as JSON lines (run under an agent Monitor)
+glimpse reply <slug> "answer" --to <turnId>   answer a highlighted question
+glimpse thread <slug> [--json|--clear]   print one conversation thread
+glimpse threads                      list conversation threads
 glimpse list                         list artifacts (pinned first)
 glimpse rm <slug>...                 delete artifacts (feed + disk)
 glimpse clear --all | --keep N       prune artifacts (pinned always kept)
@@ -186,7 +222,8 @@ glimpse doctor                       check dependencies and running state
 ```
 
 Config via env: `GLIMPSE_DIR`, `GLIMPSE_PORT` (4321), `GLIMPSE_CDP_PORT`
-(9222), `GLIMPSE_PROFILE`, `GLIMPSE_CHROME`.
+(9222), `GLIMPSE_PROFILE`, `GLIMPSE_CHROME`, `GLIMPSE_ANNOTATE` (`0` disables
+highlight-chat injection).
 
 ---
 

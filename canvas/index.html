@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Glimpse</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="apple-touch-icon" href="favicon.svg">
 <style>
   :root {
     --bg:#0f1115; --panel:#161922; --panel2:#1c2030; --line:#272c3a;
@@ -45,7 +47,12 @@
   .bar { padding:12px 18px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:12px; background:var(--panel); }
   .bar h1 { font-size:16px; margin:0; font-weight:650; }
   .bar .held { font-size:11px; color:var(--dim); border:1px solid var(--line); border-radius:6px; padding:1px 7px; }
-  .bar .note { margin-left:auto; font-size:12.5px; color:var(--accent2); opacity:0; transition:opacity .2s; }
+  .annpill { margin-left:auto; font-size:11px; color:var(--dim); border:1px solid var(--line); border-radius:6px; padding:1px 9px; cursor:pointer; outline:none; }
+  .annpill:focus-visible { border-color:var(--accent); }
+  .annpill.live { color:var(--accent2); border-color:#2b3a26; }
+  .annpill.down { color:var(--amber); border-color:#3a3320; }
+  .annpill.off  { color:var(--dim); opacity:.65; }
+  .bar .note { font-size:12.5px; color:var(--accent2); opacity:0; transition:opacity .2s; margin-left:10px; }
   .bar .note.show { opacity:1; }
   iframe { border:0; width:100%; height:100%; background:#fff; }
   .welcome { padding:48px; color:var(--dim); max-width:640px; }
@@ -62,7 +69,7 @@
     <div class="foot"><span id="count">0 artifacts</span><span id="clock" aria-hidden="true"></span></div>
   </aside>
   <main>
-    <div class="bar"><h1 id="title">Welcome</h1><span class="held" id="held" hidden>held</span><span class="note" id="note">✓ response recorded</span></div>
+    <div class="bar"><h1 id="title">Welcome</h1><span class="held" id="held" hidden>held</span><span class="annpill" id="annpill" role="button" tabindex="0" hidden title="Highlight-chat — click to toggle reading mode">Annotate</span><span class="note" id="note">✓ response recorded</span></div>
     <div id="stage" style="flex:1; min-height:0;">
       <div class="welcome">
         <h2>This is your live canvas.</h2>
@@ -78,6 +85,24 @@ let filterText = "", showOlder = false;
 const OLDER_LIMIT = 14;
 // Responses captured from artifacts (browser → agent). The CLI reads this via CDP.
 window.__glimpse_responses = window.__glimpse_responses || {};
+
+// Highlight-chat: questions captured from the on-screen artifact. The `glimpse
+// bridge` drains this over CDP. It is a volatile WAKEUP SIGNAL only — the bridge
+// persists each question to threads/<slug>.json (the source of truth) before it
+// acts, so nothing is lost if this page reloads.
+window.__glimpse_outbox = window.__glimpse_outbox || [];
+const GL_EPOCH = String(Date.now());   // new per page load → old outbox ids never recur
+let glSeq = 0;
+let annotateSrc = null;                // cached canvas/glimpse-annotate.js source
+let currentChannel = null;             // per-iframe nonce; the only inbound-message guard
+let threadSig = "";                    // last thread payload pushed to the iframe
+let readingMode = false;               // user toggled annotation off for a clean read
+const CANVAS_ORIGIN = location.origin;
+async function loadAnnotateSrc(){
+  if(annotateSrc) return annotateSrc;   // cache only a non-empty success
+  try { annotateSrc = await (await fetch('glimpse-annotate.js?v='+GL_EPOCH)).text(); return annotateSrc; }
+  catch(e){ return ""; }                // transient failure → retry on the next show()
+}
 
 function fmt(ts){ try { return new Date(ts*1000).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); } catch(e){ return ""; } }
 function answered(slug){ return !!window.__glimpse_responses[slug]; }
@@ -124,9 +149,10 @@ function render(){
   else if(showOlder && rest.length > OLDER_LIMIT) list.appendChild(moreRow('▾ show less', ()=>{ showOlder=false; render(); }));
 }
 
-function show(slug){
+async function show(slug){
   const a = feed.find(x=>x.slug===slug); if(!a) return;
   current = slug;
+  threadSig = "";                       // force a fresh thread push into the new iframe
   document.getElementById('title').textContent = a.title;
   document.getElementById('held').hidden = !held;
   // Sandboxed iframe: allow-scripts WITHOUT allow-same-origin → opaque origin.
@@ -137,25 +163,70 @@ function show(slug){
   const f = document.createElement('iframe');
   f.setAttribute('sandbox', 'allow-scripts');
   f.title = a.title;
-  f.src = 'artifacts/' + encodeURIComponent(a.slug) + '.html?v=' + a.ts;
+  // Inject the highlight-chat helper at RENDER time via srcdoc (the artifact file
+  // on disk stays pristine; the opaque-origin sandbox can't fetch a sibling .js).
+  // A fresh channelId per iframe is the nonce that authenticates messages both ways.
+  const cid = 'ch-' + GL_EPOCH + '-' + (++glSeq);
+  currentChannel = cid;
+  let injected = false;
+  if(!a.noannotate && !readingMode){
+    const src = await loadAnnotateSrc();
+    if(src){
+      const firstRun = !sessionStorage.getItem('gl_hinted'); sessionStorage.setItem('gl_hinted','1');
+      const cfg = JSON.stringify({channelId:cid, origin:CANVAS_ORIGIN, slug:a.slug, artifactTs:a.ts, firstRun:firstRun, annotate:true});
+      try {
+        const html = await (await fetch('artifacts/'+encodeURIComponent(a.slug)+'.html?v='+a.ts)).text();
+        f.srcdoc = html + '\n<script>window.__GLIMPSE__=' + cfg + ';<\/script>\n<script>' + src + '<\/script>';
+        injected = true;
+      } catch(e){ /* fall through to plain src */ }
+    }
+  }
+  if(!injected) f.src = 'artifacts/' + encodeURIComponent(a.slug) + '.html?v=' + a.ts;
+  if(currentChannel !== cid) return;    // a newer show() superseded us mid-await
+  f.dataset.cid = cid;
+  f.addEventListener('load', ()=>{ threadSig=""; pollThread(); updateLiveness(); });
   stage.appendChild(f);
   render();
 }
 
-// browser → agent: receive a response from the currently-shown artifact.
+// browser → agent: receive messages from the currently-shown (sandboxed) artifact.
 window.addEventListener('message', (e)=>{
   if(e.origin !== "null") return;                 // only opaque-origin (sandboxed) iframes
   const f = document.querySelector('#stage iframe');
   if(!f || e.source !== f.contentWindow) return;  // must be the artifact on screen
-  const d = e.data;
-  if(!d || d.type !== "glimpse:response") return;
-  let value = d.value;
-  try { if(JSON.stringify(value).length > 64*1024) return; } catch(_){ return; }   // size cap
-  if(!current) return;
-  window.__glimpse_responses[current] = { value: value, ts: Date.now() };
-  const note = document.getElementById('note'); note.classList.add('show');
-  setTimeout(()=>note.classList.remove('show'), 2500);
-  render();
+  const d = e.data; if(!d) return;
+
+  // (a) glimpse ask — existing one-shot response channel (unchanged).
+  if(d.type === "glimpse:response"){
+    let value = d.value;
+    try { if(JSON.stringify(value).length > 64*1024) return; } catch(_){ return; }   // size cap
+    if(!current) return;
+    window.__glimpse_responses[current] = { value: value, ts: Date.now() };
+    const note = document.getElementById('note'); note.classList.add('show');
+    setTimeout(()=>note.classList.remove('show'), 2500);
+    render();
+    return;
+  }
+
+  // (b) highlight-chat — a question anchored to a selection.
+  if(d.type === "glimpse:annotate"){
+    if(d.channelId !== currentChannel) return;     // nonce: only the iframe we injected into
+    if(readingMode || !current) return;            // reading mode suppresses the relay
+    try { if(JSON.stringify(d).length > 64*1024) return; } catch(_){ return; }
+    window.__glimpse_outbox.push({
+      id: GL_EPOCH + '-' + (++glSeq),
+      slug: current,
+      anchor: d.anchor || null,
+      quote: String(d.quote || '').slice(0, 8192),
+      text:  String(d.text  || '').slice(0, 16384),
+      clientTurnId: d.clientTurnId || null,
+      artifactTs: (feed.find(x=>x.slug===current) || {}).ts || null,
+      ts: Date.now()
+    });
+    // ack so the artifact can move its bubble out of the "pending/unsent" state
+    f.contentWindow.postMessage({ type:"glimpse:annotate:ack", v:1, channelId:currentChannel, clientTurnId:d.clientTurnId }, "*");
+    return;
+  }
 });
 
 function flashItem(slug){
@@ -187,9 +258,48 @@ async function poll(){
     const dot=document.getElementById('dot'); dot.classList.add('stale'); dot.setAttribute('aria-label','connection: lost');
   }
 }
+// Push the current artifact's conversation (threads/<slug>.json, written by the
+// agent via `glimpse reply`) DOWN into the iframe. A thread-only change never
+// reloads the iframe — it just re-renders the affected bubble (no flash/scroll jump).
+async function pollThread(){
+  if(!current) return;
+  const f = document.querySelector('#stage iframe');
+  if(!f || !f.contentWindow || !currentChannel) return;
+  try {
+    const r = await fetch('threads/' + encodeURIComponent(current) + '.json?v=' + Date.now());
+    if(!r.ok) return;                              // 404 = no thread yet, that's fine
+    const data = await r.json();
+    const turns = data.turns || [];
+    const sig = JSON.stringify(turns.map(t=>[t.id,t.role,t.status||'',(t.text||'').length]));
+    if(sig === threadSig) return;
+    threadSig = sig;
+    f.contentWindow.postMessage({ type:"glimpse:thread", v:1, channelId:currentChannel, slug:current, turns:turns }, "*");
+  } catch(e){}
+}
+
+// The bridge stamps window.__glimpse_bridge_live over CDP on each poll; we treat
+// a recent stamp as "an agent is listening" and reflect it in the header pill.
+function updateLiveness(){
+  const pill = document.getElementById('annpill');
+  if(!current){ pill.hidden = true; return; }
+  pill.hidden = false;
+  const live = (Date.now() - (window.__glimpse_bridge_live || 0)) < 4000;
+  pill.setAttribute('aria-pressed', String(readingMode));
+  if(readingMode){ pill.textContent = 'Annotate · off'; pill.className = 'annpill off'; }
+  else { pill.textContent = live ? 'Annotate · live' : 'Agent offline'; pill.className = 'annpill ' + (live ? 'live' : 'down'); }
+  const f = document.querySelector('#stage iframe');
+  if(f && f.contentWindow && currentChannel)
+    f.contentWindow.postMessage({ type:"glimpse:liveness", v:1, channelId:currentChannel, state:(live && !readingMode) ? 'live' : 'offline' }, "*");
+}
+function toggleReading(){ readingMode = !readingMode; if(current) show(current); updateLiveness(); }
+document.getElementById('annpill').addEventListener('click', toggleReading);
+document.getElementById('annpill').addEventListener('keydown', (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); toggleReading(); } });
+
 document.getElementById('filter').addEventListener('input', (e)=>{ filterText = e.target.value; showOlder = false; render(); });
 setInterval(()=>{ document.getElementById('clock').textContent = new Date().toLocaleTimeString(); }, 1000);
 setInterval(poll, 1200); poll();
+setInterval(pollThread, 1000);
+setInterval(updateLiveness, 1500);
 </script>
 </body>
 </html>

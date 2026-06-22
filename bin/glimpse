@@ -4,13 +4,18 @@
 # local dashboard that you watch update in a real Chrome window.
 #
 #   glimpse open [url|#slug]      bring everything up + navigate Chrome to the canvas
-#   glimpse publish <slug> <title> [file]   publish an HTML artifact (stdin if no file)
+#   glimpse publish <slug> <title> [file] [--no-annotate]   publish an HTML artifact (stdin if no file)
 #   glimpse ask <slug> <title> [file] [--timeout N]   publish an interactive artifact,
 #                                block until the user responds, print {"slug","value"} JSON
 #   glimpse list                 list artifacts (pinned first)
 #   glimpse rm <slug>...         delete artifacts (from the feed + disk)
 #   glimpse clear --all | --keep N   prune artifacts (pinned are always kept)
 #   glimpse pin <slug> | unpin <slug>   pin to the top of the sidebar (persists)
+#   --- highlight chat (the user selects text in an artifact and asks about it) ---
+#   glimpse bridge [--wait]      stream highlight-questions as JSON lines (run under an agent Monitor)
+#   glimpse reply <slug> "answer" --to <turnId>   answer a highlighted question
+#   glimpse thread <slug> [--json|--clear]   print one conversation thread
+#   glimpse threads              list conversation threads
 #   glimpse serve                start the static server only
 #   glimpse stop                 stop the static server
 #   glimpse chrome               launch a debuggable Chrome only
@@ -25,6 +30,7 @@
 #   GLIMPSE_CDP_PORT   chrome debug port     (default: 9222)
 #   GLIMPSE_PROFILE    chrome profile dir    (default: $GLIMPSE_DIR/chrome-profile)
 #   GLIMPSE_CHROME     path to chrome binary (default: auto-detect)
+#   GLIMPSE_ANNOTATE   0 to disable highlight-chat injection globally (default: 1)
 set -euo pipefail
 
 GLIMPSE_DIR="${GLIMPSE_DIR:-$HOME/.glimpse}"
@@ -32,7 +38,15 @@ PORT="${GLIMPSE_PORT:-4321}"
 CDP_PORT="${GLIMPSE_CDP_PORT:-9222}"
 PROFILE="${GLIMPSE_PROFILE:-$GLIMPSE_DIR/chrome-profile}"
 ARTIFACTS="$GLIMPSE_DIR/artifacts"
+THREADS="$GLIMPSE_DIR/threads"
+ANNOTATE="${GLIMPSE_ANNOTATE:-1}"      # 0 disables highlight-chat injection (per-publish: --no-annotate)
 export GLIMPSE_DIR PORT CDP_PORT
+
+# High-signal secret regex, kept in sync with scripts/check-secrets.sh (PATTERN).
+# Thread turns are scrubbed against this before they are persisted, because
+# ~/.glimpse/threads/ lives outside any git repo and never reaches the git guard.
+SECRET_PATTERN='AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|sk-(proj-)?[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{50,}|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN ([A-Z ]+ )?PRIVATE KEY-----|AIza[0-9A-Za-z_-]{35}|glpat-[A-Za-z0-9_-]{20}'
+export SECRET_PATTERN
 case "$PORT" in *[!0-9]*|"") echo "glimpse: GLIMPSE_PORT must be numeric" >&2; exit 1;; esac
 case "$CDP_PORT" in *[!0-9]*|"") echo "glimpse: GLIMPSE_CDP_PORT must be numeric" >&2; exit 1;; esac
 
@@ -44,6 +58,17 @@ SELF_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 
 die(){ echo "glimpse: $*" >&2; exit 1; }
 have(){ command -v "$1" >/dev/null 2>&1; }
+
+# Bridge cleanup must live at script scope: an EXIT trap runs after cmd_bridge
+# returns, where that function's `local`s are gone (and set -u would fire).
+_BRIDGE_NODE_PID=""; _BRIDGE_LOCK=""
+_bridge_cleanup(){
+  # `|| true` so a failed kill (child already dead) can't abort under set -e
+  # before we remove the lock.
+  [ -n "${_BRIDGE_NODE_PID:-}" ] && kill "${_BRIDGE_NODE_PID}" 2>/dev/null || true
+  [ -n "${_BRIDGE_LOCK:-}" ] && rm -f "${_BRIDGE_LOCK}" || true
+  return 0
+}
 
 require_node(){
   have node || die "node is required to drive Chrome over CDP (need v22+ for global WebSocket)"
@@ -67,25 +92,28 @@ detect_chrome(){
 seed_root(){
   mkdir -p "$ARTIFACTS"
   [ -f "$GLIMPSE_DIR/feed.json" ] || echo '{"artifacts":[]}' > "$GLIMPSE_DIR/feed.json"
-  if [ ! -f "$GLIMPSE_DIR/index.html" ]; then
-    if [ -f "$SELF_DIR/../canvas/index.html" ]; then
-      cp "$SELF_DIR/../canvas/index.html" "$GLIMPSE_DIR/index.html"
-    elif [ -f "$HOME/.glimpse/index.html" ]; then
-      cp "$HOME/.glimpse/index.html" "$GLIMPSE_DIR/index.html"   # reuse the installed copy for a custom GLIMPSE_DIR
-    else
-      die "canvas/index.html not found; reinstall glimpse"
-    fi
-  fi
+  # Canvas shell + the highlight-chat helper it injects. Seed both from the repo
+  # checkout, the installed copy, or ~/.glimpse (for a custom GLIMPSE_DIR).
+  _seed_asset(){    # <filename> [required]
+    local name="$1" required="${2:-}"
+    [ -f "$GLIMPSE_DIR/$name" ] && return 0
+    if   [ -f "$SELF_DIR/../canvas/$name" ]; then cp "$SELF_DIR/../canvas/$name" "$GLIMPSE_DIR/$name"
+    elif [ -f "$HOME/.glimpse/$name" ];      then cp "$HOME/.glimpse/$name"      "$GLIMPSE_DIR/$name"
+    elif [ -n "$required" ]; then die "canvas/$name not found; reinstall glimpse"; fi
+  }
+  _seed_asset index.html required
+  _seed_asset glimpse-annotate.js
+  _seed_asset favicon.svg
 }
 
 # Upsert one artifact into feed.json under an exclusive lock (serializes the
 # read-modify-write so concurrent publishes can't drop each other's entry).
-# args: slug title ts pending(0|1)
+# args: slug title ts pending(0|1) noannotate(0|1)
 feed_upsert(){
-  SLUG="$1" TITLE="$2" TS="$3" PENDING="${4:-0}" python3 - <<'PY'
+  SLUG="$1" TITLE="$2" TS="$3" PENDING="${4:-0}" NOANNOTATE="${5:-0}" python3 - <<'PY'
 import json, os, fcntl
 root=os.environ["GLIMPSE_DIR"]; slug=os.environ["SLUG"]; title=os.environ["TITLE"]
-ts=int(os.environ["TS"]); pending=os.environ["PENDING"]=="1"
+ts=int(os.environ["TS"]); pending=os.environ["PENDING"]=="1"; noann=os.environ.get("NOANNOTATE")=="1"
 fp=os.path.join(root,"feed.json")
 lf=open(fp+".lock","w"); fcntl.flock(lf, fcntl.LOCK_EX)
 try:
@@ -95,6 +123,7 @@ try:
     arts=[a for a in feed.get("artifacts",[]) if a.get("slug")!=slug]
     e={"slug":slug,"title":title,"ts":ts}
     if pending: e["pending"]=True
+    if noann: e["noannotate"]=True               # shell skips highlight-chat injection
     if old.get("pinned"): e["pinned"]=True       # preserve a pin across re-publish
     arts.append(e)
     tmp=fp+".tmp"
@@ -145,6 +174,111 @@ finally:
 PY
 }
 
+# Per-document conversation store: threads/<slug>.json, one exclusive-locked,
+# atomic read-modify-write (mirrors feed_upsert) so a flocked agent `reply` and
+# the bridge's pending-question write can never corrupt each other, and the
+# static server never serves a half-written file. ACTION (env) ∈
+#   add_user   SLUG ANCHOR(json) QUOTE TEXT CLIENT_TURN_ID ARTIFACT_TS TS  → prints the turn id
+#   add_agent  SLUG TEXT TO TS                                            → prints the turn id, flips TO→answered
+#   clear      SLUG
+#   print      SLUG            (readable transcript)
+#   print_json SLUG            (raw file)
+# Turn text/quote are capped and secret-scrubbed; files are chmod 0600.
+_thread_op(){
+  python3 - <<'PY'
+import json, os, fcntl, re, time
+root=os.environ["GLIMPSE_DIR"]; action=os.environ["ACTION"]; slug=os.environ["SLUG"]
+tdir=os.path.join(root,"threads"); os.makedirs(tdir, exist_ok=True)
+fp=os.path.join(tdir, slug+".json")
+TURN_CAP=int(os.environ.get("GLIMPSE_TURN_CAP","2000"))
+TEXT_CAP=int(os.environ.get("GLIMPSE_TEXT_CAP", str(64*1024)))
+SECRET=os.environ.get("SECRET_PATTERN","")
+_secret_re=None
+if SECRET:
+    try: _secret_re=re.compile("("+SECRET+")")
+    except re.error: _secret_re=None
+def scrub(s):
+    s=s or ""
+    if _secret_re is not None: s=_secret_re.sub("[REDACTED]", s)
+    return s[:TEXT_CAP]
+def now(): return int(os.environ.get("TS") or time.time())
+
+lf=open(fp+".lock","w"); fcntl.flock(lf, fcntl.LOCK_EX)
+try:
+    try:
+        with open(fp) as fh: data=json.load(fh)
+    except Exception:
+        data={"version":1,"slug":slug,"artifactTs":None,"turns":[]}
+    turns=data.setdefault("turns",[]); dirty=False; out=None
+
+    if action=="add_user":
+        cid=os.environ.get("CLIENT_TURN_ID","")
+        ex=next((t for t in turns if cid and t.get("clientTurnId")==cid), None)
+        if ex:                                   # idempotent: same question delivered twice
+            out=ex["id"]
+        else:
+            if len(turns)>=TURN_CAP: raise SystemExit("glimpse: thread '%s' is full (%d turns)"%(slug,TURN_CAP))
+            ts=now(); tid="%d-%d-%s"%(ts,len(turns)+1,os.urandom(2).hex())  # suffix avoids post-clear id reuse
+            anchor=None
+            if os.environ.get("ANCHOR"):
+                try: anchor=json.loads(os.environ["ANCHOR"])
+                except Exception: anchor=None
+            if isinstance(anchor, dict):
+                # The anchor carries the *selected text* (exact/prefix/suffix); scrub +
+                # cap it like quote/text — it would otherwise smuggle secrets past the guard.
+                for k in ("exact","prefix","suffix"):
+                    if isinstance(anchor.get(k), str): anchor[k]=scrub(anchor[k])
+                    elif k in anchor: anchor.pop(k, None)
+                try: anchor["occurrence"]=int(anchor.get("occurrence",0))
+                except Exception: anchor["occurrence"]=0
+            else:
+                anchor=None
+            if os.environ.get("ARTIFACT_TS"):
+                try: data["artifactTs"]=int(os.environ["ARTIFACT_TS"])
+                except Exception: pass
+            t={"id":tid,"role":"user","status":"pending","anchor":anchor,
+               "quote":scrub(os.environ.get("QUOTE","")),"text":scrub(os.environ.get("TEXT","")),"ts":ts}
+            if cid: t["clientTurnId"]=cid
+            turns.append(t); out=tid; dirty=True
+    elif action=="add_agent":
+        to=os.environ["TO"]
+        u=next((t for t in turns if t.get("id")==to and t.get("role")=="user"), None)
+        if u is None: raise SystemExit("glimpse: no user turn '%s' in thread '%s'"%(to,slug))
+        if len(turns)>=TURN_CAP: raise SystemExit("glimpse: thread '%s' is full (%d turns)"%(slug,TURN_CAP))
+        ts=now(); tid="%d-%d-%s"%(ts,len(turns)+1,os.urandom(2).hex())
+        turns.append({"id":tid,"role":"agent","replyTo":to,"text":scrub(os.environ.get("TEXT","")),"ts":ts})
+        u["status"]="answered"; out=tid; dirty=True
+    elif action=="clear":
+        if not os.path.exists(fp): raise SystemExit("glimpse: no thread '%s'"%slug)
+        os.remove(fp)                  # delete outright so it leaves the `threads` listing too
+    elif action=="print_json":
+        if not os.path.exists(fp): raise SystemExit("glimpse: no thread '%s'"%slug)
+        print(json.dumps(data, indent=2))
+    elif action=="print":
+        if not os.path.exists(fp): raise SystemExit("glimpse: no thread '%s'"%slug)
+        n=len(turns)
+        print("# thread: %s   (%d turn%s)" % (slug, n, "" if n==1 else "s"))
+        for t in turns:
+            if t.get("role")=="user":
+                q=(t.get("quote") or "").replace("\n"," ").strip()
+                if len(q)>80: q=q[:79]+"…"
+                print("\n[user %s · %s]" % (t["id"], t.get("status","")))
+                if q: print("  ❝%s❞" % q)
+                print("  Q: %s" % (t.get("text") or "").strip())
+            else:
+                print("[agent → %s]" % t.get("replyTo",""))
+                print("  %s" % (t.get("text") or "").strip())
+
+    if dirty:
+        tmp=fp+".tmp"
+        with open(tmp,"w") as fh: json.dump(data, fh, indent=2)
+        os.replace(tmp, fp); os.chmod(fp, 0o600)
+    if out is not None: print(out)
+finally:
+    fcntl.flock(lf, fcntl.LOCK_UN); lf.close()
+PY
+}
+
 # Shared Chrome DevTools Protocol client. `cdpConnect(pick)` finds a target
 # (pick = Array.find predicate over /json) or opens a new tab, with per-call
 # timeouts, error rejection, and a close handler so nothing hangs forever.
@@ -181,6 +315,96 @@ JS
 
 # run_cdp <js-body>  — wraps the body in an async IIFE with the helper + error trap.
 run_cdp(){ require_node; node --input-type=module -e "$CDP_HELPER"$'\n'"(async()=>{ try{ $1 }catch(e){ fail(e) } })()"; }
+
+# The highlight-chat bridge: a single long-lived CDP reader (NOT one-shot run_cdp).
+# It pins to the canvas tab by EXACT origin, drains window.__glimpse_outbox every
+# ~500ms, persists each new question as a pending user turn (shelling back to
+# `glimpse __thread-add-user` so all thread writes share one flocked writer), then
+# prints one JSON line per question. A persisted `seen` set makes delivery
+# idempotent across restarts; it reconnects with backoff and emits named sentinels
+# so a silent stream is never ambiguous. Env in: GLIMPSE_BIN, WAIT, PORT, GLIMPSE_DIR.
+read -r -d '' BRIDGE_JS <<'JS' || true
+import { execFileSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
+const PORT=process.env.PORT, DIR=process.env.GLIMPSE_DIR, BIN=process.env.GLIMPSE_BIN, WAIT=process.env.WAIT==="1";
+const expectedOrigin="http://127.0.0.1:"+PORT;
+const statePath=DIR+"/.bridge.state";
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const emit=o=>process.stdout.write(JSON.stringify(o)+"\n");
+const isCanvas=t=>{ try{ return t.type==="page" && new URL(t.url).origin===expectedOrigin; }catch{ return false; } };
+
+let seen=new Set();
+try{ seen=new Set((JSON.parse(readFileSync(statePath,"utf8")).seen)||[]); }catch{}
+function saveState(){
+  const arr=[...seen].slice(-2000);                 // bounded; old marker ids never recur
+  try{ writeFileSync(statePath, JSON.stringify({seen:arr}), {mode:0o600}); }catch{}
+}
+// All thread writes funnel through the flocked Python writer via the CLI.
+function persistUser(m){
+  const env={...process.env, SLUG:m.slug||"", QUOTE:m.quote||"", TEXT:m.text||"",
+    CLIENT_TURN_ID:m.clientTurnId||m.id||"", ANCHOR:m.anchor?JSON.stringify(m.anchor):"",
+    ARTIFACT_TS:m.artifactTs!=null?String(m.artifactTs):""};
+  return execFileSync("bash",[BIN,"__thread-add-user"],{env,encoding:"utf8"}).trim().split("\n").pop();
+}
+async function tryConnect(){
+  let targets; try{ targets=await fetch(`http://127.0.0.1:${process.env.CDP_PORT}/json`).then(r=>r.json()); }
+  catch{ return null; }
+  const t=targets.find(isCanvas); if(!t) return null;
+  try{ return await cdpConnect(x=>x.id===t.id); }catch{ return null; }   // pin to it; never auto-open a blank tab
+}
+
+const EVAL="(function(){try{window.__glimpse_bridge_live=Date.now();}catch(e){}"+
+           "return JSON.stringify({origin:location.origin,outbox:(window.__glimpse_outbox||[])});})()";
+
+process.on("SIGINT", ()=>{ emit({type:"closed",reason:"bridge_stopped"}); process.exit(0); });
+process.on("SIGTERM",()=>{ emit({type:"closed",reason:"bridge_stopped"}); process.exit(0); });
+
+let conn=null, backoff=500, replayed=false, announcedClosed=false;
+const emitted=new Set();   // turn ids emitted this run → never double-emit (replay + drain)
+while(true){
+  if(!conn){
+    const c=await tryConnect();
+    if(!c){
+      if(WAIT){ await sleep(backoff); backoff=Math.min(backoff*2,5000); continue; }
+      emit({type:"error",code:"chrome_unavailable",message:"no canvas tab at "+expectedOrigin+" — run: glimpse open"});
+      process.exit(1);
+    }
+    conn=c; backoff=500; announcedClosed=false; emit({type:"ready",port:Number(PORT)});
+    if(!replayed){                                  // re-surface questions left unanswered from a prior session
+      replayed=true;
+      try{ const out=execFileSync("bash",[BIN,"__pending"],{encoding:"utf8"});
+        for(const line of out.split("\n")){ if(!line.trim()) continue;
+          try{ const id=JSON.parse(line).id; if(emitted.has(id)) continue; emitted.add(id); }catch{}
+          process.stdout.write(line+"\n"); }
+      }catch{}
+    }
+  }
+  try{
+    const r=await conn.send("Runtime.evaluate",{expression:EVAL,returnByValue:true});
+    const v=r&&r.result&&r.result.value;
+    const data=v?JSON.parse(v):null;
+    if(!data || data.origin!==expectedOrigin) throw new Error("canvas_navigated");  // never trust a foreign page's outbox
+    for(const m of (data.outbox||[])){
+      if(!m||!m.id||seen.has(m.id)) continue;
+      let turnId;
+      try{ turnId=persistUser(m); }
+      catch(e){ emit({type:"error",code:"persist_failed",message:String((e&&e.message)||e).split("\n").pop()});
+                seen.add(m.id); saveState(); continue; }
+      seen.add(m.id); saveState();
+      if(emitted.has(turnId)) continue;             // already surfaced via replay this run
+      emitted.add(turnId);
+      emit({type:"question",id:turnId,slug:m.slug,quote:m.quote||"",text:m.text||"",anchor:m.anchor||null});
+    }
+    announcedClosed=false;
+  }catch(e){
+    const reason=(e&&e.message==="canvas_navigated")?"canvas_navigated":"chrome_died";
+    if(!announcedClosed){ emit({type:"closed",reason}); announcedClosed=true; }
+    try{ conn.close(); }catch{}
+    conn=null; await sleep(backoff); backoff=Math.min(backoff*2,5000); continue;
+  }
+  await sleep(500);
+}
+JS
 
 cmd_serve(){
   seed_root
@@ -243,12 +467,20 @@ cmd_open(){
 }
 
 cmd_publish(){
-  local slug="${1:-}" title="${2:-}" src="${3:-/dev/stdin}"
-  [ -n "$slug" ] && [ -n "$title" ] || die "usage: glimpse publish <slug> <title> [file.html]"
+  local noann=0; local -a pos=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --no-annotate) noann=1; shift;;
+      *) pos+=("$1"); shift;;
+    esac
+  done
+  local slug="${pos[0]:-}" title="${pos[1]:-}" src="${pos[2]:-/dev/stdin}"
+  [ -n "$slug" ] && [ -n "$title" ] || die "usage: glimpse publish <slug> <title> [file.html] [--no-annotate]"
+  [ "$ANNOTATE" = "0" ] && noann=1            # global GLIMPSE_ANNOTATE=0 disables injection
   _validate_slug "$slug"
   seed_root
   _write_artifact "$slug" "$src"
-  feed_upsert "$slug" "$title" "$(date +%s)" 0
+  feed_upsert "$slug" "$title" "$(date +%s)" 0 "$noann"
   echo "published → http://127.0.0.1:${PORT}/#${slug}  (file: $ARTIFACTS/${slug}.html)"
 }
 
@@ -287,7 +519,7 @@ cmd_ask(){
   _validate_slug "$slug"
   seed_root
   _write_artifact "$slug" "$src"
-  feed_upsert "$slug" "$title" "$(date +%s)" 1     # pending=1 → "awaiting you" badge
+  feed_upsert "$slug" "$title" "$(date +%s)" 1 1   # pending=1 → "awaiting you"; noannotate=1 (ask owns glimpseRespond)
   cmd_serve >/dev/null
   cmd_chrome >/dev/null
   echo "glimpse: waiting for your response in the canvas (timeout ${timeout}s)…" >&2
@@ -315,7 +547,7 @@ cmd_ask(){
     if(out){ console.log(JSON.stringify({slug, value: out.value})); }
     else { console.error("glimpse: ask timed out after "+(Number(process.env.TIMEOUT_MS)/1000)+"s"); process.exit(2); }
   ' || rc=$?
-  feed_upsert "$slug" "$title" "$(date +%s)" 0      # clear the pending badge
+  feed_upsert "$slug" "$title" "$(date +%s)" 0 1    # clear pending; keep noannotate=1
   return $rc
 }
 
@@ -353,6 +585,30 @@ cmd_shot(){
   '
 }
 
+cmd_bridge(){
+  local wait=0
+  case "${1:-}" in --wait) wait=1;; "") ;; *) die "usage: glimpse bridge [--wait]";; esac
+  require_node
+  seed_root
+  # One bridge per canvas — a second reader would double-deliver every question.
+  local lock="$GLIMPSE_DIR/.bridge.lock" opid
+  if [ -f "$lock" ]; then
+    opid="$(cat "$lock" 2>/dev/null || true)"
+    if [ -n "$opid" ] && kill -0 "$opid" 2>/dev/null; then die "bridge already running (pid $opid)"; fi
+  fi
+  echo $$ > "$lock"
+  # Kill the node child on exit/signal too — otherwise killing the launcher
+  # orphans a live bridge while the lock is cleaned (→ silent double readers).
+  _BRIDGE_LOCK="$lock"
+  trap _bridge_cleanup EXIT INT TERM
+  echo "glimpse: bridge listening for highlight questions (canvas 127.0.0.1:$PORT) — Ctrl-C to stop" >&2
+  GLIMPSE_BIN="$SELF_DIR/$(basename "$SOURCE")" WAIT="$wait" \
+    node --input-type=module -e "$CDP_HELPER"$'\n'"$BRIDGE_JS" &
+  _BRIDGE_NODE_PID=$!
+  local rc=0; wait "$_BRIDGE_NODE_PID" || rc=$?    # capture child rc without tripping set -e (so cleanup runs)
+  exit "$rc"
+}
+
 cmd_doctor(){
   local fail=0
   echo "glimpse doctor"
@@ -368,6 +624,13 @@ cmd_doctor(){
   printf "  chrome:      "; if detect_chrome; then :; else echo "NOT FOUND (set GLIMPSE_CHROME)"; fail=1; fi
   printf "  server:      "; curl -fsS "http://127.0.0.1:${PORT}/feed.json" >/dev/null 2>&1 && echo "up on :$PORT" || echo "down"
   printf "  chrome cdp:  "; curl -fsS "http://127.0.0.1:${CDP_PORT}/json/version" >/dev/null 2>&1 && echo "debuggable on :$CDP_PORT" || echo "down"
+  printf "  annotate:    "
+  if [ ! -f "$GLIMPSE_DIR/glimpse-annotate.js" ]; then echo "asset missing — run glimpse serve to seed"
+  elif [ "$ANNOTATE" = "0" ]; then echo "installed (disabled via GLIMPSE_ANNOTATE=0)"
+  else echo "installed"; fi
+  printf "  bridge:      "
+  local bp; bp="$(cat "$GLIMPSE_DIR/.bridge.lock" 2>/dev/null || true)"
+  if [ -n "$bp" ] && kill -0 "$bp" 2>/dev/null; then echo "running (pid $bp)"; else echo "not running (start with: glimpse bridge)"; fi
   return $fail
 }
 
@@ -394,6 +657,9 @@ cmd_rm(){
   local s; for s in "$@"; do _validate_slug "$s"; done
   local removed; removed="$(ACTION=remove SLUGS="$*" _feed_op)"
   local r n=0; for r in $removed; do rm -f "$ARTIFACTS/$r.html"; n=$((n+1)); done
+  # Remove threads for every requested slug — including ones already absent from
+  # the feed, so a `rm <slug>` never leaves an orphan thread behind.
+  for r in "$@"; do rm -f "$THREADS/$r.json" "$THREADS/$r.json.lock"; done
   echo "removed $n artifact(s)${removed:+: $(echo $removed | tr '\n' ' ')}"
 }
 
@@ -405,12 +671,87 @@ cmd_clear(){
     *) die "usage: glimpse clear --all | --keep N   (pinned artifacts are always kept)";;
   esac
   local removed; removed="$(ACTION=$mode KEEP="${n:-0}" _feed_op)"
-  local r cnt=0; for r in $removed; do rm -f "$ARTIFACTS/$r.html"; cnt=$((cnt+1)); done
+  local r cnt=0; for r in $removed; do rm -f "$ARTIFACTS/$r.html" "$THREADS/$r.json" "$THREADS/$r.json.lock"; cnt=$((cnt+1)); done
   echo "removed $cnt artifact(s)$([ "$mode" = keep ] && echo " (kept newest $n + pinned)")"
 }
 
 cmd_pin(){   local s="${1:?usage: glimpse pin <slug>}";   _validate_slug "$s"; ACTION=pin   SLUG="$s" _feed_op >/dev/null; echo "pinned $s";   }
 cmd_unpin(){ local s="${1:?usage: glimpse unpin <slug>}"; _validate_slug "$s"; ACTION=unpin SLUG="$s" _feed_op >/dev/null; echo "unpinned $s"; }
+
+# --- highlight-chat: per-document threads -----------------------------------
+# The user highlights a passage in an artifact and asks; the bridge records the
+# question as a pending user turn; the agent answers with `reply`.
+cmd_reply(){
+  local to=""; local -a pos=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --to) to="${2:-}"; shift 2 || die 'usage: glimpse reply <slug> "answer" --to <turnId>';;
+      *)    pos+=("$1"); shift;;
+    esac
+  done
+  local slug="${pos[0]:-}" text="${pos[1]:-}"
+  [ -n "$slug" ] && [ -n "$text" ] && [ -n "$to" ] || die 'usage: glimpse reply <slug> "answer" --to <turnId>'
+  _validate_slug "$slug"
+  [ -f "$THREADS/$slug.json" ] || die "no thread '$slug' — the user hasn't asked anything here yet. try: glimpse threads"
+  local id
+  id="$(ACTION=add_agent SLUG="$slug" TEXT="$text" TO="$to" TS="$(date +%s)" _thread_op)"
+  echo "replied → $slug turn $id (in answer to $to)"
+}
+
+cmd_thread(){
+  local slug="${1:-}"
+  [ -n "$slug" ] || die "usage: glimpse thread <slug> [--json|--clear]"
+  _validate_slug "$slug"
+  case "${2:-}" in
+    --json)  ACTION=print_json SLUG="$slug" _thread_op;;
+    --clear) ACTION=clear      SLUG="$slug" _thread_op >/dev/null && { rm -f "$THREADS/$slug.json.lock"; echo "cleared thread $slug"; };;
+    "")      ACTION=print      SLUG="$slug" _thread_op;;
+    *) die "usage: glimpse thread <slug> [--json|--clear]";;
+  esac
+}
+
+cmd_threads(){
+  GLIMPSE_DIR="$GLIMPSE_DIR" python3 - <<'PY'
+import json, os
+tdir=os.path.join(os.environ["GLIMPSE_DIR"],"threads")
+try: files=sorted(f for f in os.listdir(tdir) if f.endswith(".json"))
+except FileNotFoundError: files=[]
+if not files: print("(no threads)"); raise SystemExit
+for f in files:
+    try:
+        with open(os.path.join(tdir,f)) as fh: d=json.load(fh)
+    except Exception: continue
+    turns=d.get("turns",[]); n=len(turns)
+    pend=sum(1 for t in turns if t.get("role")=="user" and t.get("status")=="pending")
+    print("%-28s %3d turn%s%s" % (f[:-5], n, "" if n==1 else "s", ("  (%d pending)"%pend) if pend else ""))
+PY
+}
+
+# Internal plumbing for `glimpse bridge` (not user-facing). The bridge runs in
+# Node (CDP); it shells back to these so all thread writes share one flocked
+# Python writer instead of a second, drifting implementation.
+cmd__thread_add_user(){
+  [ -n "${SLUG:-}" ] || die "SLUG required"
+  _validate_slug "$SLUG"                       # slug originates in the page → re-validate
+  ACTION=add_user _thread_op
+}
+cmd__pending(){
+  GLIMPSE_DIR="$GLIMPSE_DIR" python3 - <<'PY'
+import json, os
+tdir=os.path.join(os.environ["GLIMPSE_DIR"],"threads")
+try: files=sorted(f for f in os.listdir(tdir) if f.endswith(".json"))
+except FileNotFoundError: files=[]
+for f in files:
+    try:
+        with open(os.path.join(tdir,f)) as fh: d=json.load(fh)
+    except Exception: continue
+    slug=d.get("slug") or f[:-5]
+    for t in d.get("turns",[]):
+        if t.get("role")=="user" and t.get("status")=="pending":
+            print(json.dumps({"type":"question","id":t["id"],"slug":slug,
+                  "quote":t.get("quote",""),"text":t.get("text",""),"anchor":t.get("anchor")}))
+PY
+}
 
 usage(){ awk 'NR==1{next} /^#/{sub(/^# ?/,"");print;next} {exit}' "$SOURCE"; }
 
@@ -423,6 +764,12 @@ case "${1:-help}" in
   clear)   shift; cmd_clear "$@";;
   pin)     shift; cmd_pin "$@";;
   unpin)   shift; cmd_unpin "$@";;
+  reply)   shift; cmd_reply "$@";;
+  thread)  shift; cmd_thread "$@";;
+  threads) shift; cmd_threads "$@";;
+  bridge)  shift; cmd_bridge "$@";;
+  __thread-add-user) shift; cmd__thread_add_user "$@";;
+  __pending)         shift; cmd__pending "$@";;
   serve)   shift; cmd_serve "$@";;
   stop)    shift; cmd_stop "$@";;
   chrome)  shift; cmd_chrome "$@";;

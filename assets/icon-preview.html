@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Glimpse Icon Preview</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: #1a1d27;
+      color: #c0caf5;
+      padding: 40px 32px;
+      min-height: 100vh;
+    }
+
+    h1 {
+      font-size: 18px;
+      font-weight: 600;
+      color: #7aa2f7;
+      letter-spacing: 0.04em;
+      margin-bottom: 32px;
+    }
+
+    h2 {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #565f89;
+      margin-bottom: 16px;
+    }
+
+    .section { margin-bottom: 48px; }
+
+    /* ── Size grid ── */
+    .size-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 24px;
+    }
+
+    .swatch {
+      border-radius: 10px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 20px;
+    }
+    .swatch.light { background: #ffffff; }
+    .swatch.dark  { background: #0f1115; border: 1px solid #1e2235; }
+
+    .swatch-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .swatch.light .swatch-label { color: #888; }
+    .swatch.dark  .swatch-label { color: #565f89; }
+
+    .size-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      width: 100%;
+    }
+
+    .size-row svg { flex-shrink: 0; }
+
+    .size-label {
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+    }
+    .swatch.light .size-label { color: #999; }
+    .swatch.dark  .size-label { color: #4a5068; }
+
+    /* ── Browser tab mock ── */
+    .tab-bar {
+      border-radius: 10px 10px 0 0;
+      display: flex;
+      align-items: flex-end;
+      gap: 0;
+      padding: 8px 12px 0;
+    }
+    .tab-bar.light-chrome { background: #dee1e6; }
+    .tab-bar.dark-chrome  { background: #202327; }
+
+    .tab {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px 7px 10px;
+      border-radius: 8px 8px 0 0;
+      font-size: 12px;
+      max-width: 200px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      position: relative;
+    }
+    .tab.active.light-tab {
+      background: #ffffff;
+      color: #2c2c2c;
+    }
+    .tab.active.dark-tab {
+      background: #35383e;
+      color: #e8eaed;
+    }
+    .tab.inactive.light-tab {
+      background: #cdd0d5;
+      color: #666;
+    }
+    .tab.inactive.dark-tab {
+      background: #2a2d33;
+      color: #8a8d93;
+    }
+
+    .tab-favicon { width: 16px; height: 16px; flex-shrink: 0; }
+
+    .tab-content-area {
+      border-radius: 0 0 10px 10px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .tab-content-area.light { background: #ffffff; }
+    .tab-content-area.dark  { background: #35383e; }
+
+    .address-bar {
+      height: 28px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      padding: 0 10px;
+      font-size: 11px;
+      color: #888;
+    }
+    .address-bar.light { background: #f1f3f4; }
+    .address-bar.dark  { background: #292c33; color: #9aa0aa; }
+
+    .page-placeholder {
+      height: 80px;
+      border-radius: 4px;
+      opacity: 0.15;
+    }
+    .page-placeholder.light { background: #ccc; }
+    .page-placeholder.dark  { background: #9aa0aa; }
+
+    /* ── Large icon display ── */
+    .large-icon-row {
+      display: flex;
+      gap: 24px;
+      align-items: center;
+    }
+    .large-swatch {
+      padding: 32px;
+      border-radius: 12px;
+      display: inline-flex;
+    }
+    .large-swatch.light { background: #ffffff; }
+    .large-swatch.dark  { background: #0f1115; border: 1px solid #1e2235; }
+  </style>
+</head>
+<body>
+
+<h1>Glimpse — Icon Review</h1>
+
+<!-- ═══════════════════════════════════════════
+     SECTION 1: favicon at 16, 32, 48, 180px
+     on light and dark backgrounds
+     ═══════════════════════════════════════════ -->
+<div class="section">
+  <h2>Favicon sizes — light &amp; dark backgrounds</h2>
+  <div class="size-grid">
+
+    <!-- Light swatch -->
+    <div class="swatch light">
+      <span class="swatch-label">Light background</span>
+
+      <div class="size-row">
+        <!-- 16px -->
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="16" height="16">
+          <rect width="32" height="32" rx="6" fill="#0f1115"/>
+          <path d="M 4,16 C 8,9 24,9 28,16 C 24,23 8,23 4,16 Z" fill="#141820" stroke="#7aa2f7" stroke-width="1.5" stroke-linejoin="round"/>
+          <circle cx="16" cy="16" r="7" fill="#7aa2f7"/>
+          <circle cx="16" cy="16" r="3.5" fill="#0f1115"/>
+          <circle cx="18.5" cy="13.5" r="1.2" fill="#ffffff" opacity="0.7"/>
+        </svg>
+        <span class="size-label">16 × 16</span>
+      </div>
+
+      <div class="size-row">
+        <!-- 32px -->
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+          <rect width="32" height="32" rx="6" fill="#0f1115"/>
+          <path d="M 4,16 C 8,9 24,9 28,16 C 24,23 8,23 4,16 Z" fill="#141820" stroke="#7aa2f7" stroke-width="1.5" stroke-linejoin="round"/>
+          <circle cx="16" cy="16" r="7" fill="#7aa2f7"/>
+          <circle cx="16" cy="16" r="3.5" fill="#0f1115"/>
+          <circle cx="18.5" cy="13.5" r="1.2" fill="#ffffff" opacity="0.7"/>
+        </svg>
+        <span class="size-label">32 × 32</span>
+      </div>
+
+      <div class="size-row">
+        <!-- 48px -->
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="48" height="48">
+          <rect width="32" height="32" rx="6" fill="#0f1115"/>
+          <path d="M 4,16 C 8,9 24,9 28,16 C 24,23 8,23 4,16 Z" fill="#141820" stroke="#7aa2f7" stroke-width="1.5" stroke-linejoin="round"/>
+          <circle cx="16" cy="16" r="7" fill="#7aa2f7"/>
+          <circle cx="16" cy="16" r="3.5" fill="#0f1115"/>
+          <circle cx="18.5" cy="13.5" r="1.2" fill="#ffffff" opacity="0.7"/>
+        </svg>
+        <span class="size-label">48 × 48</span>
+      </div>
+
+      <div class="size-row">
+        <!-- 180px -->
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="180" height="180">
+          <rect width="32" height="32" rx="6" fill="#0f1115"/>
+          <path d="M 4,16 C 8,9 24,9 28,16 C 24,23 8,23 4,16 Z" fill="#141820" stroke="#7aa2f7" stroke-width="1.5" stroke-linejoin="round"/>
+          <circle cx="16" cy="16" r="7" fill="#7aa2f7"/>
+          <circle cx="16" cy="16" r="3.5" fill="#0f1115"/>
+          <circle cx="18.5" cy="13.5" r="1.2" fill="#ffffff" opacity="0.7"/>
+        </svg>
+        <span class="size-label">180 × 180 (Apple touch)</span>
+      </div>
+    </div>
+
+    <!-- Dark swatch -->
+    <div class="swatch dark">
+      <span class="swatch-label">Dark background</span>
+
+      <div class="size-row">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="16" height="16">
+          <rect width="32" height="32" rx="6" fill="#0f1115"/>
+          <path d="M 4,16 C 8,9 24,9 28,16 C 24,23 8,23 4,16 Z" fill="#141820" stroke="#7aa2f7" stroke-width="1.5" stroke-linejoin="round"/>
+          <circle cx="16" cy="16" r="7" fill="#7aa2f7"/>
+          <circle cx="16" cy="16" r="3.5" fill="#0f1115"/>
+          <circle cx="18.5" cy="13.5" r="1.2" fill="#ffffff" opacity="0.7"/>
+        </svg>
+        <span class="size-label">16 × 16</span>
+      </div>
+
+      <div class="size-row">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+          <rect width="32" height="32" rx="6" fill="#0f1115"/>
+          <path d="M 4,16 C 8,9 24,9 28,16 C 24,23 8,23 4,16 Z" fill="#141820" stroke="#7aa2f7" stroke-width="1.5" stroke-linejoin="round"/>
+          <circle cx="16" cy="16" r="7" fill="#7aa2f7"/>
+          <circle cx="16" cy="16" r="3.5" fill="#0f1115"/>
+          <circle cx="18.5" cy="13.5" r="1.2" fill="#ffffff" opacity="0.7"/>
+        </svg>
+        <span class="size-label">32 × 32</span>
+      </div>
+
+      <div class="size-row">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="48" height="48">
+          <rect width="32" height="32" rx="6" fill="#0f1115"/>
+          <path d="M 4,16 C 8,9 24,9 28,16 C 24,23 8,23 4,16 Z" fill="#141820" stroke="#7aa2f7" stroke-width="1.5" stroke-linejoin="round"/>
+          <circle cx="16" cy="16" r="7" fill="#7aa2f7"/>
+          <circle cx="16" cy="16" r="3.5" fill="#0f1115"/>
+          <circle cx="18.5" cy="13.5" r="1.2" fill="#ffffff" opacity="0.7"/>
+        </svg>
+        <span class="size-label">48 × 48</span>
+      </div>
+
+      <div class="size-row">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="180" height="180">
+          <rect width="32" height="32" rx="6" fill="#0f1115"/>
+          <path d="M 4,16 C 8,9 24,9 28,16 C 24,23 8,23 4,16 Z" fill="#141820" stroke="#7aa2f7" stroke-width="1.5" stroke-linejoin="round"/>
+          <circle cx="16" cy="16" r="7" fill="#7aa2f7"/>
+          <circle cx="16" cy="16" r="3.5" fill="#0f1115"/>
+          <circle cx="18.5" cy="13.5" r="1.2" fill="#ffffff" opacity="0.7"/>
+        </svg>
+        <span class="size-label">180 × 180 (Apple touch)</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     SECTION 2: Mock browser tab strips
+     ═══════════════════════════════════════════ -->
+<div class="section">
+  <h2>Browser tab legibility</h2>
+
+  <!-- Light Chrome -->
+  <div style="margin-bottom: 24px;">
+    <div class="tab-bar light-chrome">
+      <!-- Active tab — Glimpse -->
+      <div class="tab active light-tab">
+        <svg class="tab-favicon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+          <rect width="32" height="32" rx="6" fill="#0f1115"/>
+          <path d="M 4,16 C 8,9 24,9 28,16 C 24,23 8,23 4,16 Z" fill="#141820" stroke="#7aa2f7" stroke-width="1.5" stroke-linejoin="round"/>
+          <circle cx="16" cy="16" r="7" fill="#7aa2f7"/>
+          <circle cx="16" cy="16" r="3.5" fill="#0f1115"/>
+          <circle cx="18.5" cy="13.5" r="1.2" fill="#ffffff" opacity="0.7"/>
+        </svg>
+        Glimpse
+      </div>
+      <!-- Inactive neighbor tabs -->
+      <div class="tab inactive light-tab">
+        <svg class="tab-favicon" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+          <rect width="16" height="16" rx="3" fill="#e0e0e0"/>
+        </svg>
+        New Tab
+      </div>
+      <div class="tab inactive light-tab">
+        <svg class="tab-favicon" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+          <rect width="16" height="16" rx="3" fill="#e0e0e0"/>
+        </svg>
+        GitHub
+      </div>
+    </div>
+    <div class="tab-content-area light">
+      <div class="address-bar light">localhost:4321</div>
+      <div class="page-placeholder light"></div>
+    </div>
+  </div>
+
+  <!-- Dark Chrome -->
+  <div>
+    <div class="tab-bar dark-chrome">
+      <div class="tab active dark-tab">
+        <svg class="tab-favicon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+          <rect width="32" height="32" rx="6" fill="#0f1115"/>
+          <path d="M 4,16 C 8,9 24,9 28,16 C 24,23 8,23 4,16 Z" fill="#141820" stroke="#7aa2f7" stroke-width="1.5" stroke-linejoin="round"/>
+          <circle cx="16" cy="16" r="7" fill="#7aa2f7"/>
+          <circle cx="16" cy="16" r="3.5" fill="#0f1115"/>
+          <circle cx="18.5" cy="13.5" r="1.2" fill="#ffffff" opacity="0.7"/>
+        </svg>
+        Glimpse
+      </div>
+      <div class="tab inactive dark-tab">
+        <svg class="tab-favicon" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+          <rect width="16" height="16" rx="3" fill="#3a3d44"/>
+        </svg>
+        New Tab
+      </div>
+      <div class="tab inactive dark-tab">
+        <svg class="tab-favicon" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+          <rect width="16" height="16" rx="3" fill="#3a3d44"/>
+        </svg>
+        GitHub
+      </div>
+    </div>
+    <div class="tab-content-area dark">
+      <div class="address-bar dark">localhost:4321</div>
+      <div class="page-placeholder dark"></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     SECTION 3: Large icon (256px)
+     ═══════════════════════════════════════════ -->
+<div class="section">
+  <h2>Large icon — README / social preview</h2>
+  <div class="large-icon-row">
+
+    <div class="large-swatch light">
+      <!-- glimpse-icon.svg inlined (flat), clip ID namespaced with "li-" prefix -->
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+        <defs>
+          <clipPath id="li-lozenge-clip">
+            <path d="M 32,128 C 64,72 192,72 224,128 C 192,184 64,184 32,128 Z"/>
+          </clipPath>
+        </defs>
+        <rect width="256" height="256" rx="48" fill="#0f1115"/>
+        <path d="M 32,128 C 64,72 192,72 224,128 C 192,184 64,184 32,128 Z" fill="#1e2535"/>
+        <circle cx="128" cy="128" r="56" fill="#7aa2f7" clip-path="url(#li-lozenge-clip)"/>
+        <circle cx="128" cy="128" r="42" fill="none" stroke="#4a72c7" stroke-width="1.5" opacity="0.6" clip-path="url(#li-lozenge-clip)"/>
+        <circle cx="128" cy="128" r="28" fill="#0f1115" clip-path="url(#li-lozenge-clip)"/>
+        <path d="M 32,128 C 64,72 192,72 224,128 C 192,184 64,184 32,128 Z" fill="none" stroke="#7aa2f7" stroke-width="3" stroke-linejoin="round"/>
+        <circle cx="206" cy="206" r="10" fill="#9ece6a"/>
+      </svg>
+    </div>
+
+    <div class="large-swatch dark">
+      <!-- Same flat icon on dark background, clip ID namespaced with "dk-" prefix -->
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+        <defs>
+          <clipPath id="dk-lozenge-clip">
+            <path d="M 32,128 C 64,72 192,72 224,128 C 192,184 64,184 32,128 Z"/>
+          </clipPath>
+        </defs>
+        <rect width="256" height="256" rx="48" fill="#0f1115"/>
+        <path d="M 32,128 C 64,72 192,72 224,128 C 192,184 64,184 32,128 Z" fill="#1e2535"/>
+        <circle cx="128" cy="128" r="56" fill="#7aa2f7" clip-path="url(#dk-lozenge-clip)"/>
+        <circle cx="128" cy="128" r="42" fill="none" stroke="#4a72c7" stroke-width="1.5" opacity="0.6" clip-path="url(#dk-lozenge-clip)"/>
+        <circle cx="128" cy="128" r="28" fill="#0f1115" clip-path="url(#dk-lozenge-clip)"/>
+        <path d="M 32,128 C 64,72 192,72 224,128 C 192,184 64,184 32,128 Z" fill="none" stroke="#7aa2f7" stroke-width="3" stroke-linejoin="round"/>
+        <circle cx="206" cy="206" r="10" fill="#9ece6a"/>
+      </svg>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>
