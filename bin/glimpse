@@ -14,6 +14,7 @@
 #   --- highlight chat (the user selects text in an artifact and asks about it) ---
 #   glimpse bridge [--wait]      stream highlight-questions as JSON lines (run under an agent Monitor)
 #   glimpse daemon [--wait]      always-on: bridge + auto-answer questions via the local API proxy
+#   glimpse menubar              macOS menu-bar app to toggle / keep the agent online (needs: pip install rumps)
 #   glimpse reply <slug> "answer" --to <turnId>   answer a highlighted question
 #   glimpse thread <slug> [--json|--clear]   print one conversation thread
 #   glimpse threads              list conversation threads
@@ -663,6 +664,17 @@ cmd_daemon(){
   cmd_bridge "$@"
 }
 
+# glimpse menubar — launch the macOS menu-bar app (toggle/keep the daemon online).
+cmd_menubar(){
+  local app="$SELF_DIR/../app/glimpse_menubar.py"
+  [ -f "$app" ] || app="$GLIMPSE_DIR/glimpse_menubar.py"
+  [ -f "$app" ] || die "menu-bar app not found (app/glimpse_menubar.py) — reinstall glimpse"
+  local self; self="$SELF_DIR/$(basename "$SOURCE")"; export GLIMPSE_BIN_PATH="$self"
+  if python3 -c "import rumps" >/dev/null 2>&1; then exec python3 "$app"
+  elif have uv; then echo "glimpse: launching menu-bar via uv (fetching rumps the first time)…" >&2; exec uv run --with rumps python3 "$app"
+  else die "the menu-bar needs the 'rumps' package — install with:  uv pip install rumps   (or: pip install rumps)"; fi
+}
+
 cmd_doctor(){
   local fail=0
   echo "glimpse doctor"
@@ -823,6 +835,7 @@ case "${1:-help}" in
   threads) shift; cmd_threads "$@";;
   bridge)  shift; cmd_bridge "$@";;
   daemon)  shift; cmd_daemon "$@";;
+  menubar) shift; cmd_menubar "$@";;
   __thread-add-user) shift; cmd__thread_add_user "$@";;
   __pending)         shift; cmd__pending "$@";;
   serve)   shift; cmd_serve "$@";;

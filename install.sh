@@ -34,6 +34,7 @@ mkdir -p "$GLIMPSE_DIR/artifacts"
 cp "$REPO/canvas/index.html" "$GLIMPSE_DIR/index.html"
 cp "$REPO/canvas/glimpse-annotate.js" "$GLIMPSE_DIR/glimpse-annotate.js"   # highlight-chat helper (injected at render time)
 cp "$REPO/canvas/favicon.svg" "$GLIMPSE_DIR/favicon.svg"                   # tab icon
+[ -f "$REPO/app/glimpse_menubar.py" ] && cp "$REPO/app/glimpse_menubar.py" "$GLIMPSE_DIR/glimpse_menubar.py"  # macOS menu-bar app
 cp -R "$REPO/examples" "$GLIMPSE_DIR/"           # so the quickstart works from any CWD
 [ -f "$GLIMPSE_DIR/feed.json" ] || echo '{"artifacts":[]}' > "$GLIMPSE_DIR/feed.json"
 
