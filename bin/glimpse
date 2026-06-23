@@ -154,7 +154,8 @@ try:
         removed=[a["slug"] for a in arts]; arts=[]
     elif action=="keep":
         n=int(os.environ["KEEP"])
-        order=sorted(arts, key=lambda a:a.get("ts",0), reverse=True)
+        # break ties on insertion order so equal-ts artifacts keep the NEWEST n
+        order=[a for _,a in sorted(enumerate(arts), key=lambda p:(p[1].get("ts",0), p[0]), reverse=True)]
         keep=[a for a in order if a.get("pinned")] + [a for a in order if not a.get("pinned")][:n]
         ks={a["slug"] for a in keep}
         removed=[a["slug"] for a in arts if a["slug"] not in ks]
@@ -346,11 +347,21 @@ function persistUser(m){
     ARTIFACT_TS:m.artifactTs!=null?String(m.artifactTs):""};
   return execFileSync("bash",[BIN,"__thread-add-user"],{env,encoding:"utf8"}).trim().split("\n").pop();
 }
-async function tryConnect(){
-  let targets; try{ targets=await fetch(`http://127.0.0.1:${process.env.CDP_PORT}/json`).then(r=>r.json()); }
-  catch{ return null; }
-  const t=targets.find(isCanvas); if(!t) return null;
-  try{ return await cdpConnect(x=>x.id===t.id); }catch{ return null; }   // pin to it; never auto-open a blank tab
+const CDPBASE=`http://127.0.0.1:${process.env.CDP_PORT}`;
+const conns=new Map();           // targetId -> CDP connection, one per open canvas tab
+async function listCanvas(){
+  try{ return (await fetch(CDPBASE+"/json").then(r=>r.json())).filter(isCanvas); }
+  catch{ return null; }           // null → Chrome unreachable
+}
+// Keep a live connection to EVERY canvas tab, so liveness + question-capture work
+// no matter which tab the user is looking at (not just the first one we found).
+async function syncTargets(){
+  const canvas=await listCanvas();
+  if(canvas===null) return null;
+  const ids=new Set(canvas.map(t=>t.id));
+  for(const t of canvas) if(!conns.has(t.id)){ try{ conns.set(t.id, await cdpConnect(x=>x.id===t.id)); }catch{} }
+  for(const id of [...conns.keys()]) if(!ids.has(id)){ try{conns.get(id).close();}catch{} conns.delete(id); }
+  return conns.size;
 }
 
 const EVAL="(function(){try{window.__glimpse_bridge_live=Date.now();}catch(e){}"+
@@ -359,48 +370,42 @@ const EVAL="(function(){try{window.__glimpse_bridge_live=Date.now();}catch(e){}"
 process.on("SIGINT", ()=>{ emit({type:"closed",reason:"bridge_stopped"}); process.exit(0); });
 process.on("SIGTERM",()=>{ emit({type:"closed",reason:"bridge_stopped"}); process.exit(0); });
 
-let conn=null, backoff=500, replayed=false, announcedClosed=false;
+let backoff=500, ready=false, everUp=false;
 const emitted=new Set();   // turn ids emitted this run → never double-emit (replay + drain)
+function replayPending(){
+  try{ const out=execFileSync("bash",[BIN,"__pending"],{encoding:"utf8"});
+    for(const line of out.split("\n")){ if(!line.trim()) continue;
+      try{ const id=JSON.parse(line).id; if(emitted.has(id)) continue; emitted.add(id); }catch{}
+      process.stdout.write(line+"\n"); }
+  }catch{}
+}
 while(true){
-  if(!conn){
-    const c=await tryConnect();
-    if(!c){
-      if(WAIT){ await sleep(backoff); backoff=Math.min(backoff*2,5000); continue; }
+  const n=await syncTargets();
+  if(n===null || n===0){                            // Chrome down, or no canvas tab open
+    if(!everUp && !WAIT){
       emit({type:"error",code:"chrome_unavailable",message:"no canvas tab at "+expectedOrigin+" — run: glimpse open"});
       process.exit(1);
     }
-    conn=c; backoff=500; announcedClosed=false; emit({type:"ready",port:Number(PORT)});
-    if(!replayed){                                  // re-surface questions left unanswered from a prior session
-      replayed=true;
-      try{ const out=execFileSync("bash",[BIN,"__pending"],{encoding:"utf8"});
-        for(const line of out.split("\n")){ if(!line.trim()) continue;
-          try{ const id=JSON.parse(line).id; if(emitted.has(id)) continue; emitted.add(id); }catch{}
-          process.stdout.write(line+"\n"); }
-      }catch{}
-    }
+    if(ready){ emit({type:"closed",reason:n===null?"chrome_died":"canvas_navigated"}); ready=false; }
+    await sleep(backoff); backoff=Math.min(backoff*2,5000); continue;
   }
-  try{
-    const r=await conn.send("Runtime.evaluate",{expression:EVAL,returnByValue:true});
-    const v=r&&r.result&&r.result.value;
-    const data=v?JSON.parse(v):null;
-    if(!data || data.origin!==expectedOrigin) throw new Error("canvas_navigated");  // never trust a foreign page's outbox
+  backoff=500; everUp=true;
+  if(!ready){ ready=true; emit({type:"ready",port:Number(PORT)}); replayPending(); }  // re-surface unanswered turns on every (re)connect; emitted-set dedups
+  for(const [id,c] of [...conns]){
+    let data=null;
+    try{ const r=await c.send("Runtime.evaluate",{expression:EVAL,returnByValue:true}); data=JSON.parse(r.result.value); }
+    catch(e){ try{c.close();}catch{} conns.delete(id); continue; }   // tab closed/crashed → drop, re-added on next sync
+    if(!data || data.origin!==expectedOrigin) continue;
     for(const m of (data.outbox||[])){
       if(!m||!m.id||seen.has(m.id)) continue;
       let turnId;
       try{ turnId=persistUser(m); }
-      catch(e){ emit({type:"error",code:"persist_failed",message:String((e&&e.message)||e).split("\n").pop()});
-                seen.add(m.id); saveState(); continue; }
+      catch(e){ emit({type:"error",code:"persist_failed",message:String((e&&e.message)||e).split("\n").pop()}); seen.add(m.id); saveState(); continue; }
       seen.add(m.id); saveState();
-      if(emitted.has(turnId)) continue;             // already surfaced via replay this run
+      if(emitted.has(turnId)) continue;
       emitted.add(turnId);
       emit({type:"question",id:turnId,slug:m.slug,quote:m.quote||"",text:m.text||"",anchor:m.anchor||null});
     }
-    announcedClosed=false;
-  }catch(e){
-    const reason=(e&&e.message==="canvas_navigated")?"canvas_navigated":"chrome_died";
-    if(!announcedClosed){ emit({type:"closed",reason}); announcedClosed=true; }
-    try{ conn.close(); }catch{}
-    conn=null; await sleep(backoff); backoff=Math.min(backoff*2,5000); continue;
   }
   await sleep(500);
 }

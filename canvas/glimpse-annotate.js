@@ -190,7 +190,9 @@
     ".badge{ flex:0 0 auto; width:18px; height:18px; border-radius:5px; color:#fff; font-weight:700;",
     "  font-size:11px; display:flex; align-items:center; justify-content:center; }",
     ".quote{ flex:1; min-width:0; font-size:11.5px; opacity:.75; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }",
-    ".body{ padding:8px 10px; display:flex; flex-direction:column; gap:8px; max-height:340px; overflow:auto; }",
+    // No inner scroll container — an overflow:auto bubble would swallow wheel events
+    // over the gutter and block page scroll. Long threads stay short via collapse.
+    ".body{ padding:8px 10px; display:flex; flex-direction:column; gap:8px; }",
     ".turn{ font-size:13px; }",
     ".turn.u{ opacity:.92; }",
     ".turn.a{ background:" + hexToRgba(dark ? "#7aa2f7" : "#3b5bdb", dark ? 0.1 : 0.07) + "; padding:7px 9px; border-radius:6px; }",
@@ -222,7 +224,9 @@
     ".hint{ position:fixed; right:16px; bottom:16px; pointer-events:none; z-index:2147483646;",
     "  background:" + (dark ? "rgba(28,32,48,.95)" : "rgba(26,29,36,.92)") + "; color:#fff; font-size:12px;",
     "  padding:7px 12px; border-radius:7px; transition:opacity .4s; }",
-    ".inline{ display:block; margin:8px 0; pointer-events:auto; }"
+    ".inline{ display:block; margin:8px 0; pointer-events:auto; }",
+    // spotlight: dims everything except the anchored passage when a comment is clicked
+    ".spot{ position:fixed; border-radius:4px; box-shadow:0 0 0 9999px rgba(0,0,0,.5); pointer-events:none; z-index:2147483645; transition:opacity .25s; }"
   ].join("\n");
   shadow.appendChild(style);
 
@@ -272,7 +276,7 @@
     if (!pointerDown) try { askBtn.focus(); } catch (e2) {}
   }, 120));
   document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") hideToolbar();
+    if (e.key === "Escape") { hideToolbar(); clearSpot(); }
     if (e.key === "]" || e.key === "[") jumpThread(e.key === "]" ? 1 : -1);
   });
 
@@ -445,6 +449,11 @@
       }
     }
     b.appendChild(body);
+    // Click the card (but not its controls) → jump to + spotlight the passage.
+    b.addEventListener("click", function (e) {
+      if (e.target.closest && e.target.closest("button, textarea, .more")) return;
+      revealComment(q.cid);
+    });
     rail.appendChild(b);
     b._mark = firstMark || null;
   }
@@ -476,7 +485,10 @@
           b.style.width = w + "px"; b.style.right = "auto";
           top = r ? r.bottom + 6 : lastBottom + 4;
           if (top < lastBottom) top = lastBottom;
-          b.style.left = (r ? Math.max(8, Math.min(r.left, vw - w - 8)) : 8) + "px";
+          // `left` is relative to the fixed rail (its left edge sits at vw-GUTTER_W),
+          // so translate the desired viewport-x back into rail coordinates.
+          var vx = r ? Math.max(8, Math.min(r.left, vw - w - 8)) : 8;
+          b.style.left = (vx - (vw - GUTTER_W)) + "px";
         } else {
           b.style.right = "12px"; b.style.left = "auto"; b.style.width = "";
           top = r ? r.top : lastBottom + 4;   // unanchored → flow under the previous
@@ -487,7 +499,10 @@
       }
     });
   }
-  window.addEventListener("scroll", queueReposition, true);
+  window.addEventListener("scroll", function () { queueReposition(); if (spotEl && Date.now() - spotAt > 500) clearSpot(); }, true);   // guard skips our own scrollIntoView
+  // Clicks inside the shadow UI retarget to the host (#__glimpse_layer) at the
+  // document level, so guard on the host id, not ".bubble".
+  document.addEventListener("mousedown", function (e) { if (spotEl && !(e.target.closest && e.target.closest("#__glimpse_layer, mark.glimpse-mark"))) clearSpot(); }, true);
   window.addEventListener("resize", function () { renderAll(); });
 
   /* =========================================================================
@@ -590,6 +605,25 @@
     if (b._mark && b._mark.scrollIntoView) b._mark.scrollIntoView({ block: "center", behavior: "smooth" });
     b.style.outline = "2px solid " + (questions[cid] ? questions[cid].color : "#7aa2f7");
     setTimeout(function () { b.style.outline = ""; }, 1200);
+  }
+
+  // Click a comment → scroll its passage to center and spotlight it (dim the rest).
+  var spotEl = null, spotTimer = null, spotAt = 0;
+  function clearSpot() { if (spotTimer) { clearTimeout(spotTimer); spotTimer = null; } if (spotEl) { spotEl.remove(); spotEl = null; } }
+  function revealComment(cid) {
+    var mark = document.querySelector('mark.glimpse-mark[data-glimpse-gid="' + cid + '"]');
+    if (!mark) { focusBubble(cid); return; }            // unanchored → just flash the bubble
+    mark.scrollIntoView({ block: "center", behavior: "smooth" });
+    setTimeout(function () {                              // place the spotlight after the scroll settles
+      clearSpot();
+      var r = mark.getBoundingClientRect();
+      spotEl = el("div", "spot");
+      spotEl.style.left = (r.left - 6) + "px"; spotEl.style.top = (r.top - 4) + "px";
+      spotEl.style.width = (r.width + 12) + "px"; spotEl.style.height = (r.height + 8) + "px";
+      shadow.appendChild(spotEl); spotAt = Date.now();
+      // stays until the user scrolls / clicks away / Esc; 6s safety auto-clear
+      spotTimer = setTimeout(function () { if (spotEl) { spotEl.style.opacity = "0"; setTimeout(clearSpot, 300); } }, 6000);
+    }, 300);
   }
   function bubbleEl(cid) { return shadow.getElementById("glb-" + cid); }
 
