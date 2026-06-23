@@ -146,6 +146,25 @@ How it works, and why it's safe:
 Try it: `glimpse publish demo "Highlight demo" ~/.glimpse/examples/highlight-chat-demo.html`,
 open the canvas, run `glimpse bridge`, then select a sentence and ask.
 
+### Always-on (daemon + menu-bar app)
+
+`glimpse bridge` answers via your live agent session. For a canvas that answers
+on its own, use the daemon — it auto-answers each question through a local
+Anthropic-compatible proxy:
+
+```bash
+glimpse daemon          # bridge + auto-answer; logs proxy_unavailable if the API is down
+glimpse menubar         # macOS menu-bar app (👁): click to toggle, "Start at login" = always-on
+```
+
+Env: `GLIMPSE_PROXY_URL` (default from `ANTHROPIC_BASE_URL`, else
+`http://127.0.0.1:8787/v1/messages`), `GLIMPSE_API_KEY`/`POE_API_KEY`,
+`GLIMPSE_MODEL` (default `claude-haiku-4-5`). The daemon is **Q&A only**: it
+answers about the highlighted passage, treats the text as untrusted, uses no
+tools, and writes nothing but the answer. Only one reader runs at a time (the
+bridge/daemon share a lockfile), so the menu-bar app and a manual `glimpse bridge`
+won't double-answer.
+
 ## Reading & driving the web
 
 ```bash

@@ -5,6 +5,17 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 ### Added
+- **Always-on agent: `glimpse daemon` + a macOS menu-bar app.** `glimpse daemon`
+  is the bridge plus auto-answering each highlighted question by calling a local
+  Anthropic-compatible proxy (`GLIMPSE_PROXY_URL`, default derived from
+  `ANTHROPIC_BASE_URL` or `http://127.0.0.1:8787/v1/messages`; key from
+  `GLIMPSE_API_KEY`/`POE_API_KEY`; model `GLIMPSE_MODEL`, default
+  `claude-haiku-4-5`) and writing the reply — so the canvas answers without a
+  human session. Q&A only: the question text is untrusted data, never executed;
+  emits `proxy_unavailable` on failure. `glimpse menubar` launches a `rumps`
+  status-bar app (👁) to **click-to-toggle** online/offline, "Open canvas", and
+  "Start at login" (a LaunchAgent that sources `~/.config/secrets.env`) for true
+  always-on. Menu-bar app is macOS-only; `glimpse daemon` is the cross-platform CLI.
 - **Highlight-to-chat**: select any passage in an artifact and ask the agent about
   it; the answer threads as an inline margin comment anchored to the highlight, and
   the conversation is persisted per-document (`~/.glimpse/threads/<slug>.json`) so it

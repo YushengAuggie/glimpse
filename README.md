@@ -170,6 +170,24 @@ glimpse thread <slug>   # reload the conversation in a fresh session
 See [`docs/USAGE.md`](docs/USAGE.md) for the full loop and [`docs/DESIGN.md`](docs/DESIGN.md)
 for the trust model.
 
+### Always-on (no session needed)
+
+By default a question is answered by the agent session that runs `glimpse bridge`.
+To keep the canvas answerable **without** a live session, run the daemon — it
+auto-answers each highlighted question via a local Anthropic-compatible API proxy:
+
+```bash
+glimpse daemon          # bridge + auto-answer; survives on its own
+glimpse menubar         # macOS menu-bar app (👁): click to toggle online/offline,
+                        # "Start at login" for always-on   (needs: pip install rumps)
+```
+
+Config via env: `GLIMPSE_PROXY_URL` (default from `ANTHROPIC_BASE_URL`, else
+`http://127.0.0.1:8787/v1/messages`), `GLIMPSE_API_KEY` (or `POE_API_KEY`),
+`GLIMPSE_MODEL` (default `claude-haiku-4-5`). The daemon is **Q&A only** — it
+answers about the highlighted passage and never acts on the text (treated as
+untrusted), uses no tools, and touches no files beyond writing the answer.
+
 ---
 
 ## Agent integration
@@ -209,6 +227,8 @@ glimpse bridge [--wait]              stream highlight-questions as JSON lines (r
 glimpse reply <slug> "answer" --to <turnId>   answer a highlighted question
 glimpse thread <slug> [--json|--clear]   print one conversation thread
 glimpse threads                      list conversation threads
+glimpse daemon [--wait]              always-on: bridge + auto-answer via the local API proxy
+glimpse menubar                      macOS menu-bar app to toggle / keep the agent online
 glimpse list                         list artifacts (pinned first)
 glimpse rm <slug>...                 delete artifacts (feed + disk)
 glimpse clear --all | --keep N       prune artifacts (pinned always kept)
