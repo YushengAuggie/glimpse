@@ -32,7 +32,32 @@ SECRETS = (
     Path.home() / ".config" / "secrets.env"
 )  # sourced by the login item for the API key
 
-TITLE = {"online": "👁🟢", "offline": "👁⚪", "starting": "👁🟡"}
+HERE = Path(__file__).resolve().parent
+
+
+def _icon(name):
+    # The Glimpse favicon, rendered to PNG. Look next to the script (installed
+    # copy in ~/.glimpse), in the repo's assets/, and in ~/.glimpse.
+    for p in (
+        HERE / name,
+        HERE.parent / "assets" / name,
+        Path.home() / ".glimpse" / name,
+    ):
+        if p.exists():
+            return str(p)
+    return None
+
+
+ICON = {
+    "online": _icon("menubar-on.png"),
+    "offline": _icon("menubar-off.png"),
+    "starting": _icon("menubar-off.png"),
+}
+TITLE = {
+    "online": "👁🟢",
+    "offline": "👁⚪",
+    "starting": "👁🟡",
+}  # fallback if PNGs are missing
 STATUS = {
     "online": "🟢 Online — answering",
     "offline": "⚪️ Offline",
@@ -42,7 +67,8 @@ STATUS = {
 
 class GlimpseMenuBar(rumps.App):
     def __init__(self):
-        super().__init__("Glimpse", title=TITLE["offline"], quit_button=None)
+        super().__init__("Glimpse", quit_button=None)
+        self.template = False  # keep the icon's color (it's the dark-tile favicon)
         self.daemon = None
         self.status_item = rumps.MenuItem(STATUS["offline"])
         self.status_item.set_callback(None)  # non-interactive label
@@ -58,6 +84,7 @@ class GlimpseMenuBar(rumps.App):
             None,
             rumps.MenuItem("Quit", callback=self.quit_app),
         ]
+        self._set_state("offline")  # show the icon immediately
         self._hide_dock_icon()
         # Watchdog: reflect reality if the daemon dies on its own.
         self._timer = rumps.Timer(self._tick, 5)
@@ -67,7 +94,12 @@ class GlimpseMenuBar(rumps.App):
 
     # ---- state ----------------------------------------------------------
     def _set_state(self, state):
-        self.title = TITLE[state]
+        ic = ICON.get(state)
+        if ic:
+            self.icon = ic
+            self.title = None
+        else:
+            self.title = TITLE[state]  # PNGs missing → show the emoji fallback
         self.status_item.title = STATUS[state]
         self.toggle_item.title = "Go Offline" if state == "online" else "Go Online"
 

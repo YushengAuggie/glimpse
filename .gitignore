@@ -4,6 +4,9 @@ artifacts/
 feed.json
 .server.log
 *.png
+# brand assets (menu-bar icon) — tracked despite *.png
+!assets/menubar-on.png
+!assets/menubar-off.png
 .DS_Store
 
 # Secrets / credentials — never commit these
