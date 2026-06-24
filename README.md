@@ -243,7 +243,10 @@ glimpse doctor                       check dependencies and running state
 
 Config via env: `GLIMPSE_DIR`, `GLIMPSE_PORT` (4321), `GLIMPSE_CDP_PORT`
 (9222), `GLIMPSE_PROFILE`, `GLIMPSE_CHROME`, `GLIMPSE_ANNOTATE` (`0` disables
-highlight-chat injection).
+highlight-chat injection). Daemon: `GLIMPSE_API_KEY` (or `POE_API_KEY`),
+`GLIMPSE_PROXY_URL` (default from `ANTHROPIC_BASE_URL`, else
+`http://127.0.0.1:8787/v1/messages` — a local Anthropic-compatible gateway),
+`GLIMPSE_MODEL` (default `claude-haiku-4-5`).
 
 ---
 

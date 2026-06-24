@@ -14,6 +14,7 @@ binary path is passed in `GLIMPSE_BIN_PATH`.
 """
 
 import os
+import sys
 import shutil
 import subprocess
 import plistlib
@@ -31,6 +32,9 @@ PLIST = LAUNCH_AGENTS / "com.glimpse.menubar.plist"
 SECRETS = (
     Path.home() / ".config" / "secrets.env"
 )  # sourced by the login item for the API key
+GLIMPSE_DIR = Path(os.environ.get("GLIMPSE_DIR") or (Path.home() / ".glimpse"))
+PIDFILE = GLIMPSE_DIR / ".menubar.pid"  # single-instance guard
+DAEMON_LOG = GLIMPSE_DIR / ".daemon.log"  # daemon stderr → surfaced on failure
 
 HERE = Path(__file__).resolve().parent
 
@@ -94,6 +98,7 @@ class GlimpseMenuBar(rumps.App):
 
     # ---- state ----------------------------------------------------------
     def _set_state(self, state):
+        self._state = state  # authoritative state (don't infer from self.title — it's None with icons)
         ic = ICON.get(state)
         if ic:
             self.icon = ic
@@ -122,17 +127,31 @@ class GlimpseMenuBar(rumps.App):
         except Exception:
             pass
         try:
+            GLIMPSE_DIR.mkdir(parents=True, exist_ok=True)
+            self._logf = open(
+                DAEMON_LOG, "w"
+            )  # capture stderr so failures aren't silent
             self.daemon = subprocess.Popen(
                 [GLIMPSE, "daemon", "--wait"],
                 env=os.environ,
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stderr=self._logf,
             )
             self._set_state("online")
         except Exception as e:
             self.daemon = None
             self._set_state("offline")
             rumps.notification("Glimpse", "Could not start the agent", str(e))
+
+    def _daemon_log_tail(self):
+        try:
+            return (
+                DAEMON_LOG.read_text().strip().splitlines()[-1]
+                if DAEMON_LOG.exists()
+                else ""
+            )
+        except Exception:
+            return ""
 
     def go_offline(self, *_):
         if self._alive():
@@ -159,9 +178,16 @@ class GlimpseMenuBar(rumps.App):
             rumps.notification("Glimpse", "Could not open the canvas", str(e))
 
     def _tick(self, _):
-        if self.title == TITLE["online"] and not self._alive():
+        # If we believe we're online but the daemon died, reflect it AND surface why.
+        if self._state == "online" and not self._alive():
             self.daemon = None
             self._set_state("offline")
+            tail = self._daemon_log_tail()
+            rumps.notification(
+                "Glimpse",
+                "Agent stopped",
+                tail or "The daemon exited. Click the menu-bar icon to retry.",
+            )
 
     # ---- login item -----------------------------------------------------
     def toggle_login(self, sender):
@@ -221,5 +247,36 @@ class GlimpseMenuBar(rumps.App):
             pass
 
 
+def _pid_alive(p):
+    try:
+        os.kill(p, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _claim_single_instance():
+    # Refuse to start a second menu-bar (it would add a duplicate icon + daemon).
+    try:
+        if PIDFILE.exists():
+            old = int((PIDFILE.read_text().strip() or "0"))
+            if old and old != os.getpid() and _pid_alive(old):
+                return False
+        GLIMPSE_DIR.mkdir(parents=True, exist_ok=True)
+        PIDFILE.write_text(str(os.getpid()))
+    except Exception:
+        pass
+    return True
+
+
 if __name__ == "__main__":
-    GlimpseMenuBar().run()
+    if not _claim_single_instance():
+        print("glimpse: menu-bar app is already running", file=sys.stderr)
+        sys.exit(0)
+    try:
+        GlimpseMenuBar().run()
+    finally:
+        try:
+            PIDFILE.unlink()
+        except OSError:
+            pass

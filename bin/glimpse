@@ -33,6 +33,9 @@
 #   GLIMPSE_PROFILE    chrome profile dir    (default: $GLIMPSE_DIR/chrome-profile)
 #   GLIMPSE_CHROME     path to chrome binary (default: auto-detect)
 #   GLIMPSE_ANNOTATE   0 to disable highlight-chat injection globally (default: 1)
+#   GLIMPSE_API_KEY    daemon auto-answer key (falls back to POE_API_KEY / ANTHROPIC_API_KEY)
+#   GLIMPSE_PROXY_URL  daemon answer endpoint (default: $ANTHROPIC_BASE_URL/v1/messages, else http://127.0.0.1:8787/v1/messages)
+#   GLIMPSE_MODEL      daemon answer model    (default: claude-haiku-4-5)
 set -euo pipefail
 
 GLIMPSE_DIR="${GLIMPSE_DIR:-$HOME/.glimpse}"
@@ -247,10 +250,14 @@ try:
         to=os.environ["TO"]
         u=next((t for t in turns if t.get("id")==to and t.get("role")=="user"), None)
         if u is None: raise SystemExit("glimpse: no user turn '%s' in thread '%s'"%(to,slug))
-        if len(turns)>=TURN_CAP: raise SystemExit("glimpse: thread '%s' is full (%d turns)"%(slug,TURN_CAP))
-        ts=now(); tid="%d-%d-%s"%(ts,len(turns)+1,os.urandom(2).hex())
-        turns.append({"id":tid,"role":"agent","replyTo":to,"text":scrub(os.environ.get("TEXT","")),"ts":ts})
-        u["status"]="answered"; out=tid; dirty=True
+        ex=next((t for t in turns if t.get("role")=="agent" and t.get("replyTo")==to), None)
+        if ex:                                   # idempotent: one answer per question (re-delivery is a no-op)
+            out=ex["id"]
+        else:
+            if len(turns)>=TURN_CAP: raise SystemExit("glimpse: thread '%s' is full (%d turns)"%(slug,TURN_CAP))
+            ts=now(); tid="%d-%d-%s"%(ts,len(turns)+1,os.urandom(2).hex())
+            turns.append({"id":tid,"role":"agent","replyTo":to,"text":scrub(os.environ.get("TEXT","")),"ts":ts})
+            u["status"]="answered"; out=tid; dirty=True
     elif action=="clear":
         if not os.path.exists(fp): raise SystemExit("glimpse: no thread '%s'"%slug)
         os.remove(fp)                  # delete outright so it leaves the `threads` listing too
@@ -328,7 +335,7 @@ run_cdp(){ require_node; node --input-type=module -e "$CDP_HELPER"$'\n'"(async()
 # so a silent stream is never ambiguous. Env in: GLIMPSE_BIN, WAIT, PORT, GLIMPSE_DIR.
 read -r -d '' BRIDGE_JS <<'JS' || true
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, renameSync } from "node:fs";
 const PORT=process.env.PORT, DIR=process.env.GLIMPSE_DIR, BIN=process.env.GLIMPSE_BIN, WAIT=process.env.WAIT==="1";
 const expectedOrigin="http://127.0.0.1:"+PORT;
 const statePath=DIR+"/.bridge.state";
@@ -351,14 +358,21 @@ function buildMessages(q){
   let turns=[]; try{ turns=(JSON.parse(readFileSync(DIR+"/threads/"+q.slug+".json","utf8")).turns)||[]; }catch{}
   const me=turns.find(t=>t.id===q.id);
   const key=me&&me.anchor ? _akey(me.anchor) : null;
-  const mine={}; turns.forEach(t=>{ if(t.role==="user" && _akey(t.anchor)===key) mine[t.id]=1; });
-  const msgs=[];
+  const mine={};
+  if(key===null) mine[q.id]=1;   // unanchored → this question alone (matches the iframe's per-turn keying; no cross-passage bleed)
+  else turns.forEach(t=>{ if(t.role==="user" && _akey(t.anchor)===key) mine[t.id]=1; });
+  const seq=[];
   for(const t of turns){
-    if(t.role==="user" && mine[t.id]){ msgs.push({role:"user", content:(t.text||"").slice(0,2000)}); if(t.id===q.id) break; }
-    else if(t.role==="agent" && mine[t.replyTo]){ msgs.push({role:"assistant", content:(t.text||"").slice(0,4000)}); }
+    if(t.role==="user" && mine[t.id]){ seq.push({role:"user", content:(t.text||"").slice(0,2000)}); if(t.id===q.id) break; }
+    else if(t.role==="agent" && mine[t.replyTo]){ seq.push({role:"assistant", content:(t.text||"").slice(0,4000)}); }
   }
-  if(!msgs.length) msgs.push({role:"user", content:(q.text||"").slice(0,2000)});
-  // prepend the highlighted passage to the first user message
+  if(!seq.length) seq.push({role:"user", content:(q.text||"").slice(0,2000)});
+  // collapse consecutive same-role turns so roles strictly alternate (the API rejects
+  // two user messages in a row — happens if two questions are pending with no reply yet).
+  const msgs=[];
+  for(const m of seq){ const last=msgs[msgs.length-1];
+    if(last && last.role===m.role) last.content += "\n\n" + m.content; else msgs.push({role:m.role, content:m.content}); }
+  // prepend the highlighted passage to the first (user) message
   msgs[0]={role:"user", content:"Highlighted passage:\n\"\"\"\n"+(q.quote||"").slice(0,4000)+"\n\"\"\"\n\n"+msgs[0].content};
   return msgs;
 }
@@ -370,7 +384,7 @@ async function answerOne(q){
   if(!r.ok) throw new Error("proxy HTTP "+r.status);
   const j=await r.json();
   const text=((j.content||[]).filter(c=>c&&c.type==="text").map(c=>c.text).join("").trim())||"(no answer returned)";
-  execFileSync("bash",[BIN,"reply",q.slug,text,"--to",q.id],{encoding:"utf8"});
+  execFileSync("bash",[BIN,"reply",q.slug,"--to",q.id,"--",text],{encoding:"utf8"});
 }
 async function drainAnswers(){
   if(answering) return; answering=true;
@@ -386,7 +400,8 @@ let seen=new Set();
 try{ seen=new Set((JSON.parse(readFileSync(statePath,"utf8")).seen)||[]); }catch{}
 function saveState(){
   const arr=[...seen].slice(-2000);                 // bounded; old marker ids never recur
-  try{ writeFileSync(statePath, JSON.stringify({seen:arr}), {mode:0o600}); }catch{}
+  // atomic: a crash mid-write must not truncate the dedup set (→ re-answers)
+  try{ const tmp=statePath+".tmp"; writeFileSync(tmp, JSON.stringify({seen:arr}), {mode:0o600}); renameSync(tmp, statePath); }catch{}
 }
 // All thread writes funnel through the flocked Python writer via the CLI.
 function persistUser(m){
@@ -678,6 +693,12 @@ cmd_daemon(){
   base="${base:-http://127.0.0.1:8787/v1/messages}"
   export GLIMPSE_ANSWER=1 GLIMPSE_API_KEY="$key" GLIMPSE_PROXY_URL="$base" GLIMPSE_MODEL="${GLIMPSE_MODEL:-claude-haiku-4-5}"
   echo "glimpse: daemon auto-answering via $base (model $GLIMPSE_MODEL)" >&2
+  # Warn (don't die — it may come up later) if the proxy isn't reachable; otherwise
+  # every question silently fails with proxy_unavailable and nothing explains why.
+  local rc=0; curl -s -o /dev/null -m 3 "$base" 2>/dev/null || rc=$?
+  if [ "$rc" = 7 ] || [ "$rc" = 28 ]; then
+    echo "glimpse: warning — proxy $base is unreachable; answers will fail until it's up (set GLIMPSE_PROXY_URL or ANTHROPIC_BASE_URL)" >&2
+  fi
   cmd_bridge "$@"
 }
 
@@ -689,7 +710,7 @@ cmd_menubar(){
   local self; self="$SELF_DIR/$(basename "$SOURCE")"; export GLIMPSE_BIN_PATH="$self"
   if python3 -c "import rumps" >/dev/null 2>&1; then exec python3 "$app"
   elif have uv; then echo "glimpse: launching menu-bar via uv (fetching rumps the first time)…" >&2; exec uv run --with rumps python3 "$app"
-  else die "the menu-bar needs the 'rumps' package — install with:  uv pip install rumps   (or: pip install rumps)"; fi
+  else die "the menu-bar needs the 'rumps' package — install uv (https://docs.astral.sh/uv/) then it's automatic, or:  uv pip install rumps"; fi
 }
 
 cmd_doctor(){
@@ -713,7 +734,12 @@ cmd_doctor(){
   else echo "installed"; fi
   printf "  bridge:      "
   local bp; bp="$(cat "$GLIMPSE_DIR/.bridge.lock" 2>/dev/null || true)"
-  if [ -n "$bp" ] && kill -0 "$bp" 2>/dev/null; then echo "running (pid $bp)"; else echo "not running (start with: glimpse bridge)"; fi
+  if [ -n "$bp" ] && kill -0 "$bp" 2>/dev/null; then echo "running (pid $bp)"; else echo "not running (start with: glimpse bridge / glimpse daemon)"; fi
+  printf "  proxy:       "
+  local pbase="${GLIMPSE_PROXY_URL:-${ANTHROPIC_BASE_URL:+${ANTHROPIC_BASE_URL%/}/v1/messages}}"; pbase="${pbase:-http://127.0.0.1:8787/v1/messages}"
+  local prc=0; curl -s -o /dev/null -m 3 "$pbase" 2>/dev/null || prc=$?
+  if [ "$prc" = 7 ] || [ "$prc" = 28 ]; then echo "unreachable: $pbase (daemon answers will fail)"; else echo "reachable: $pbase"; fi
+  printf "  api key:     "; [ -n "${GLIMPSE_API_KEY:-${POE_API_KEY:-${ANTHROPIC_API_KEY:-}}}" ] && echo "set" || echo "unset (daemon needs GLIMPSE_API_KEY/POE_API_KEY)"
   return $fail
 }
 
@@ -769,6 +795,7 @@ cmd_reply(){
   while [ $# -gt 0 ]; do
     case "$1" in
       --to) to="${2:-}"; shift 2 || die 'usage: glimpse reply <slug> "answer" --to <turnId>';;
+      --)   shift; while [ $# -gt 0 ]; do pos+=("$1"); shift; done;;   # everything after -- is positional (answer may start with "--")
       *)    pos+=("$1"); shift;;
     esac
   done

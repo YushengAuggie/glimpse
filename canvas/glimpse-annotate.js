@@ -67,6 +67,16 @@
     ta.addEventListener("input", function () { c.draft = ta.value; });
     return ta;
   }
+  // Wire a textarea + Send button: disable Send when empty, send on Cmd/Ctrl+Enter
+  // (plain Enter still newlines), and guard against double-send (rapid clicks).
+  function wireSend(c, ta, btn) {
+    var refresh = function () { btn.disabled = !ta.value.trim(); };
+    var fire = function () { if (btn.disabled) return; btn.disabled = true; sendTurn(c, ta.value); };
+    ta.addEventListener("input", refresh);
+    ta.addEventListener("keydown", function (e) { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); fire(); } });
+    btn.addEventListener("click", fire);
+    refresh();
+  }
 
   /* =========================================================================
    * 1. Text-quote anchoring
@@ -207,7 +217,8 @@
     ".bubble{ position:absolute; right:12px; width:" + (GUTTER_W - 24) + "px; pointer-events:auto;",
     "  background:" + (dark ? "#1c2030" : "#ffffff") + "; color:" + (dark ? "#e6e8ee" : "#1a1d24") + ";",
     "  border:1px solid " + (dark ? "#2a3040" : "#e3e6ee") + "; border-radius:8px;",
-    "  box-shadow:0 4px 16px rgba(0,0,0," + (dark ? ".45" : ".12") + "); overflow:hidden;",
+    "  box-shadow:0 4px 16px rgba(0,0,0," + (dark ? ".45" : ".12") + ");",
+    "  max-height:calc(100vh - 56px); overflow-y:auto;",   // tall threads scroll inside so the reply box stays reachable",
     "  transition:max-height .12s ease-out; }",
     ".bubble .hd{ display:flex; align-items:center; gap:8px; padding:8px 10px; border-bottom:1px solid " + (dark ? "#2a3040" : "#eef0f6") + "; }",
     ".badge{ flex:0 0 auto; width:18px; height:18px; border-radius:5px; color:#fff; font-weight:700;",
@@ -217,9 +228,11 @@
     // over the gutter and block page scroll. Long threads stay short via collapse.
     ".body{ padding:8px 10px; display:flex; flex-direction:column; gap:8px; }",
     ".turn{ font-size:13px; }",
-    ".turn.u{ opacity:.92; }",
-    ".turn.a{ background:" + hexToRgba(dark ? "#7aa2f7" : "#3b5bdb", dark ? 0.1 : 0.07) + "; padding:7px 9px; border-radius:6px; }",
-    ".q{ font-weight:600; }",
+    ".turn.u{ opacity:.95; }",
+    ".turn.a{ background:" + hexToRgba(dark ? "#7aa2f7" : "#3b5bdb", dark ? 0.1 : 0.07) + "; padding:7px 9px; border-radius:6px;",
+    "  border-left:2px solid " + hexToRgba(dark ? "#7aa2f7" : "#3b5bdb", 0.55) + "; }",   // mark agent replies vs the user's bold question
+    ".q{ font-weight:650; }",
+    "button[disabled]{ opacity:.45; cursor:default; }",
     ".meta{ font-size:11px; opacity:.6; margin-top:2px; }",
     ".dots span{ display:inline-block; width:5px; height:5px; border-radius:50%; margin-right:3px;",
     "  background:" + (dark ? "#aeb6c6" : "#8a93a6") + "; animation:gl-p 1.2s infinite ease-in-out; }",
@@ -237,7 +250,7 @@
     "button{ font:inherit; font-size:12.5px; border-radius:6px; padding:5px 12px; cursor:pointer; border:1px solid transparent; }",
     ".primary{ background:" + (dark ? "#7aa2f7" : "#3b5bdb") + "; color:#fff; }",
     ".ghost{ background:transparent; color:inherit; border-color:" + (dark ? "#2a3040" : "#d0d5e2") + "; }",
-    ".more{ background:none; border:0; color:" + (dark ? "#7aa2f7" : "#3b5bdb") + "; padding:2px; font-size:12px; cursor:pointer; align-self:flex-start; }",
+    ".more{ background:none; border:0; color:" + (dark ? "#7aa2f7" : "#3b5bdb") + "; padding:4px; font-size:12px; cursor:pointer; width:100%; text-align:center; }",
     ".toolbar{ position:fixed; pointer-events:auto; z-index:2147483647; display:none;",
     "  background:" + (dark ? "#1c2030" : "#1a1d24") + "; border-radius:7px; box-shadow:0 4px 14px rgba(0,0,0,.4); }",
     ".toolbar button{ background:transparent; color:#fff; border:0; padding:6px 12px; font-weight:600; }",
@@ -422,11 +435,12 @@
       // initial composer: quote preview + textarea (Enter = newline) + Cancel / Ask
       var qq = el("div", "turn u"); var qs = el("span", "q"); qs.textContent = "❝" + (c.quote || "selection") + "❞"; qq.appendChild(qs);
       body.appendChild(qq);
-      var ta = mkInput(c, "Ask about this…"); body.appendChild(ta);
+      var ta = mkInput(c, "Ask about this…  (⌘⏎ to send)"); body.appendChild(ta);
       var row = el("div", "row");
       var cancel = el("button", "ghost"); cancel.textContent = "Cancel"; cancel.addEventListener("click", function () { dropComment(c); });
-      var ask = el("button", "primary"); ask.textContent = "Ask"; ask.addEventListener("click", function () { sendTurn(c, ta.value); });
+      var ask = el("button", "primary"); ask.textContent = "Ask";
       row.appendChild(cancel); row.appendChild(ask); body.appendChild(row);
+      wireSend(c, ta, ask);
     } else {
       // the growing conversation: user / agent / user / agent …
       var turns = c.turns || [];
@@ -444,12 +458,12 @@
         var ut = el("div", "turn u"); var usp = el("span", "q"); usp.textContent = t.text; ut.appendChild(usp); body.appendChild(ut);
         var answered = t.status === "answered" || (turns[i + 1] && turns[i + 1].role === "agent");
         if (!answered) {
-          if (t.status === "unsent") {
+          if (t.status === "unsent") {   // always actionable, wherever it sits
             var wm = el("div", "meta"); var wt = el("span", "tag warn"); wt.textContent = "not sent"; wm.appendChild(wt);
             var rt = el("button", "ghost"); rt.textContent = "Retry";
             (function (tt) { rt.addEventListener("click", function () { tt.status = "pending"; renderAll(); resendTurn(c, tt); }); })(t);
             wm.appendChild(rt); body.appendChild(wm);
-          } else {
+          } else if (i === turns.length - 1) {   // pending/offline only on the latest turn (avoid stacked "agent offline")
             var pend = el("div", "meta");
             if (!bridgeLive) { var off = el("span", "tag off"); off.textContent = "agent offline"; pend.appendChild(off); }
             else { var dots = el("div", "dots" + (t.status === "acknowledged" ? " ack" : "")); dots.appendChild(el("span")); dots.appendChild(el("span")); dots.appendChild(el("span")); pend.appendChild(dots); }
@@ -458,11 +472,17 @@
           }
         }
       }
+      if (c._expanded && turns.length > COLLAPSE_AFTER) {
+        var less = el("button", "more"); less.textContent = "Show less";
+        less.addEventListener("click", function () { c._expanded = false; renderAll(); });
+        body.appendChild(less);
+      }
       // follow-up box — keep the conversation going. Enter = newline; Send sends.
-      var fta = mkInput(c, "Reply…  (⏎ = new line)"); body.appendChild(fta);
+      var fta = mkInput(c, "Reply…  (Enter = new line, ⌘⏎ to send)"); body.appendChild(fta);
       var frow = el("div", "row");
-      var send = el("button", "primary"); send.textContent = "Send"; send.addEventListener("click", function () { sendTurn(c, fta.value); });
+      var send = el("button", "primary"); send.textContent = "Send";
       frow.appendChild(send); body.appendChild(frow);
+      wireSend(c, fta, send);
     }
     b.appendChild(body);
     b.addEventListener("click", function (e) {

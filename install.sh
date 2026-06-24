@@ -76,4 +76,5 @@ case ":$PATH:" in
      echo "      then restart your shell";;
 esac
 echo "  Try:  glimpse doctor   then   glimpse open"
-echo "  Uninstall:  rm -f $PREFIX/glimpse && rm -rf $GLIMPSE_DIR $SKILLS_DIR/canvas $SKILLS_DIR/chrome-cdp"
+echo "  Uninstall:  launchctl bootout gui/\$(id -u)/com.glimpse.menubar 2>/dev/null; rm -f ~/Library/LaunchAgents/com.glimpse.menubar.plist"
+echo "              rm -f $PREFIX/glimpse && rm -rf $GLIMPSE_DIR $SKILLS_DIR/canvas $SKILLS_DIR/chrome-cdp"

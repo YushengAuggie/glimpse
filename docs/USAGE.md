@@ -153,9 +153,13 @@ on its own, use the daemon — it auto-answers each question through a local
 Anthropic-compatible proxy:
 
 ```bash
-glimpse daemon          # bridge + auto-answer; logs proxy_unavailable if the API is down
-glimpse menubar         # macOS menu-bar app (👁): click to toggle, "Start at login" = always-on
+glimpse daemon          # bridge + auto-answer; warns if the proxy is unreachable, logs proxy_unavailable per failed question
+glimpse menubar         # macOS only — menu-bar app (👁): click to toggle, "Start at login" = always-on
+                        # (on Linux, run `glimpse daemon` in a terminal or a systemd user unit)
 ```
+
+"Start at login" installs a LaunchAgent (`~/Library/LaunchAgents/com.glimpse.menubar.plist`).
+To undo it: `launchctl bootout gui/$(id -u)/com.glimpse.menubar; rm ~/Library/LaunchAgents/com.glimpse.menubar.plist`.
 
 Env: `GLIMPSE_PROXY_URL` (default from `ANTHROPIC_BASE_URL`, else
 `http://127.0.0.1:8787/v1/messages`), `GLIMPSE_API_KEY`/`POE_API_KEY`,
