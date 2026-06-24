@@ -42,8 +42,31 @@
    * Optimistic entries are created on submit for instant feedback; the thread
    * push from the shell (read from threads/<slug>.json) is authoritative and is
    * reconciled in by clientTurnId. */
-  var questions = {};   // cid -> {cid, anchor, quote, text, status, answer, num, color, unanchored}
-  var order = [];       // cids in creation order (drives the numbered badges)
+  // A "comment" is a conversation anchored to one passage. It grows: user turn,
+  // agent turn, follow-up user turn, … Grouped by the anchor so a follow-up lands
+  // in the SAME comment (one mark, one bubble).
+  var comments = [];    // [{gid, key, anchor, quote, num, color, unanchored, state, turns:[], draft, _expanded}]
+  var byKey = {};       // anchorKey -> comment
+  var gidSeq = 0;       // safe DOM id source (anchor text is unsafe as an id)
+  function anchorKey(a) { return (a && a.exact) ? ("a:" + a.exact + "#" + (a.occurrence || 0)) : null; }
+  function getByGid(gid) { for (var i = 0; i < comments.length; i++) if (comments[i].gid === gid) return comments[i]; return null; }
+  function newComment(anchor, quote) {
+    var c = { gid: "c" + (++gidSeq), key: anchorKey(anchor), anchor: anchor || null, quote: quote || "",
+              num: comments.length + 1, color: hueFor(comments.length), unanchored: !anchor,
+              state: "composing", turns: [], draft: "", _expanded: false };
+    comments.push(c); if (c.key) byKey[c.key] = c;
+    return c;
+  }
+  // A textarea bound to the comment's draft. Enter inserts a NEWLINE (never sends);
+  // sending is the button's job only.
+  function mkInput(c, placeholder) {
+    var ta = document.createElement("textarea");
+    ta.setAttribute("aria-label", "Your message about the selected passage");
+    ta.placeholder = placeholder;
+    ta.value = c.draft || "";
+    ta.addEventListener("input", function () { c.draft = ta.value; });
+    return ta;
+  }
 
   /* =========================================================================
    * 1. Text-quote anchoring
@@ -310,40 +333,35 @@
   });
 
   function openComposer(anchor, quote) {
-    var cid = uuid();
-    var num = order.length + 1;
-    var color = hueFor(order.length);
-    questions[cid] = { cid: cid, anchor: anchor, quote: quote, text: "", status: "composing", answers: [], num: num, color: color, unanchored: !anchor };
-    order.push(cid);
+    var k = anchorKey(anchor);
+    var c = (k && byKey[k]) ? byKey[k] : newComment(anchor, quote);   // re-asking on a passage reuses its comment
     renderAll();
-    var b = bubbleEl(cid); if (!b) return;
-    var ta = b.querySelector("textarea"); if (ta) { ta.focus(); }
+    var b = bubbleEl(c.gid); var ta = b && b.querySelector("textarea"); if (ta) ta.focus();
   }
 
-  // One-click question with a canned prompt (the Explain button): create the
-  // thread entry and submit immediately, skipping the composer.
+  // One-click question with a canned prompt (the Explain button): create/append
+  // the turn and send immediately, skipping the composer.
   function quickAsk(anchor, quote, text) {
-    var cid = uuid();
-    questions[cid] = { cid: cid, anchor: anchor, quote: quote, text: "", status: "composing", answers: [], num: order.length + 1, color: hueFor(order.length), unanchored: !anchor };
-    order.push(cid);
-    submit(cid, text);
+    var k = anchorKey(anchor);
+    var c = (k && byKey[k]) ? byKey[k] : newComment(anchor, quote);
+    sendTurn(c, text);
   }
 
   /* =========================================================================
-   * 4. Rendering — marks + bubbles, driven by `questions`
+   * 4. Rendering — marks + bubbles, driven by `comments`
    * ======================================================================= */
   var repositionQueued = false, narrowMode = false;
   function renderAll() {
     // Preserve an in-progress compose across the teardown below — a periodic
     // liveness/thread push must never eat what the user is typing.
-    var focusCid = null, caretA = 0, caretB = 0;
+    var focusGid = null, caretA = 0, caretB = 0;
     var ae = shadow.activeElement;
     if (ae && ae.tagName === "TEXTAREA" && ae.closest) {
       var ab = ae.closest(".bubble");
       if (ab && ab.id.indexOf("glb-") === 0) {
-        focusCid = ab.id.slice(4);
+        focusGid = ab.id.slice(4);
         try { caretA = ae.selectionStart; caretB = ae.selectionEnd; } catch (e) {}
-        var fq = questions[focusCid]; if (fq) fq.draft = ae.value;
+        var fc = getByGid(focusGid); if (fc) fc.draft = ae.value;
       }
     }
     setObserving(false);
@@ -352,107 +370,104 @@
     narrowMode = window.innerWidth < (700 + GUTTER_W);   // no room for a side rail → callouts under the line
     rail.textContent = "";
     var firstMarks = {};
-    // place marks
-    for (var i = 0; i < order.length; i++) {
-      var q = questions[order[i]];
-      q.unanchored = false;
-      if (q.anchor) {
-        var span = resolveAnchor(q.anchor, model);
+    // place one mark per comment
+    for (var i = 0; i < comments.length; i++) {
+      var c = comments[i];
+      c.unanchored = false;
+      if (c.anchor) {
+        var span = resolveAnchor(c.anchor, model);
         if (span) {
-          var first = markRange(model, span[0], span[1], q.cid, tint(q.color));
+          var first = markRange(model, span[0], span[1], c.gid, tint(c.color));
           if (first) {
-            firstMarks[q.cid] = first;
-            first.setAttribute("aria-describedby", "glb-" + q.cid);
+            firstMarks[c.gid] = first;
+            first.setAttribute("aria-describedby", "glb-" + c.gid);
             first.tabIndex = 0; first.setAttribute("role", "button");
-            first.setAttribute("aria-label", "Annotation " + q.num + " — open discussion");
-            (function (cid) {
-              first.addEventListener("click", function () { focusBubble(cid); });
-              first.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); focusBubble(cid); } });
-            })(q.cid);
-            addBadge(first, q.num, q.color);
-          } else q.unanchored = true;
-        } else q.unanchored = true;
-      } else q.unanchored = true;
+            first.setAttribute("aria-label", "Annotation " + c.num + " — open discussion");
+            (function (gid) {
+              first.addEventListener("click", function () { focusBubble(gid); });
+              first.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); focusBubble(gid); } });
+            })(c.gid);
+            addBadge(first, c.num, c.color);
+          } else c.unanchored = true;
+        } else c.unanchored = true;
+      } else c.unanchored = true;
     }
     setTimeout(function () { setObserving(true); }, 0);
-    // build bubbles
-    for (var j = 0; j < order.length; j++) {
-      renderBubble(questions[order[j]], narrowMode, firstMarks[order[j]]);
+    for (var j = 0; j < comments.length; j++) {
+      renderBubble(comments[j], narrowMode, firstMarks[comments[j].gid]);
     }
-    // restore the compose textarea's focus + caret if it was active
-    if (focusCid && questions[focusCid] && questions[focusCid].status === "composing") {
-      var rb = shadow.getElementById("glb-" + focusCid);
+    // restore the active textarea's focus + caret
+    if (focusGid) {
+      var rb = shadow.getElementById("glb-" + focusGid);
       var rta = rb && rb.querySelector("textarea");
       if (rta) { rta.focus(); try { rta.setSelectionRange(caretA, caretB); } catch (e) {} }
     }
     queueReposition();
   }
 
-  function renderBubble(q, narrow, firstMark) {
-    var b = el("div", "bubble"); b.id = "glb-" + q.cid;
+  function renderBubble(c, narrow, firstMark) {
+    var b = el("div", "bubble"); b.id = "glb-" + c.gid;
     b.setAttribute("role", "complementary");
-    b.setAttribute("aria-label", "Discussion " + q.num + ": " + (q.quote || "selection").slice(0, 60));
+    b.setAttribute("aria-label", "Discussion " + c.num + ": " + (c.quote || "selection").slice(0, 60));
     b.tabIndex = -1;
-    // header
     var hd = el("div", "hd");
-    var badge = el("div", "badge"); badge.style.background = q.color; badge.textContent = String(q.num);
-    var quote = el("div", "quote"); quote.textContent = q.quote || "(selection)";
+    var badge = el("div", "badge"); badge.style.background = c.color; badge.textContent = String(c.num);
+    var quote = el("div", "quote"); quote.textContent = c.quote || "(selection)";
     hd.appendChild(badge); hd.appendChild(quote);
-    if (q.unanchored) { var w = el("span", "tag warn"); w.textContent = "passage changed"; hd.appendChild(w); }
+    if (c.unanchored) { var w = el("span", "tag warn"); w.textContent = "passage changed"; hd.appendChild(w); }
     b.appendChild(hd);
-    // body
+
     var body = el("div", "body");
-    if (q.status === "composing") {
-      var ta = document.createElement("textarea");
-      ta.setAttribute("aria-label", "Your question about the selected text");
-      ta.placeholder = "Ask about this…";
-      ta.value = q.draft || "";                       // survive re-renders mid-type
-      ta.addEventListener("input", function () { q.draft = ta.value; });
-      ta.addEventListener("keydown", function (e) {
-        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(q.cid, ta.value); }
-      });
-      var qline = el("div"); var qq = el("div", "turn u"); var qs = el("span", "q"); qs.textContent = "❝" + (q.quote || "selection") + "❞"; qq.appendChild(qs); qline.appendChild(qq);
-      body.appendChild(qline);
-      body.appendChild(ta);
+    if (c.state === "composing") {
+      // initial composer: quote preview + textarea (Enter = newline) + Cancel / Ask
+      var qq = el("div", "turn u"); var qs = el("span", "q"); qs.textContent = "❝" + (c.quote || "selection") + "❞"; qq.appendChild(qs);
+      body.appendChild(qq);
+      var ta = mkInput(c, "Ask about this…"); body.appendChild(ta);
       var row = el("div", "row");
-      var cancel = el("button", "ghost"); cancel.textContent = "Cancel"; cancel.addEventListener("click", function () { dropQuestion(q.cid); });
-      var send = el("button", "primary"); send.textContent = "Ask"; send.addEventListener("click", function () { submit(q.cid, ta.value); });
-      row.appendChild(cancel); row.appendChild(send); body.appendChild(row);
+      var cancel = el("button", "ghost"); cancel.textContent = "Cancel"; cancel.addEventListener("click", function () { dropComment(c); });
+      var ask = el("button", "primary"); ask.textContent = "Ask"; ask.addEventListener("click", function () { sendTurn(c, ta.value); });
+      row.appendChild(cancel); row.appendChild(ask); body.appendChild(row);
     } else {
-      // question turn
-      var ut = el("div", "turn u"); var us = el("span", "q"); us.textContent = q.text; ut.appendChild(us); body.appendChild(ut);
-      var ans = q.answers || [];
-      // collapse: when a thread grows past COLLAPSE_AFTER, hide older answers behind a toggle
+      // the growing conversation: user / agent / user / agent …
+      var turns = c.turns || [];
       var start = 0;
-      if (ans.length + 1 > COLLAPSE_AFTER && !q._expanded) start = ans.length - (COLLAPSE_AFTER - 1);
+      if (turns.length > COLLAPSE_AFTER && !c._expanded) start = turns.length - COLLAPSE_AFTER;
       if (start > 0) {
         var more = el("button", "more"); more.textContent = "Show " + start + " earlier";
-        more.addEventListener("click", function () { q._expanded = true; renderAll(); });
+        more.addEventListener("click", function () { c._expanded = true; renderAll(); });
         body.appendChild(more);
       }
-      for (var ai = start; ai < ans.length; ai++) {
-        var at = el("div", "turn a"); at.textContent = ans[ai]; body.appendChild(at);
-      }
-      if (!ans.length) {
-        if (q.status === "unsent") {                 // ack watchdog fired — let the user retry
-          var w = el("div", "meta"); var wt = el("span", "tag warn"); wt.textContent = "not sent"; w.appendChild(wt);
-          var retry = el("button", "ghost"); retry.textContent = "Retry";
-          retry.addEventListener("click", function () { submit(q.cid, q.text); });
-          w.appendChild(retry); body.appendChild(w);
-        } else {
-          var pend = el("div", "meta");
-          if (!bridgeLive) { var off = el("span", "tag off"); off.textContent = "agent offline"; pend.appendChild(off); }
-          else { var dots = el("div", "dots" + (q.status === "acknowledged" ? " ack" : "")); dots.appendChild(el("span")); dots.appendChild(el("span")); dots.appendChild(el("span")); pend.appendChild(dots); }
-          var ago = el("span"); ago.textContent = q.status === "acknowledged" ? "  sent · waiting" : "  asked"; pend.appendChild(ago);
-          body.appendChild(pend);
+      for (var i = start; i < turns.length; i++) {
+        var t = turns[i];
+        if (t.role === "agent") { var at = el("div", "turn a"); at.textContent = t.text; body.appendChild(at); continue; }
+        // user turn
+        var ut = el("div", "turn u"); var usp = el("span", "q"); usp.textContent = t.text; ut.appendChild(usp); body.appendChild(ut);
+        var answered = t.status === "answered" || (turns[i + 1] && turns[i + 1].role === "agent");
+        if (!answered) {
+          if (t.status === "unsent") {
+            var wm = el("div", "meta"); var wt = el("span", "tag warn"); wt.textContent = "not sent"; wm.appendChild(wt);
+            var rt = el("button", "ghost"); rt.textContent = "Retry";
+            (function (tt) { rt.addEventListener("click", function () { tt.status = "pending"; renderAll(); resendTurn(c, tt); }); })(t);
+            wm.appendChild(rt); body.appendChild(wm);
+          } else {
+            var pend = el("div", "meta");
+            if (!bridgeLive) { var off = el("span", "tag off"); off.textContent = "agent offline"; pend.appendChild(off); }
+            else { var dots = el("div", "dots" + (t.status === "acknowledged" ? " ack" : "")); dots.appendChild(el("span")); dots.appendChild(el("span")); dots.appendChild(el("span")); pend.appendChild(dots); }
+            var ago = el("span"); ago.textContent = t.status === "acknowledged" ? "  sent · waiting" : "  asked"; pend.appendChild(ago);
+            body.appendChild(pend);
+          }
         }
       }
+      // follow-up box — keep the conversation going. Enter = newline; Send sends.
+      var fta = mkInput(c, "Reply…  (⏎ = new line)"); body.appendChild(fta);
+      var frow = el("div", "row");
+      var send = el("button", "primary"); send.textContent = "Send"; send.addEventListener("click", function () { sendTurn(c, fta.value); });
+      frow.appendChild(send); body.appendChild(frow);
     }
     b.appendChild(body);
-    // Click the card (but not its controls) → jump to + spotlight the passage.
     b.addEventListener("click", function (e) {
       if (e.target.closest && e.target.closest("button, textarea, .more")) return;
-      revealComment(q.cid);
+      revealComment(c.gid);
     });
     rail.appendChild(b);
     b._mark = firstMark || null;
@@ -508,21 +523,30 @@
   /* =========================================================================
    * 5. Submit + messaging (validated postMessage to/from the shell)
    * ======================================================================= */
-  function submit(cid, value) {
-    var q = questions[cid]; if (!q) return;
+  // Append a user turn to a comment and send it up. Works for the first ask AND
+  // every follow-up — the conversation just keeps growing.
+  function sendTurn(c, value) {
     var text = (value || "").trim(); if (!text) return;
-    q.text = text; q.status = "pending";
+    var cid = uuid();
+    var turn = { role: "user", text: text, status: "pending", cid: cid, _optimistic: true, ts: Date.now() / 1000 };
+    c.turns.push(turn); c.state = "open"; c.draft = "";
     renderAll();
     post({ type: "glimpse:annotate", v: 1, channelId: CHANNEL, intent: "ask",
-           clientTurnId: cid, anchor: q.anchor, quote: q.quote, text: text });
-    // ack watchdog: if the shell never acks, surface a retry hint
-    q._ackTimer = setTimeout(function () {
-      if (questions[cid] && questions[cid].status === "pending") { questions[cid].status = "unsent"; renderAllSoft(); }
-    }, 3000);
+           clientTurnId: cid, anchor: c.anchor, quote: c.quote, text: text });
+    armAck(turn);
   }
-  function dropQuestion(cid) {
-    delete questions[cid];
-    var i = order.indexOf(cid); if (i >= 0) order.splice(i, 1);
+  function resendTurn(c, turn) {
+    post({ type: "glimpse:annotate", v: 1, channelId: CHANNEL, intent: "ask",
+           clientTurnId: turn.cid, anchor: c.anchor, quote: c.quote, text: turn.text });
+    armAck(turn);
+  }
+  function armAck(turn) {
+    if (turn._ackTimer) clearTimeout(turn._ackTimer);
+    turn._ackTimer = setTimeout(function () { if (turn.status === "pending") { turn.status = "unsent"; renderAll(); } }, 3000);
+  }
+  function dropComment(c) {
+    var i = comments.indexOf(c); if (i >= 0) comments.splice(i, 1);
+    if (c.key && byKey[c.key] === c) delete byKey[c.key];
     renderAll();
   }
   function post(msg) { try { window.parent.postMessage(msg, "*"); } catch (e) {} }
@@ -533,8 +557,16 @@
     if (PARENT_ORIGIN && e.origin !== PARENT_ORIGIN) return;
     var d = e.data; if (!d || d.channelId !== CHANNEL) return;
     if (d.type === "glimpse:annotate:ack") {
-      var q = questions[d.clientTurnId];
-      if (q) { if (q._ackTimer) clearTimeout(q._ackTimer); if (q.status === "pending") { q.status = "acknowledged"; renderAllSoft(); } }
+      for (var ci = 0; ci < comments.length; ci++) {
+        var ts = comments[ci].turns;
+        for (var ti = 0; ti < ts.length; ti++) {
+          if (ts[ti].cid === d.clientTurnId) {
+            if (ts[ti]._ackTimer) clearTimeout(ts[ti]._ackTimer);
+            if (ts[ti].status === "pending") { ts[ti].status = "acknowledged"; renderAll(); }
+            return;
+          }
+        }
+      }
     } else if (d.type === "glimpse:thread") {
       ingestThread(d.turns || []);
     } else if (d.type === "glimpse:liveness") {
@@ -543,29 +575,43 @@
     }
   });
 
-  // The thread file is authoritative: reconcile persisted turns into local state.
+  // The thread file is authoritative. Group its turns by anchor into conversations,
+  // preserving in-flight optimistic turns not yet persisted.
   function ingestThread(turns) {
-    var users = [], agentByReply = {};
-    for (var i = 0; i < turns.length; i++) {
-      var t = turns[i];
-      if (t.role === "user") users.push(t);
-      else if (t.role === "agent" && t.replyTo) { (agentByReply[t.replyTo] = agentByReply[t.replyTo] || []).push(t); }
-    }
-    for (var u = 0; u < users.length; u++) {
-      var t2 = users[u];
-      var cid = t2.clientTurnId || t2.id;
-      var q = questions[cid];
-      if (!q) {
-        var num = order.length + 1, color = hueFor(order.length);
-        q = questions[cid] = { cid: cid, anchor: t2.anchor, quote: t2.quote, text: t2.text, status: "pending", answers: [], num: num, color: color, unanchored: false };
-        order.push(cid);
+    var agentByReply = {};
+    turns.forEach(function (t) { if (t.role === "agent" && t.replyTo) { (agentByReply[t.replyTo] = agentByReply[t.replyTo] || []).push(t); } });
+    var users = turns.filter(function (t) { return t.role === "user"; });
+    var keyOf = function (u) { return anchorKey(u.anchor) || ("u:" + u.id); };
+    // ensure a comment exists for each anchor group
+    users.forEach(function (u) {
+      var k = keyOf(u), c = byKey[k];
+      if (!c) {
+        // maybe this persisted turn is one we sent optimistically (match by cid)
+        if (u.clientTurnId) c = comments.filter(function (cc) { return cc.turns.some(function (tt) { return tt.cid === u.clientTurnId; }); })[0];
+        if (!c) c = newComment(u.anchor, u.quote);
+        c.key = k; byKey[k] = c;
       }
-      q.anchor = t2.anchor || q.anchor; q.quote = t2.quote || q.quote; q.text = t2.text || q.text;
-      var alist = agentByReply[t2.id] || [];
-      q.answers = alist.map(function (x) { return x.text; });   // render every reply, in order
-      if (q.answers.length) q.status = "answered";
-      else if (q.status === "composing") q.status = "pending";
-    }
+      c.anchor = u.anchor || c.anchor; c.quote = u.quote || c.quote; c.unanchored = !c.anchor;
+    });
+    // rebuild each comment's turn sequence in THREAD-FILE (chronological) order —
+    // robust to equal/odd timestamps — plus still-in-flight optimistic turns.
+    comments.forEach(function (c) {
+      var mine = {};   // user-turn ids belonging to this comment
+      users.forEach(function (u) { if (keyOf(u) === c.key) mine[u.id] = 1; });
+      if (!Object.keys(mine).length) return;   // purely-optimistic comment not yet persisted
+      var seq = [], threadCids = {};
+      turns.forEach(function (t) {
+        if (t.role === "user" && mine[t.id]) {
+          if (t.clientTurnId) threadCids[t.clientTurnId] = 1;
+          var answered = (agentByReply[t.id] || []).length > 0;
+          seq.push({ role: "user", text: t.text, status: answered ? "answered" : (t.status || "pending"), id: t.id, cid: t.clientTurnId });
+        } else if (t.role === "agent" && mine[t.replyTo]) {
+          seq.push({ role: "agent", text: t.text, id: t.id });
+        }
+      });
+      (c.turns || []).forEach(function (t) { if (t.role === "user" && t._optimistic && t.cid && !threadCids[t.cid]) seq.push(t); });
+      c.turns = seq; c.state = "open";
+    });
     renderAll();
   }
 
@@ -587,7 +633,7 @@
       var tgt = records[i].target;
       if (tgt && tgt.nodeType === 1 && (tgt.closest && (tgt.closest("#__glimpse_layer") || tgt.closest("mark.glimpse-mark")))) continue;
       clearTimeout(reanchorTimer);
-      reanchorTimer = setTimeout(function () { if (order.length) renderAll(); else queueReposition(); }, 400);
+      reanchorTimer = setTimeout(function () { if (comments.length) renderAll(); else queueReposition(); }, 400);
       return;
     }
   }
@@ -596,23 +642,24 @@
   /* ---- thread navigation (]/[) --------------------------------------------- */
   var focusedIdx = -1;
   function jumpThread(dir) {
-    if (!order.length) return;
-    focusedIdx = (focusedIdx + dir + order.length) % order.length;
-    focusBubble(order[focusedIdx]);
+    if (!comments.length) return;
+    focusedIdx = (focusedIdx + dir + comments.length) % comments.length;
+    focusBubble(comments[focusedIdx].gid);
   }
-  function focusBubble(cid) {
-    var b = bubbleEl(cid); if (!b) return;
+  function focusBubble(gid) {
+    var b = bubbleEl(gid); if (!b) return;
     if (b._mark && b._mark.scrollIntoView) b._mark.scrollIntoView({ block: "center", behavior: "smooth" });
-    b.style.outline = "2px solid " + (questions[cid] ? questions[cid].color : "#7aa2f7");
+    var c = getByGid(gid);
+    b.style.outline = "2px solid " + (c ? c.color : "#7aa2f7");
     setTimeout(function () { b.style.outline = ""; }, 1200);
   }
 
   // Click a comment → scroll its passage to center and spotlight it (dim the rest).
   var spotEl = null, spotTimer = null, spotAt = 0;
   function clearSpot() { if (spotTimer) { clearTimeout(spotTimer); spotTimer = null; } if (spotEl) { spotEl.remove(); spotEl = null; } }
-  function revealComment(cid) {
-    var mark = document.querySelector('mark.glimpse-mark[data-glimpse-gid="' + cid + '"]');
-    if (!mark) { focusBubble(cid); return; }            // unanchored → just flash the bubble
+  function revealComment(gid) {
+    var mark = document.querySelector('mark.glimpse-mark[data-glimpse-gid="' + gid + '"]');
+    if (!mark) { focusBubble(gid); return; }            // unanchored → just flash the bubble
     mark.scrollIntoView({ block: "center", behavior: "smooth" });
     setTimeout(function () {                              // place the spotlight after the scroll settles
       clearSpot();
@@ -625,7 +672,7 @@
       spotTimer = setTimeout(function () { if (spotEl) { spotEl.style.opacity = "0"; setTimeout(clearSpot, 300); } }, 6000);
     }, 300);
   }
-  function bubbleEl(cid) { return shadow.getElementById("glb-" + cid); }
+  function bubbleEl(gid) { return shadow.getElementById("glb-" + gid); }
 
   /* =========================================================================
    * helpers

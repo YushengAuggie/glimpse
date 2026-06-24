@@ -51,6 +51,7 @@
   .annpill:focus-visible { border-color:var(--accent); }
   .annpill.live { color:var(--accent2); border-color:#2b3a26; }
   .annpill.down { color:var(--amber); border-color:#3a3320; }
+  .annpill.wait { color:var(--dim); }
   .annpill.off  { color:var(--dim); opacity:.65; }
   .bar .note { font-size:12.5px; color:var(--accent2); opacity:0; transition:opacity .2s; margin-left:10px; }
   .bar .note.show { opacity:1; }
@@ -283,13 +284,18 @@ function updateLiveness(){
   const pill = document.getElementById('annpill');
   if(!current){ pill.hidden = true; return; }
   pill.hidden = false;
-  const live = (Date.now() - (window.__glimpse_bridge_live || 0)) < 4000;
+  const stamp = window.__glimpse_bridge_live || 0;
+  const live = (Date.now() - stamp) < 4000;
+  // Grace period right after load: the daemon stamps every 500ms but this runs
+  // every 1.5s, so show "connecting…" briefly instead of flashing "offline".
+  const connecting = !live && !stamp && (Date.now() - Number(GL_EPOCH)) < 4000;
   pill.setAttribute('aria-pressed', String(readingMode));
   if(readingMode){ pill.textContent = 'Annotate · off'; pill.className = 'annpill off'; }
+  else if(connecting){ pill.textContent = 'Annotate · connecting…'; pill.className = 'annpill wait'; }
   else { pill.textContent = live ? 'Annotate · live' : 'Agent offline'; pill.className = 'annpill ' + (live ? 'live' : 'down'); }
   const f = document.querySelector('#stage iframe');
   if(f && f.contentWindow && currentChannel)
-    f.contentWindow.postMessage({ type:"glimpse:liveness", v:1, channelId:currentChannel, state:(live && !readingMode) ? 'live' : 'offline' }, "*");
+    f.contentWindow.postMessage({ type:"glimpse:liveness", v:1, channelId:currentChannel, state:((live || connecting) && !readingMode) ? 'live' : 'offline' }, "*");
 }
 function toggleReading(){ readingMode = !readingMode; if(current) show(current); updateLiveness(); }
 document.getElementById('annpill').addEventListener('click', toggleReading);

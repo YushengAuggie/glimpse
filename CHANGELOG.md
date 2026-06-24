@@ -5,6 +5,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 ### Added
+- **Follow-up conversations.** A comment is now a growing thread anchored to one
+  passage: each answered comment has a reply box (Enter = newline, a **Send**
+  button sends — never Enter) so you can keep asking. Turns render in
+  chronological order (user/agent/user/agent…); the daemon answers each follow-up
+  with the prior turns of that passage as context, so replies stay coherent. The
+  liveness pill shows a brief "connecting…" after a reload instead of flashing
+  "offline".
 - **Always-on agent: `glimpse daemon` + a macOS menu-bar app.** `glimpse daemon`
   is the bridge plus auto-answering each highlighted question by calling a local
   Anthropic-compatible proxy (`GLIMPSE_PROXY_URL`, default derived from
