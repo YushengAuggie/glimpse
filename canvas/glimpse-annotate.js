@@ -30,7 +30,15 @@
   var CHANNEL = CFG.channelId;
   var PARENT_ORIGIN = CFG.origin || "";   // the canvas origin, e.g. http://127.0.0.1:4321
   var SLUG = CFG.slug || "";
-  var MIN_SELECTION = 10;                 // chars; below this the toolbar stays hidden (anti-noise)
+  var MIN_SELECTION = 10;                 // Latin-char floor below which the toolbar stays hidden (anti-noise)
+  // CJK / Japanese / Korean pack meaning into far fewer characters than Latin script,
+  // so a 2-char selection ("幂等", "缓存") is a legitimate passage. Count ideographs as
+  // worth ~5 Latin chars so the anti-noise floor adapts to the script being read.
+  function meetsMin(txt) {
+    var t = (txt || "").trim(); if (!t) return false;
+    var cjk = (t.match(/[㐀-鿿぀-ヿ가-힯豈-﫿]/g) || []).length;
+    return (t.length - cjk) + cjk * 5 >= MIN_SELECTION;
+  }
   var CONTEXT = 32;                       // prefix/suffix length for the text-quote anchor
   var GUTTER_W = 300;                     // px reserved for the comment rail
   var COLLAPSE_AFTER = 4;                 // turns shown before a thread collapses
@@ -302,7 +310,7 @@
     var sel = document.getSelection();
     if (!sel || sel.isCollapsed || sel.rangeCount === 0) { hideToolbar(); return; }
     var txt = sel.toString();
-    if (!txt || txt.trim().length < MIN_SELECTION) { hideToolbar(); return; }
+    if (!meetsMin(txt)) { hideToolbar(); return; }
     var r = sel.getRangeAt(0);
     if (host.contains(r.commonAncestorContainer)) return;     // ignore selections inside our own UI
     pendingRange = r.cloneRange();

@@ -153,6 +153,9 @@ function render(){
 async function show(slug){
   const a = feed.find(x=>x.slug===slug); if(!a) return;
   current = slug;
+  // Persist which artifact is open in the URL (replaceState = no history spam) so a
+  // refresh restores THIS artifact — and its anchored comments — instead of the newest.
+  try { const h='#'+encodeURIComponent(slug); if(location.hash!==h) history.replaceState(null,'',h); } catch(e){}
   threadSig = "";                       // force a fresh thread push into the new iframe
   document.getElementById('title').textContent = a.title;
   document.getElementById('held').hidden = !held;
@@ -301,6 +304,12 @@ function toggleReading(){ readingMode = !readingMode; if(current) show(current);
 document.getElementById('annpill').addEventListener('click', toggleReading);
 document.getElementById('annpill').addEventListener('keydown', (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); toggleReading(); } });
 
+// Follow the URL hash when it changes in-place (e.g. `glimpse open #slug` while the
+// canvas is already open). show() uses replaceState, so plain clicks don't fire this.
+window.addEventListener('hashchange', ()=>{
+  const h = decodeURIComponent((location.hash||'').replace(/^#/,''));
+  if(h && h!==current && feed.some(a=>a.slug===h)){ held = true; show(h); }
+});
 document.getElementById('filter').addEventListener('input', (e)=>{ filterText = e.target.value; showOlder = false; render(); });
 setInterval(()=>{ document.getElementById('clock').textContent = new Date().toLocaleTimeString(); }, 1000);
 setInterval(poll, 1200); poll();
