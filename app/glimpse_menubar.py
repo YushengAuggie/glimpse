@@ -167,15 +167,67 @@ class GlimpseMenuBar(rumps.App):
         self.go_offline() if self._alive() else self.go_online()
 
     def open_canvas(self, _):
+        # `glimpse open` navigates the canvas tab and brings it to front *within*
+        # its Chrome window. But the user keeps many tabs/windows, and the canvas
+        # lives in a dedicated-profile Chrome that may be behind other apps — so
+        # also raise that Chrome to the foreground (macOS) by its process id.
         try:
-            subprocess.Popen(
+            subprocess.run(
                 [GLIMPSE, "open"],
                 env=os.environ,
+                timeout=25,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
         except Exception as e:
             rumps.notification("Glimpse", "Could not open the canvas", str(e))
+            return
+        self._activate_canvas_chrome()
+
+    def _activate_canvas_chrome(self):
+        """Bring the dedicated CDP Chrome (the one hosting the canvas) to the front.
+
+        Targets the exact process by its --remote-debugging-port flag, so we never
+        raise the user's *everyday* Chrome by mistake — only the Glimpse instance.
+        """
+        cdp = os.environ.get("GLIMPSE_CDP_PORT", "9222")
+        try:
+            out = subprocess.run(
+                ["pgrep", "-f", "remote-debugging-port=" + cdp],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            ).stdout
+        except Exception:
+            return
+        try:
+            import AppKit
+        except Exception:
+            return
+        opts = getattr(AppKit, "NSApplicationActivateIgnoringOtherApps", 1 << 1)
+        for tok in out.split():
+            if not tok.isdigit():
+                continue
+            # pgrep also matches the renderer/GPU/helper children (--type=...).
+            # Only the main browser process maps to an activatable app, so skip
+            # the helpers — activating a helper does nothing useful.
+            try:
+                cmd = subprocess.run(
+                    ["ps", "-p", tok, "-o", "command="],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                ).stdout
+            except Exception:
+                continue
+            if "--type=" in cmd:
+                continue
+            app = AppKit.NSRunningApplication.runningApplicationWithProcessIdentifier_(
+                int(tok)
+            )
+            if app is not None:
+                app.activateWithOptions_(opts)
+                return
 
     def _tick(self, _):
         # If we believe we're online but the daemon died, reflect it AND surface why.

@@ -8,6 +8,8 @@ feed.json
 !assets/menubar-on.png
 !assets/menubar-off.png
 .DS_Store
+__pycache__/
+*.pyc
 
 # Secrets / credentials — never commit these
 .env

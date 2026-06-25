@@ -533,8 +533,12 @@ cmd_open(){
   URL="$target" run_cdp '
     const url=process.env.URL; let host=""; try{host=new URL(url).host;}catch{}
     const same=(u)=>{ try{ return new URL(u).host===host; }catch{ return false; } };
-    const {send,close}=await cdpConnect(x=>x.type==="page" && host && same(x.url));
-    await send("Page.navigate",{url}); close();
+    const {send,waitEvent,close}=await cdpConnect(x=>x.type==="page" && host && same(x.url));
+    await send("Page.enable");
+    const loaded=waitEvent("Page.loadEventFired",8000).catch(()=>{});
+    await send("Page.navigate",{url}); await loaded;
+    try{ await send("Page.bringToFront"); }catch(_){}   // activate the tab + raise its window so the user lands on it
+    close();
   '
   echo "canvas open in Chrome → $target"
 }
