@@ -1,0 +1,14 @@
+{
+  "scope": "feature",
+  "title": "Render test",
+  "architecture": { "summary": "## Overview\nA **test** spec.",
+    "components": [{ "id": "c1", "name": "Comp One", "role": "does a thing" }] },
+  "dataflow": { "direction": "LR",
+    "nodes": [{ "id": "n1", "label": "Start" }, { "id": "n2", "label": "End" }],
+    "edges": [{ "from": "n1", "to": "n2", "label": "go" }] },
+  "callstack": { "entry": "n1", "steps": [
+    { "id": "n1", "label": "entry()", "file": "a.py", "lines": "1-3", "lang": "python",
+      "snippet": "def entry():\n    return go()  # start", "calls": ["n2"], "note": "the **entry** point" },
+    { "id": "n2", "label": "go()", "file": "a.py", "lines": "5-7", "lang": "python",
+      "snippet": "def go():\n    return 42", "calls": [] }] }
+}
