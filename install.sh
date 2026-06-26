@@ -33,6 +33,8 @@ echo "→ seeding canvas at $GLIMPSE_DIR"
 mkdir -p "$GLIMPSE_DIR/artifacts"
 cp "$REPO/canvas/index.html" "$GLIMPSE_DIR/index.html"
 cp "$REPO/canvas/glimpse-annotate.js" "$GLIMPSE_DIR/glimpse-annotate.js"   # highlight-chat helper (injected at render time)
+mkdir -p "$GLIMPSE_DIR"
+cp "$REPO/lib/glimpse_explain.py" "$GLIMPSE_DIR/glimpse_explain.py"   # explain engine (validate + wrap)
 cp "$REPO/canvas/favicon.svg" "$GLIMPSE_DIR/favicon.svg"                   # tab icon
 [ -f "$REPO/app/glimpse_menubar.py" ] && cp "$REPO/app/glimpse_menubar.py" "$GLIMPSE_DIR/glimpse_menubar.py"  # macOS menu-bar app
 for ic in menubar-on.png menubar-off.png; do [ -f "$REPO/assets/$ic" ] && cp "$REPO/assets/$ic" "$GLIMPSE_DIR/$ic"; done  # menu-bar icons
