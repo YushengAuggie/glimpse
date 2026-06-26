@@ -150,6 +150,41 @@ def test_duplicate_id_fails():
         gx.validate(s)
 
 
+def test_nodes_not_a_list_fails():
+    s = good_spec()
+    s["dataflow"]["nodes"] = 5
+    with pytest.raises(gx.SpecError):
+        gx.validate(s)
+
+
+def test_components_not_a_list_fails():
+    s = good_spec()
+    s["architecture"]["components"] = "x"
+    with pytest.raises(gx.SpecError):
+        gx.validate(s)
+
+
+def test_steps_not_a_list_fails():
+    s = good_spec()
+    s["callstack"]["steps"] = 5
+    with pytest.raises(gx.SpecError):
+        gx.validate(s)
+
+
+def test_edges_not_a_list_fails():
+    s = good_spec()
+    s["dataflow"]["edges"] = "x"
+    with pytest.raises(gx.SpecError):
+        gx.validate(s)
+
+
+def test_calls_not_a_list_fails():
+    s = good_spec()
+    s["callstack"]["steps"][0]["calls"] = "n2"
+    with pytest.raises(gx.SpecError):
+        gx.validate(s)
+
+
 def test_short_snippet_unchanged():
     assert gx.truncate_snippet("a\nb\nc") == "a\nb\nc"
 
@@ -172,6 +207,19 @@ def test_byte_only_cut_marks_exceeded_kb():
     assert "truncated — exceeded 16 KB" in out
     assert "lines]" not in out  # must NOT claim a bogus line count
     assert len(out.encode("utf-8")) <= gx.SNIPPET_MAX_BYTES + 64
+
+
+def test_both_caps_marker_reports_actual_surviving_lines():
+    # 250 lines × ~200 bytes: exceeds the 200-line cap, and the first 200 lines
+    # still exceed 16 KB, so the byte cut trims further. The marker must report the
+    # lines that actually survived, not a flat 200.
+    src = "\n".join("x" * 200 for _ in range(250))
+    out = gx.truncate_snippet(src)
+    body, marker = out.rsplit("\n// … ", 1)
+    surviving = body.count("\n") + 1
+    assert surviving < gx.SNIPPET_MAX_LINES  # fewer than 200 lines survived
+    assert "showing %d of 250 lines" % surviving in marker
+    assert len(body.encode("utf-8")) <= gx.SNIPPET_MAX_BYTES
 
 
 def test_wrap_embeds_escaped_spec_and_is_recoverable():
@@ -240,3 +288,12 @@ def test_cli_wrap_emits_html():
     r = _run(["wrap", "My Title"], json.dumps(good_spec()))
     assert r.returncode == 0, r.stderr
     assert 'id="glimpse-spec"' in r.stdout
+
+
+def test_cli_non_list_collection_exits_2_with_message():
+    # A scalar where a list is expected must yield a clean SpecError (exit 2),
+    # not a Python traceback / exit 1.
+    r = _run(["validate"], '{"scope":"change","title":"t","dataflow":{"nodes":5}}')
+    assert r.returncode == 2, r.stderr
+    assert "must be a list" in r.stderr
+    assert "Traceback" not in r.stderr
