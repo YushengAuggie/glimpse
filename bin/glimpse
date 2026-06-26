@@ -609,8 +609,7 @@ _explain_module(){
 }
 
 cmd_explain(){
-  local -a pos=()
-  while [ $# -gt 0 ]; do case "$1" in *) pos+=("$1"); shift;; esac; done
+  local -a pos=("$@")
   local slug="${pos[0]:-}" title="${pos[1]:-}" src="${pos[2]:-/dev/stdin}"
   [ -n "$slug" ] && [ -n "$title" ] || die "usage: glimpse explain <slug> <title> [spec.json]  (spec on stdin if omitted)"
   _validate_slug "$slug"
