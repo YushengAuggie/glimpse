@@ -101,3 +101,59 @@ def truncate_snippet(text):
     if cut:
         out += "\n// … [truncated — showing %d of %d lines]" % (min(total, SNIPPET_MAX_LINES), total)
     return out
+
+
+def _html_escape(s):
+    return (str(s).replace("&", "&amp;").replace("<", "&lt;")
+            .replace(">", "&gt;").replace('"', "&quot;"))
+
+
+def _escape_for_script(json_text):
+    """Make a JSON string safe inside <script>…</script>: escape every '<' as the
+    JSON unicode escape \\u003c. No '</script>' or '<!--' can survive, and a JSON
+    parser (json.loads / browser JSON.parse) decodes it back losslessly."""
+    return json_text.replace("<", "\\u003c")
+
+
+def _apply_truncation(spec):
+    for st in (spec.get("callstack") or {}).get("steps", []):
+        if isinstance(st, dict) and "snippet" in st:
+            st["snippet"] = truncate_snippet(st.get("snippet"))
+    return spec
+
+
+def _readable_body(spec, title):
+    """A plain, visible fallback the daemon's pageText() can read (it strips <script>).
+    The renderer (Plan 2) hides #glimpse-fallback once it mounts."""
+    parts = ['<div id="glimpse-fallback"><h1>%s</h1>' % _html_escape(title)]
+    arch = spec.get("architecture") or {}
+    if arch.get("summary"):
+        parts.append("<p>%s</p>" % _html_escape(arch["summary"]))
+    for c in arch.get("components", []):
+        parts.append("<p><b>%s</b> — %s</p>" % (_html_escape(c.get("name", "")),
+                                                _html_escape(c.get("role", ""))))
+        if c.get("note"):
+            parts.append("<p>%s</p>" % _html_escape(c["note"]))
+    for st in (spec.get("callstack") or {}).get("steps", []):
+        parts.append("<p><code>%s</code> (%s)</p>" % (_html_escape(st.get("label", "")),
+                                                      _html_escape(st.get("file", ""))))
+        if st.get("note"):
+            parts.append("<p>%s</p>" % _html_escape(st["note"]))
+    parts.append("</div>")
+    return "".join(parts)
+
+
+def wrap_artifact(spec, title):
+    """Return artifact HTML: a renderer mount point, a readable fallback body, and the
+    spec embedded as </script>-safe JSON."""
+    spec = _apply_truncation(spec)
+    payload = _escape_for_script(json.dumps(spec, ensure_ascii=False))
+    return (
+        '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        '<title>%s</title></head><body>'
+        '<div id="glimpse-explain"></div>'
+        '%s'
+        '<script type="application/json" id="glimpse-spec">%s</script>'
+        '</body></html>'
+    ) % (_html_escape(title), _readable_body(spec, title), payload)
