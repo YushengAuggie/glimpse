@@ -46,3 +46,23 @@ test("safeMarkdown builds headings and list items", () => {
   assert.match(frag2html(GX.safeMarkdown("## Title")), /<h3>Title<\/h3>/);
   assert.match(frag2html(GX.safeMarkdown("- one\n- two")), /<li>one<\/li>\s*<li>two<\/li>/);
 });
+
+test("mermaidSource quotes+escapes labels and respects direction", () => {
+  const src = GX.mermaidSource({ direction: "TB",
+    nodes: [{ id: "a", label: 'A"x' }, { id: "b", label: "B" }],
+    edges: [{ from: "a", to: "b", label: "go|now" }] });
+  assert.match(src, /^flowchart TB/);
+  assert.match(src, /a\["A#quot;x"\]|a\["A&quot;x"\]|a\["A\\?"x"\]/); // internal quote neutralized
+  assert.match(src, /a -->\|"go\|now"\| b|a -->\|"go.now"\| b/);     // edge label quoted
+});
+
+test("mermaidSource strips init directives and click/href", () => {
+  const src = GX.mermaidSource({ nodes: [{ id: "a", label: "%%{init: {'x':1}}%% click a href" }], edges: [] });
+  assert.doesNotMatch(src, /%%\{/);
+  assert.doesNotMatch(src, /\bclick\b/);
+  assert.doesNotMatch(src, /\bhref\b/);
+});
+
+test("mermaidSource defaults direction to LR and handles empty", () => {
+  assert.match(GX.mermaidSource({ nodes: [], edges: [] }), /^flowchart LR/);
+});

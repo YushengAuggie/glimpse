@@ -62,7 +62,29 @@
     }
     return frag;
   }
-  function mermaidSource(/* dataflow */) { return ""; }                         // Task 3
+  function _mmLabel(s) {
+    return String(s == null ? "" : s)
+      .replace(/%%\{[^]*?\}%%/g, " ")   // strip init directives
+      .replace(/\b(click|href|call)\b/gi, " ") // strip interaction keywords
+      .replace(/"/g, "&quot;")          // Mermaid accepts HTML entities inside quoted labels
+      .replace(/[`]/g, "'")
+      .replace(/[\r\n]+/g, " ")
+      .trim();
+  }
+
+  function mermaidSource(df) {
+    df = df || {};
+    var dir = /^(LR|TB|TD|RL|BT)$/.test(df.direction || "") ? df.direction : "LR";
+    var out = ["flowchart " + dir];
+    (df.nodes || []).forEach(function (n) {
+      out.push("  " + n.id + '["' + _mmLabel(n.label) + '"]');
+    });
+    (df.edges || []).forEach(function (e) {
+      var lbl = _mmLabel(e.label);
+      out.push("  " + e.from + (lbl ? ' -->|"' + lbl + '"| ' : " --> ") + e.to);
+    });
+    return out.join("\n");
+  }
   function highlightTokens(/* code, lang */) { return []; }                     // Task 4
   function buildAskMessage(/* node, question, channelId, randomId */) { return {}; } // Task 5
 
