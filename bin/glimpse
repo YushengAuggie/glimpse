@@ -112,7 +112,6 @@ seed_root(){
   _seed_asset glimpse-annotate.js
   _seed_asset glimpse_explain.py
   _seed_asset glimpse-explain.js
-  _seed_asset glimpse-explain.css
   _seed_asset favicon.svg
 }
 

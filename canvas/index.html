@@ -104,6 +104,12 @@ async function loadAnnotateSrc(){
   try { annotateSrc = await (await fetch('glimpse-annotate.js?v='+GL_EPOCH)).text(); return annotateSrc; }
   catch(e){ return ""; }                // transient failure → retry on the next show()
 }
+let explainSrc = null;                  // cached canvas/glimpse-explain.js source
+async function loadExplainSrc(){
+  if(explainSrc) return explainSrc;     // cache only a non-empty success
+  try { explainSrc = await (await fetch('glimpse-explain.js?v='+GL_EPOCH)).text(); return explainSrc; }
+  catch(e){ return ""; }                // transient failure → retry on the next show()
+}
 
 function fmt(ts){ try { return new Date(ts*1000).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); } catch(e){ return ""; } }
 function answered(slug){ return !!window.__glimpse_responses[slug]; }
@@ -180,7 +186,12 @@ async function show(slug){
       const cfg = JSON.stringify({channelId:cid, origin:CANVAS_ORIGIN, slug:a.slug, artifactTs:a.ts, firstRun:firstRun, annotate:true});
       try {
         const html = await (await fetch('artifacts/'+encodeURIComponent(a.slug)+'.html?v='+a.ts)).text();
-        f.srcdoc = html + '\n<script>window.__GLIMPSE__=' + cfg + ';<\/script>\n<script>' + src + '<\/script>';
+        let extra = '';
+        if(a.kind === 'explain'){
+          const exsrc = await loadExplainSrc();
+          if(exsrc) extra = '\n<script>document.documentElement.style.setProperty("--glimpse-gutter-reserved","300px");<\/script>\n<script>' + exsrc + '<\/script>';
+        }
+        f.srcdoc = html + '\n<script>window.__GLIMPSE__=' + cfg + ';<\/script>\n<script>' + src + '<\/script>' + extra;
         injected = true;
       } catch(e){ /* fall through to plain src */ }
     }
