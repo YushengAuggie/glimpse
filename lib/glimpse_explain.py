@@ -29,6 +29,8 @@ class SpecError(ValueError):
 
 
 def _check_ids(items, where):
+    if not isinstance(items, list):
+        raise SpecError("%s must be a list" % where)
     seen = set()
     for it in items:
         i = it.get("id") if isinstance(it, dict) else None
@@ -60,7 +62,10 @@ def validate(spec):
 
     df = spec.get("dataflow") or {}
     df_ids = _check_ids(df.get("nodes", []), "dataflow.nodes")
-    for e in df.get("edges", []):
+    edges = df.get("edges", [])
+    if not isinstance(edges, list):
+        raise SpecError("dataflow.edges must be a list")
+    for e in edges:
         for end in ("from", "to"):
             if e.get(end) not in df_ids:
                 raise SpecError(
@@ -72,7 +77,10 @@ def validate(spec):
     if cs.get("entry") is not None and cs.get("entry") not in step_ids:
         raise SpecError("callstack.entry %r is not a declared step" % cs.get("entry"))
     for st in cs.get("steps", []):
-        for c in st.get("calls") or []:
+        calls = st.get("calls") or []
+        if not isinstance(calls, list):
+            raise SpecError("callstack.steps[%s].calls must be a list" % st.get("id"))
+        for c in calls:
             if c not in step_ids:
                 raise SpecError(
                     "callstack.steps[%s].calls references unknown step %r"
@@ -96,7 +104,15 @@ def truncate_snippet(text):
     if len(out.encode("utf-8")) > SNIPPET_MAX_BYTES:
         out = out.encode("utf-8")[:SNIPPET_MAX_BYTES].decode("utf-8", "ignore")
         byte_cut = True
-    if line_cut:
+    if line_cut and byte_cut:
+        # Both caps fired: report the lines that actually survived the byte trim.
+        surviving = out.count("\n") + 1
+        out += "\n// … [truncated — showing %d of %d lines, %d KB cap]" % (
+            surviving,
+            total,
+            SNIPPET_MAX_BYTES // 1024,
+        )
+    elif line_cut:
         out += "\n// … [truncated — showing %d of %d lines]" % (
             SNIPPET_MAX_LINES,
             total,
