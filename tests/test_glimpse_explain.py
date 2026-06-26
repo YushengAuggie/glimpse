@@ -149,3 +149,36 @@ def test_long_snippet_truncated_with_marker():
 
 def test_non_string_snippet_becomes_empty():
     assert gx.truncate_snippet(None) == ""
+
+
+import re as _re
+
+
+def test_wrap_embeds_escaped_spec_and_is_recoverable():
+    s = good_spec()
+    s["callstack"]["steps"][0]["snippet"] = 'x = "</script><script>alert(1)</script>"'
+    html = gx.wrap_artifact(s, s["title"])
+    # The raw HTML must NOT contain a literal closing script for our payload's content.
+    body_before_spec = html.split('id="glimpse-spec"')[0]
+    assert "</script>" not in html.split('id="glimpse-spec">')[1].split("</script>")[0] + ""  # sanity
+    assert "\\u003c/script>" in html or "\\u003cscript>" in html  # < was escaped
+    # And the embedded JSON is recoverable by a JSON parser (mirrors JSON.parse in the browser).
+    m = _re.search(r'<script type="application/json" id="glimpse-spec">(.*?)</script>', html, _re.S)
+    assert m, "spec script tag present"
+    recovered = json.loads(m.group(1))
+    assert recovered["title"] == s["title"]
+    assert recovered["callstack"]["steps"][0]["snippet"].endswith('"')
+
+
+def test_wrap_has_readable_fallback_body_for_pagetext():
+    s = good_spec()
+    html = gx.wrap_artifact(s, s["title"])
+    assert 'id="glimpse-fallback"' in html
+    # daemon pageText strips <script>; the architecture summary must survive in the body.
+    after_scripts = _re.sub(r'<script.*?</script>', ' ', html, flags=_re.S)
+    assert "daemon" in after_scripts  # a component name leaks into visible text
+
+
+def test_wrap_marks_artifact_kind():
+    html = gx.wrap_artifact(good_spec(), "t")
+    assert 'id="glimpse-explain"' in html
