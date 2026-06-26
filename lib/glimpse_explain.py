@@ -69,18 +69,15 @@ def validate(spec):
 
     cs = spec.get("callstack") or {}
     step_ids = _check_ids(cs.get("steps", []), "callstack.steps")
-    if cs.get("steps"):
-        if cs.get("entry") not in step_ids:
-            raise SpecError(
-                "callstack.entry %r is not a declared step" % cs.get("entry")
-            )
-        for st in cs["steps"]:
-            for c in st.get("calls") or []:
-                if c not in step_ids:
-                    raise SpecError(
-                        "callstack.steps[%s].calls references unknown step %r"
-                        % (st.get("id"), c)
-                    )
+    if cs.get("entry") is not None and cs.get("entry") not in step_ids:
+        raise SpecError("callstack.entry %r is not a declared step" % cs.get("entry"))
+    for st in cs.get("steps", []):
+        for c in st.get("calls") or []:
+            if c not in step_ids:
+                raise SpecError(
+                    "callstack.steps[%s].calls references unknown step %r"
+                    % (st.get("id"), c)
+                )
     return True
 
 
@@ -90,22 +87,33 @@ def truncate_snippet(text):
         return ""
     lines = text.split("\n")
     total = len(lines)
-    cut = False
+    line_cut = False
     if total > SNIPPET_MAX_LINES:
         lines = lines[:SNIPPET_MAX_LINES]
-        cut = True
+        line_cut = True
     out = "\n".join(lines)
+    byte_cut = False
     if len(out.encode("utf-8")) > SNIPPET_MAX_BYTES:
         out = out.encode("utf-8")[:SNIPPET_MAX_BYTES].decode("utf-8", "ignore")
-        cut = True
-    if cut:
-        out += "\n// … [truncated — showing %d of %d lines]" % (min(total, SNIPPET_MAX_LINES), total)
+        byte_cut = True
+    if line_cut:
+        out += "\n// … [truncated — showing %d of %d lines]" % (
+            SNIPPET_MAX_LINES,
+            total,
+        )
+    elif byte_cut:
+        out += "\n// … [truncated — exceeded %d KB]" % (SNIPPET_MAX_BYTES // 1024)
     return out
 
 
 def _html_escape(s):
-    return (str(s).replace("&", "&amp;").replace("<", "&lt;")
-            .replace(">", "&gt;").replace('"', "&quot;"))
+    return (
+        str(s)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
 
 
 def _escape_for_script(json_text):
@@ -130,13 +138,17 @@ def _readable_body(spec, title):
     if arch.get("summary"):
         parts.append("<p>%s</p>" % _html_escape(arch["summary"]))
     for c in arch.get("components", []):
-        parts.append("<p><b>%s</b> — %s</p>" % (_html_escape(c.get("name", "")),
-                                                _html_escape(c.get("role", ""))))
+        parts.append(
+            "<p><b>%s</b> — %s</p>"
+            % (_html_escape(c.get("name", "")), _html_escape(c.get("role", "")))
+        )
         if c.get("note"):
             parts.append("<p>%s</p>" % _html_escape(c["note"]))
     for st in (spec.get("callstack") or {}).get("steps", []):
-        parts.append("<p><code>%s</code> (%s)</p>" % (_html_escape(st.get("label", "")),
-                                                      _html_escape(st.get("file", ""))))
+        parts.append(
+            "<p><code>%s</code> (%s)</p>"
+            % (_html_escape(st.get("label", "")), _html_escape(st.get("file", "")))
+        )
         if st.get("note"):
             parts.append("<p>%s</p>" % _html_escape(st["note"]))
     parts.append("</div>")
@@ -151,11 +163,11 @@ def wrap_artifact(spec, title):
     return (
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
-        '<title>%s</title></head><body>'
+        "<title>%s</title></head><body>"
         '<div id="glimpse-explain"></div>'
-        '%s'
+        "%s"
         '<script type="application/json" id="glimpse-spec">%s</script>'
-        '</body></html>'
+        "</body></html>"
     ) % (_html_escape(title), _readable_body(spec, title), payload)
 
 

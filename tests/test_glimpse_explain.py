@@ -1,5 +1,7 @@
 import json
 import os
+import re as _re
+import subprocess
 import sys
 
 import pytest
@@ -126,6 +128,14 @@ def test_dangling_entry_fails():
         gx.validate(s)
 
 
+def test_entry_with_empty_steps_fails():
+    s = good_spec()
+    s["callstack"]["entry"] = "n1"
+    s["callstack"]["steps"] = []
+    with pytest.raises(gx.SpecError):
+        gx.validate(s)
+
+
 def test_dangling_edge_fails():
     s = good_spec()
     s["dataflow"]["edges"][0]["to"] = "nope"
@@ -155,7 +165,13 @@ def test_non_string_snippet_becomes_empty():
     assert gx.truncate_snippet(None) == ""
 
 
-import re as _re  # noqa: E402
+def test_byte_only_cut_marks_exceeded_kb():
+    # A single line over 16 KB triggers the byte cap but not the 200-line cap.
+    src = "x" * (gx.SNIPPET_MAX_BYTES + 5000)
+    out = gx.truncate_snippet(src)
+    assert "truncated — exceeded 16 KB" in out
+    assert "lines]" not in out  # must NOT claim a bogus line count
+    assert len(out.encode("utf-8")) <= gx.SNIPPET_MAX_BYTES + 64
 
 
 def test_wrap_embeds_escaped_spec_and_is_recoverable():
@@ -163,10 +179,6 @@ def test_wrap_embeds_escaped_spec_and_is_recoverable():
     s["callstack"]["steps"][0]["snippet"] = 'x = "</script><script>alert(1)</script>"'
     html = gx.wrap_artifact(s, s["title"])
     # The raw HTML must NOT contain a literal closing script for our payload's content.
-    assert (
-        "</script>"
-        not in html.split('id="glimpse-spec">')[1].split("</script>")[0] + ""
-    )  # sanity
     assert "\\u003c/script>" in html or "\\u003cscript>" in html  # < was escaped
     # And the embedded JSON is recoverable by a JSON parser (mirrors JSON.parse in the browser).
     m = _re.search(
@@ -192,7 +204,15 @@ def test_wrap_marks_artifact_kind():
     assert 'id="glimpse-explain"' in html
 
 
-import subprocess  # noqa: E402
+def test_wrap_escapes_agent_controlled_fallback_fields():
+    s = good_spec()
+    s["title"] = "<script>alert(1)</script>"
+    s["architecture"]["components"][0]["name"] = "<script>alert(1)</script>"
+    html = gx.wrap_artifact(s, s["title"])
+    fallback = html.split('id="glimpse-fallback"')[1].split("</body>")[0]
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in fallback
+    assert "<script>alert(1)</script>" not in fallback
+
 
 MODULE = os.path.join(os.path.dirname(__file__), "..", "lib", "glimpse_explain.py")
 
