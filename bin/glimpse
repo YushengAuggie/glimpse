@@ -5,6 +5,7 @@
 #
 #   glimpse open [url|#slug]      bring everything up + navigate Chrome to the canvas
 #   glimpse publish <slug> <title> [file] [--no-annotate]   publish an HTML artifact (stdin if no file)
+#   glimpse explain <slug> <title> [spec.json]   publish an interactive code-explainer (spec on stdin if omitted)
 #   glimpse ask <slug> <title> [file] [--timeout N]   publish an interactive artifact,
 #                                block until the user responds, print {"slug","value"} JSON
 #   glimpse list                 list artifacts (pinned first)
@@ -598,6 +599,30 @@ _write_artifact(){
   mv -f "$tmp" "$dest"
 }
 
+# Resolve the explain engine (validator + wrapper). Mirrors _seed_asset's search:
+# repo checkout, then the seeded copy in GLIMPSE_DIR.
+_explain_module(){
+  if   [ -f "$SELF_DIR/../lib/glimpse_explain.py" ]; then echo "$SELF_DIR/../lib/glimpse_explain.py"
+  elif [ -f "$GLIMPSE_DIR/glimpse_explain.py" ];      then echo "$GLIMPSE_DIR/glimpse_explain.py"
+  elif [ -f "$HOME/.glimpse/glimpse_explain.py" ];    then echo "$HOME/.glimpse/glimpse_explain.py"
+  else return 1; fi
+}
+
+cmd_explain(){
+  local -a pos=()
+  while [ $# -gt 0 ]; do case "$1" in *) pos+=("$1"); shift;; esac; done
+  local slug="${pos[0]:-}" title="${pos[1]:-}" src="${pos[2]:-/dev/stdin}"
+  [ -n "$slug" ] && [ -n "$title" ] || die "usage: glimpse explain <slug> <title> [spec.json]  (spec on stdin if omitted)"
+  _validate_slug "$slug"
+  local mod; mod="$(_explain_module)" || die "explain engine not found (lib/glimpse_explain.py); reinstall glimpse"
+  seed_root
+  # validate + wrap in one read of the spec; abort (and publish nothing) on error.
+  local html; html="$(python3 "$mod" wrap "$title" < "$src")" || exit $?
+  printf '%s' "$html" | _write_artifact "$slug" /dev/stdin
+  feed_upsert "$slug" "$title" "$(date +%s)" 0 0 explain     # pending=0 noannotate=0 kind=explain
+  echo "published → http://127.0.0.1:${PORT}/#${slug}  (file: $ARTIFACTS/${slug}.html)"
+}
+
 cmd_ask(){
   local timeout=300; local -a pos=()
   while [ $# -gt 0 ]; do
@@ -888,6 +913,7 @@ usage(){ awk 'NR==1{next} /^#/{sub(/^# ?/,"");print;next} {exit}' "$SOURCE"; }
 case "${1:-help}" in
   open)    shift; cmd_open "$@";;
   publish) shift; cmd_publish "$@";;
+  explain) shift; cmd_explain "$@";;
   ask)     shift; cmd_ask "$@";;
   list|ls) shift; cmd_list "$@";;
   rm)      shift; cmd_rm "$@";;
