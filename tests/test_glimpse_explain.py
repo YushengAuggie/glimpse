@@ -182,3 +182,31 @@ def test_wrap_has_readable_fallback_body_for_pagetext():
 def test_wrap_marks_artifact_kind():
     html = gx.wrap_artifact(good_spec(), "t")
     assert 'id="glimpse-explain"' in html
+
+
+import subprocess
+
+MODULE = os.path.join(os.path.dirname(__file__), "..", "lib", "glimpse_explain.py")
+
+
+def _run(args, stdin):
+    return subprocess.run([sys.executable, MODULE] + args, input=stdin,
+                          capture_output=True, text=True)
+
+
+def test_cli_validate_ok():
+    r = _run(["validate"], json.dumps(good_spec()))
+    assert r.returncode == 0, r.stderr
+
+
+def test_cli_validate_rejects_with_message():
+    bad = good_spec(); del bad["title"]
+    r = _run(["validate"], json.dumps(bad))
+    assert r.returncode != 0
+    assert "title is required" in r.stderr
+
+
+def test_cli_wrap_emits_html():
+    r = _run(["wrap", "My Title"], json.dumps(good_spec()))
+    assert r.returncode == 0, r.stderr
+    assert 'id="glimpse-spec"' in r.stdout

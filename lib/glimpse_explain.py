@@ -157,3 +157,36 @@ def wrap_artifact(spec, title):
         '<script type="application/json" id="glimpse-spec">%s</script>'
         '</body></html>'
     ) % (_html_escape(title), _readable_body(spec, title), payload)
+
+
+def _main(argv):
+    if not argv:
+        sys.stderr.write("usage: glimpse_explain.py validate|wrap <title>\n")
+        return 2
+    cmd = argv[0]
+    try:
+        spec = json.load(sys.stdin)
+    except Exception as e:
+        sys.stderr.write("glimpse explain: spec is not valid JSON: %s\n" % e)
+        return 2
+    raw = json.dumps(spec, ensure_ascii=False)
+    if len(raw.encode("utf-8")) > SPEC_MAX_BYTES:
+        sys.stderr.write("glimpse explain: spec exceeds %d bytes\n" % SPEC_MAX_BYTES)
+        return 2
+    try:
+        validate(spec)
+    except SpecError as e:
+        sys.stderr.write("glimpse explain: %s\n" % e)
+        return 2
+    if cmd == "validate":
+        return 0
+    if cmd == "wrap":
+        title = argv[1] if len(argv) > 1 else spec.get("title", "Explain")
+        sys.stdout.write(wrap_artifact(spec, title))
+        return 0
+    sys.stderr.write("glimpse explain: unknown subcommand %r\n" % cmd)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(_main(sys.argv[1:]))
