@@ -102,7 +102,15 @@
     if (i < s.length) toks.push({ text: s.slice(i), cls: "" });
     return toks;
   }
-  function buildAskMessage(/* node, question, channelId, randomId */) { return {}; } // Task 5
+  function buildAskMessage(node, question, channelId, randomId) {
+    return {
+      type: "glimpse:annotate", v: 1, channelId: channelId, intent: "ask",
+      clientTurnId: randomId,
+      anchor: { kind: "node", id: node.id, label: node.label || "", file: node.file || "", lines: node.lines || "" },
+      quote: String(node.snippet == null ? "" : node.snippet).slice(0, 4000),
+      text: String(question == null ? "" : question)
+    };
+  }
 
   // ---- browser entry (Task 6) ---------------------------------------------
   function mount(/* root, spec */) { /* Task 6 */ }

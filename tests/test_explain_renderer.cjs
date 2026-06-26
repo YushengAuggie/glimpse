@@ -78,3 +78,15 @@ test("highlightTokens never loses characters", () => {
   const code = "def f():\n  return '</script>'  // x";
   assert.strictEqual(GX.highlightTokens(code, "python").map(t => t.text).join(""), code);
 });
+
+test("buildAskMessage produces the glimpse:annotate envelope with a node anchor", () => {
+  const node = { id: "n1", label: "cmd()", file: "bin/glimpse", lines: "1-9", snippet: "x".repeat(5000) };
+  const msg = GX.buildAskMessage(node, "why?", "ch-7", "uuid-1");
+  assert.strictEqual(msg.type, "glimpse:annotate");
+  assert.strictEqual(msg.channelId, "ch-7");
+  assert.strictEqual(msg.intent, "ask");
+  assert.strictEqual(msg.clientTurnId, "uuid-1");
+  assert.deepStrictEqual(msg.anchor, { kind: "node", id: "n1", label: "cmd()", file: "bin/glimpse", lines: "1-9" });
+  assert.strictEqual(msg.text, "why?");
+  assert.strictEqual(msg.quote.length, 4000); // snippet truncated to the daemon cap
+});
