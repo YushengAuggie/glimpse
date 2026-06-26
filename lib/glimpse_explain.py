@@ -198,6 +198,10 @@ def wrap_artifact(spec, title):
     return (
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        # Mermaid powers the data-flow diagram. A blocking <head> script means
+        # window.mermaid is defined before the renderer boots in <body>. Matches
+        # the CDN pin used by other Glimpse mermaid artifacts.
+        '<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>'
         "<title>%s</title></head><body>"
         '<div id="glimpse-explain"></div>'
         "%s"
