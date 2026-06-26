@@ -104,11 +104,15 @@ seed_root(){
     local name="$1" required="${2:-}"
     [ -f "$GLIMPSE_DIR/$name" ] && return 0
     if   [ -f "$SELF_DIR/../canvas/$name" ]; then cp "$SELF_DIR/../canvas/$name" "$GLIMPSE_DIR/$name"
+    elif [ -f "$SELF_DIR/../lib/$name" ];    then cp "$SELF_DIR/../lib/$name"    "$GLIMPSE_DIR/$name"
     elif [ -f "$HOME/.glimpse/$name" ];      then cp "$HOME/.glimpse/$name"      "$GLIMPSE_DIR/$name"
     elif [ -n "$required" ]; then die "canvas/$name not found; reinstall glimpse"; fi
   }
   _seed_asset index.html required
   _seed_asset glimpse-annotate.js
+  _seed_asset glimpse_explain.py
+  _seed_asset glimpse-explain.js
+  _seed_asset glimpse-explain.css
   _seed_asset favicon.svg
 }
 
@@ -776,6 +780,9 @@ cmd_doctor(){
   if [ ! -f "$GLIMPSE_DIR/glimpse-annotate.js" ]; then echo "asset missing — run glimpse serve to seed"
   elif [ "$ANNOTATE" = "0" ]; then echo "installed (disabled via GLIMPSE_ANNOTATE=0)"
   else echo "installed"; fi
+  printf "  explain:     "
+  if [ -f "$GLIMPSE_DIR/glimpse_explain.py" ] || [ -f "$SELF_DIR/../lib/glimpse_explain.py" ]; then echo "engine installed"
+  else echo "engine missing — reinstall glimpse"; fi
   printf "  bridge:      "
   local bp; bp="$(cat "$GLIMPSE_DIR/.bridge.lock" 2>/dev/null || true)"
   if [ -n "$bp" ] && kill -0 "$bp" 2>/dev/null; then echo "running (pid $bp)"; else echo "not running (start with: glimpse bridge / glimpse daemon)"; fi
