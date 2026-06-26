@@ -85,7 +85,23 @@
     });
     return out.join("\n");
   }
-  function highlightTokens(/* code, lang */) { return []; }                     // Task 4
+  var _KW = /\b(function|def|return|if|else|elif|for|while|local|const|let|var|class|import|from|raise|try|except|echo|true|false|null|None|True|False)\b/;
+  function highlightTokens(code, lang) {
+    var s = String(code == null ? "" : code);
+    var toks = [];
+    // master regex: line-comment (# or //), then string ("..." or '...'), then word.
+    var re = /(#[^\n]*|\/\/[^\n]*)|("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|([A-Za-z_]\w*)/g;
+    var i = 0, m;
+    while ((m = re.exec(s))) {
+      if (m.index > i) toks.push({ text: s.slice(i, m.index), cls: "" });
+      if (m[1]) toks.push({ text: m[1], cls: "com" });
+      else if (m[2]) toks.push({ text: m[2], cls: "str" });
+      else { toks.push({ text: m[3], cls: _KW.test(m[3]) ? "kw" : "" }); }
+      i = re.lastIndex;
+    }
+    if (i < s.length) toks.push({ text: s.slice(i), cls: "" });
+    return toks;
+  }
   function buildAskMessage(/* node, question, channelId, randomId */) { return {}; } // Task 5
 
   // ---- browser entry (Task 6) ---------------------------------------------

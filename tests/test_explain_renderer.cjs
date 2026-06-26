@@ -66,3 +66,15 @@ test("mermaidSource strips init directives and click/href", () => {
 test("mermaidSource defaults direction to LR and handles empty", () => {
   assert.match(GX.mermaidSource({ nodes: [], edges: [] }), /^flowchart LR/);
 });
+
+test("highlightTokens tags strings and comments and preserves text", () => {
+  const toks = GX.highlightTokens('x = "hi" # note', "bash");
+  assert.strictEqual(toks.map(t => t.text).join(""), 'x = "hi" # note');
+  assert.ok(toks.some(t => t.cls === "str" && t.text.includes("hi")));
+  assert.ok(toks.some(t => t.cls === "com" && t.text.includes("note")));
+});
+
+test("highlightTokens never loses characters", () => {
+  const code = "def f():\n  return '</script>'  // x";
+  assert.strictEqual(GX.highlightTokens(code, "python").map(t => t.text).join(""), code);
+});
