@@ -82,3 +82,22 @@ def validate(spec):
                         % (st.get("id"), c)
                     )
     return True
+
+
+def truncate_snippet(text):
+    """Cap a snippet to SNIPPET_MAX_LINES / SNIPPET_MAX_BYTES; append a marker if cut."""
+    if not isinstance(text, str):
+        return ""
+    lines = text.split("\n")
+    total = len(lines)
+    cut = False
+    if total > SNIPPET_MAX_LINES:
+        lines = lines[:SNIPPET_MAX_LINES]
+        cut = True
+    out = "\n".join(lines)
+    if len(out.encode("utf-8")) > SNIPPET_MAX_BYTES:
+        out = out.encode("utf-8")[:SNIPPET_MAX_BYTES].decode("utf-8", "ignore")
+        cut = True
+    if cut:
+        out += "\n// … [truncated — showing %d of %d lines]" % (min(total, SNIPPET_MAX_LINES), total)
+    return out
