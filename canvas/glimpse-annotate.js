@@ -423,7 +423,17 @@
       var rta = rb && rb.querySelector("textarea");
       if (rta) { rta.focus(); try { rta.setSelectionRange(caretA, caretB); } catch (e) {} }
     }
+    reserveGutter();
     queueReposition();
+  }
+
+  // Tell the artifact how much right-edge room the comment rail is occupying, so
+  // side-by-side layouts (e.g. the code-explainer panel) can shift clear of it.
+  // Reserve only when bubbles are actually shown in the rail and we're not in the
+  // stacked narrow mode — otherwise nothing is there to avoid.
+  function reserveGutter() {
+    var on = !narrowMode && !!rail.querySelector(".bubble");
+    try { document.documentElement.style.setProperty("--glimpse-gutter-reserved", (on ? GUTTER_W : 0) + "px"); } catch (e) {}
   }
 
   function renderBubble(c, narrow, firstMark) {

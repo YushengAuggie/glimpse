@@ -189,7 +189,10 @@ async function show(slug){
         let extra = '';
         if(a.kind === 'explain'){
           const exsrc = await loadExplainSrc();
-          if(exsrc) extra = '\n<script>document.documentElement.style.setProperty("--glimpse-gutter-reserved","300px");<\/script>\n<script>' + exsrc + '<\/script>';
+          // The explainer's side panel reserves right-edge room only when the
+          // comment rail actually shows bubbles (annotate.js sets the gutter var);
+          // injecting a fixed 300px here clipped the panel when there were none.
+          if(exsrc) extra = '\n<script>' + exsrc + '<\/script>';
         }
         f.srcdoc = html + '\n<script>window.__GLIMPSE__=' + cfg + ';<\/script>\n<script>' + src + '<\/script>' + extra;
         injected = true;

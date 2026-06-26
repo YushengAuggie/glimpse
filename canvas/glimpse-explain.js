@@ -6,6 +6,17 @@
 (function () {
   "use strict";
 
+  // Disable mermaid's auto-run-on-load IMMEDIATELY (this runs during body parse,
+  // before DOMContentLoaded). Otherwise mermaid's own DOMContentLoaded handler —
+  // registered when mermaid.min.js loaded in <head>, so it fires before us — would
+  // auto-render our Data-flow diagram while its tab is still display:none, which
+  // collapses it to a 0-size SVG. We render it ourselves when the tab is visible.
+  try {
+    if (typeof window !== "undefined" && window.mermaid) {
+      window.mermaid.initialize({ startOnLoad: false, theme: "neutral", securityLevel: "strict" });
+    }
+  } catch (e) { /* mermaid optional */ }
+
   // ---- pure helpers (tested in Node) --------------------------------------
   function escapeHtml(s) {
     return String(s == null ? "" : s)
@@ -124,7 +135,9 @@
     ".gx-tab.on{background:#3b5bdb;color:#fff}",
     ".gx-view{display:none}.gx-view.on{display:block}",
     ".gx-card{border:1px solid #e6e6ee;border-radius:12px;padding:14px 16px;margin:10px 0;background:#fff}",
-    ".gx-cs{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,var(--gx-panel,420px));gap:16px}",
+    // Panel column grows by whatever right-edge gutter the comment rail reserves,
+    // so the snippet keeps its width (~420px) instead of being eaten by margin-right.
+    ".gx-cs{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,calc(var(--gx-panel,420px) + var(--glimpse-gutter-reserved,0px)));gap:16px}",
     "@media(max-width:1000px){.gx-cs{grid-template-columns:1fr}.gx-panel{position:static!important;max-height:none!important}}",
     ".gx-node{border:1px solid #e6e6ee;border-radius:10px;padding:10px 12px;margin:0 0 16px;cursor:pointer;position:relative}",
     ".gx-node.sel{border-color:#3b5bdb;background:#eef1ff}",
@@ -181,7 +194,9 @@
       });
     });
     addView("dataflow", "Data flow", function (v) {
-      var d = el("div", "mermaid"); d.textContent = mermaidSource(spec.dataflow);
+      var d = el("div", "mermaid"); var src = mermaidSource(spec.dataflow);
+      d.setAttribute("data-src", src);   // keep the pristine source; the div's content gets replaced by the rendered SVG
+      d.textContent = src;
       var box = el("div", "gx-card"); box.appendChild(d); v.appendChild(box);
     });
     addView("callstack", "Call stack", function (v) {
@@ -226,12 +241,39 @@
       else if (steps.length) select(steps[0].id);
     });
 
+    // Mermaid can't lay out a flowchart inside a display:none view (zero-size →
+    // a collapsed SVG), so render it lazily the first time the Data flow tab is
+    // actually visible, not eagerly at mount.
+    var mermaidInit = false, mermaidDone = false, mermaidSeq = 0;
+    function renderMermaid() {
+      if (mermaidDone || typeof window.mermaid === "undefined") return;
+      var dv = views.filter(function (v) { return v.key === "dataflow"; })[0];
+      if (!dv || !dv.v.classList.contains("on")) return;   // only once visible
+      var node = dv.v.querySelector(".mermaid");
+      if (!node) return;
+      var src = node.getAttribute("data-src") || node.textContent;   // pristine source, set at build time
+      mermaidDone = true;
+      try {
+        if (!mermaidInit) { window.mermaid.initialize({ startOnLoad: false, theme: "neutral", securityLevel: "strict" }); mermaidInit = true; }
+        // Use render() + inject, NOT run(): run() measures the live element in place
+        // and collapses to a 0-size SVG inside our grid; render() lays out in mermaid's
+        // own sandbox and returns correct geometry. The SVG is mermaid's structured
+        // output with strict-escaped, _mmLabel-sanitized labels — safe to inject.
+        window.mermaid.render("gx-mermaid-" + (++mermaidSeq), src).then(function (res) {
+          node.innerHTML = res.svg;
+          if (res.bindFunctions) res.bindFunctions(node);
+          wireMermaidClicks(wrap);
+        }).catch(function () { mermaidDone = false; });
+      } catch (e) { mermaidDone = false; /* fallback: the source text stays visible */ }
+    }
+
     var tabs = el("div", "gx-tabs");
     views.forEach(function (view, idx) {
       var t = el("div", "gx-tab", view.label); t.dataset.key = view.key;
       t.addEventListener("click", function () {
         tabs.querySelectorAll(".gx-tab").forEach(function (e) { e.classList.toggle("on", e === t); });
         views.forEach(function (vv) { vv.v.classList.toggle("on", vv === view); });
+        renderMermaid();
       });
       tabs.appendChild(t);
     });
@@ -242,13 +284,7 @@
     // default tab: Call stack if present, else first.
     var def = views.filter(function (v) { return v.key === "callstack"; })[0] || views[0];
     if (def) { tabs.querySelectorAll(".gx-tab").forEach(function (e) { e.classList.toggle("on", e.dataset.key === def.key); }); def.v.classList.add("on"); }
-
-    if (spec.dataflow && typeof window.mermaid !== "undefined") {
-      try {
-        window.mermaid.initialize({ startOnLoad: false, theme: "neutral", securityLevel: "strict" });
-        window.mermaid.run({ querySelector: ".mermaid" }).then(function () { wireMermaidClicks(wrap); });
-      } catch (e) { /* fallback: the source text stays visible */ }
-    }
+    renderMermaid();   // covers the case where Data flow is the default/only view
   }
 
   function wireMermaidClicks(wrap) {
