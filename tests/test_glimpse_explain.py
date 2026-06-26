@@ -185,6 +185,41 @@ def test_calls_not_a_list_fails():
         gx.validate(s)
 
 
+def test_non_dict_edge_entry_fails():
+    s = good_spec()
+    s["dataflow"]["edges"] = [5]
+    with pytest.raises(gx.SpecError):
+        gx.validate(s)
+
+
+def test_null_edge_entry_fails():
+    s = good_spec()
+    s["dataflow"]["edges"] = [None]
+    with pytest.raises(gx.SpecError):
+        gx.validate(s)
+
+
+def test_calls_falsy_int_fails():
+    s = good_spec()
+    s["callstack"]["steps"][0]["calls"] = 0
+    with pytest.raises(gx.SpecError):
+        gx.validate(s)
+
+
+def test_calls_false_fails():
+    s = good_spec()
+    s["callstack"]["steps"][0]["calls"] = False
+    with pytest.raises(gx.SpecError):
+        gx.validate(s)
+
+
+def test_null_entry_with_steps_fails():
+    s = good_spec()
+    s["callstack"]["entry"] = None
+    with pytest.raises(gx.SpecError):
+        gx.validate(s)
+
+
 def test_short_snippet_unchanged():
     assert gx.truncate_snippet("a\nb\nc") == "a\nb\nc"
 
@@ -200,13 +235,17 @@ def test_non_string_snippet_becomes_empty():
     assert gx.truncate_snippet(None) == ""
 
 
-def test_byte_only_cut_marks_exceeded_kb():
-    # A single line over 16 KB triggers the byte cap but not the 200-line cap.
-    src = "x" * (gx.SNIPPET_MAX_BYTES + 5000)
+def test_byte_only_cut_reports_real_surviving_line_count():
+    # 100 lines × ~250 bytes ≈ 25 KB: exceeds the 16 KB byte cap but NOT the
+    # 200-line cap. The marker must report the real surviving line count and the
+    # KB cap, never hide the dropped lines.
+    src = "\n".join("x" * 250 for _ in range(100))
     out = gx.truncate_snippet(src)
-    assert "truncated — exceeded 16 KB" in out
-    assert "lines]" not in out  # must NOT claim a bogus line count
-    assert len(out.encode("utf-8")) <= gx.SNIPPET_MAX_BYTES + 64
+    body, marker = out.rsplit("\n// … ", 1)
+    surviving = body.count("\n") + 1
+    assert surviving < 100  # the byte cut dropped whole lines
+    assert "showing %d of 100 lines, 16 KB cap" % surviving in marker
+    assert len(body.encode("utf-8")) <= gx.SNIPPET_MAX_BYTES
 
 
 def test_both_caps_marker_reports_actual_surviving_lines():
@@ -260,6 +299,20 @@ def test_wrap_escapes_agent_controlled_fallback_fields():
     fallback = html.split('id="glimpse-fallback"')[1].split("</body>")[0]
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in fallback
     assert "<script>alert(1)</script>" not in fallback
+
+
+def test_wrap_escapes_u2028_in_script_block_and_round_trips():
+    s = good_spec()
+    s["callstack"]["steps"][0]["snippet"] = "a b c"
+    html = gx.wrap_artifact(s, s["title"])
+    region = html.split('id="glimpse-spec">')[1].split("</script>")[0]
+    # The raw line/paragraph separators must not appear in the script block.
+    assert " " not in region
+    assert " " not in region
+    assert "\\u2028" in region and "\\u2029" in region
+    # JSON.parse (mirrored by json.loads) decodes them back losslessly.
+    recovered = json.loads(region)
+    assert recovered["callstack"]["steps"][0]["snippet"] == "a b c"
 
 
 MODULE = os.path.join(os.path.dirname(__file__), "..", "lib", "glimpse_explain.py")

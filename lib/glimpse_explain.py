@@ -52,6 +52,8 @@ def validate(spec):
         raise SpecError("scope must be one of: change, feature, repo")
     if not isinstance(spec.get("title"), str) or not spec["title"].strip():
         raise SpecError("title is required")
+    # An empty-but-present view (e.g. {"dataflow": {}}) passes this check; the
+    # Plan-2 renderer shows an empty-state for it. This only requires ≥1 view key.
     if not any(spec.get(k) for k in ("architecture", "dataflow", "callstack")):
         raise SpecError(
             "at least one of architecture/dataflow/callstack must be present"
@@ -66,6 +68,8 @@ def validate(spec):
     if not isinstance(edges, list):
         raise SpecError("dataflow.edges must be a list")
     for e in edges:
+        if not isinstance(e, dict):
+            raise SpecError("dataflow.edges entries must be objects")
         for end in ("from", "to"):
             if e.get(end) not in df_ids:
                 raise SpecError(
@@ -74,10 +78,19 @@ def validate(spec):
 
     cs = spec.get("callstack") or {}
     step_ids = _check_ids(cs.get("steps", []), "callstack.steps")
-    if cs.get("entry") is not None and cs.get("entry") not in step_ids:
+    if cs.get("steps"):
+        if cs.get("entry") is None:
+            raise SpecError("callstack.entry must not be null when steps are present")
+        if cs.get("entry") not in step_ids:
+            raise SpecError(
+                "callstack.entry %r is not a declared step" % cs.get("entry")
+            )
+    elif cs.get("entry") is not None and cs.get("entry") not in step_ids:
         raise SpecError("callstack.entry %r is not a declared step" % cs.get("entry"))
     for st in cs.get("steps", []):
-        calls = st.get("calls") or []
+        calls = st.get("calls")
+        if calls is None:
+            calls = []
         if not isinstance(calls, list):
             raise SpecError("callstack.steps[%s].calls must be a list" % st.get("id"))
         for c in calls:
@@ -104,8 +117,9 @@ def truncate_snippet(text):
     if len(out.encode("utf-8")) > SNIPPET_MAX_BYTES:
         out = out.encode("utf-8")[:SNIPPET_MAX_BYTES].decode("utf-8", "ignore")
         byte_cut = True
-    if line_cut and byte_cut:
-        # Both caps fired: report the lines that actually survived the byte trim.
+    if byte_cut:
+        # Byte cap fired (alone or after a line cut): report the lines that
+        # actually survived the byte trim, not a flat 200.
         surviving = out.count("\n") + 1
         out += "\n// … [truncated — showing %d of %d lines, %d KB cap]" % (
             surviving,
@@ -117,8 +131,6 @@ def truncate_snippet(text):
             SNIPPET_MAX_LINES,
             total,
         )
-    elif byte_cut:
-        out += "\n// … [truncated — exceeded %d KB]" % (SNIPPET_MAX_BYTES // 1024)
     return out
 
 
@@ -135,11 +147,18 @@ def _html_escape(s):
 def _escape_for_script(json_text):
     """Make a JSON string safe inside <script>…</script>: escape every '<' as the
     JSON unicode escape \\u003c. No '</script>' or '<!--' can survive, and a JSON
-    parser (json.loads / browser JSON.parse) decodes it back losslessly."""
-    return json_text.replace("<", "\\u003c")
+    parser (json.loads / browser JSON.parse) decodes it back losslessly. Also escape
+    U+2028/U+2029, which are raw newlines to a JS parser but legal inside JSON."""
+    return (
+        json_text.replace("<", "\\u003c")
+        .replace(" ", "\\u2028")
+        .replace(" ", "\\u2029")
+    )
 
 
 def _apply_truncation(spec):
+    # Truncation is callstack-snippet-only by design; the 2 MB whole-spec cap
+    # (SPEC_MAX_BYTES, enforced in _main) bounds every other field.
     for st in (spec.get("callstack") or {}).get("steps", []):
         if isinstance(st, dict) and "snippet" in st:
             st["snippet"] = truncate_snippet(st.get("snippet"))
@@ -188,6 +207,9 @@ def wrap_artifact(spec, title):
 
 
 def _main(argv):
+    # Exit-code contract: 2 = spec-content error (invalid JSON, oversized, or
+    # SpecError) or usage error from this module; the bash verb reserves 1 for
+    # its own usage/infra failures. Callers rely on this split.
     if not argv:
         sys.stderr.write("usage: glimpse_explain.py validate|wrap <title>\n")
         return 2
