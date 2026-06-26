@@ -116,7 +116,153 @@
   }
 
   // ---- browser entry (Task 6) ---------------------------------------------
-  function mount(/* root, spec */) { /* Task 6 */ }
+  var STYLE = [
+    "#glimpse-fallback{display:none!important}",
+    ".gx{font:15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1d1d22;max-width:1100px;margin:0 auto;padding:18px 20px 80px}",
+    ".gx-tabs{display:flex;gap:6px;border-bottom:1px solid #e6e6ee;margin-bottom:14px}",
+    ".gx-tab{padding:8px 14px;border-radius:8px 8px 0 0;cursor:pointer;font-weight:600;color:#5b6472}",
+    ".gx-tab.on{background:#3b5bdb;color:#fff}",
+    ".gx-view{display:none}.gx-view.on{display:block}",
+    ".gx-card{border:1px solid #e6e6ee;border-radius:12px;padding:14px 16px;margin:10px 0;background:#fff}",
+    ".gx-cs{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,var(--gx-panel,420px));gap:16px}",
+    "@media(max-width:1000px){.gx-cs{grid-template-columns:1fr}.gx-panel{position:static!important;max-height:none!important}}",
+    ".gx-node{border:1px solid #e6e6ee;border-radius:10px;padding:10px 12px;margin:0 0 16px;cursor:pointer;position:relative}",
+    ".gx-node.sel{border-color:#3b5bdb;background:#eef1ff}",
+    ".gx-node .lbl{font-weight:700}.gx-node .loc{font:12px ui-monospace,Menlo,monospace;color:#5b6472}",
+    ".gx-ask{margin-top:8px;font-size:13px;font-weight:600;color:#fff;background:#3b5bdb;border:0;border-radius:7px;padding:6px 11px;cursor:pointer}",
+    ".gx-panel{position:sticky;top:8px;align-self:start;border:1px solid #e6e6ee;border-radius:12px;background:#fff;max-height:calc(100vh - 24px);overflow:auto;margin-right:calc(var(--glimpse-gutter-reserved,0px))}",
+    ".gx-panel pre{background:#0f1117;color:#e6e7ea;border-radius:8px;padding:12px;overflow:auto;font:12.5px/1.5 ui-monospace,Menlo,monospace}",
+    ".gx-panel .tok-kw{color:#9bb7ff}.gx-panel .tok-str{color:#b5e8a0}.gx-panel .tok-com{color:#8b93a7}",
+    ".gx-chip{display:inline-block;font-size:12px;background:#eef1ff;color:#26408b;border:1px solid #d6ddfb;border-radius:999px;padding:2px 9px;margin:2px 4px 0 0;cursor:pointer}",
+    ".gx-composer{margin-top:8px;border:1px dashed #c3ccea;border-radius:9px;padding:9px;background:#f7f8ff;display:none}",
+    ".gx-composer.on{display:block}.gx-composer textarea{width:100%;border:1px solid #e6e6ee;border-radius:7px;padding:7px;font:14px inherit}"
+  ].join("\n");
+
+  function el(tag, cls, txt) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (txt != null) e.textContent = txt;
+    return e;
+  }
+
+  function renderSnippet(panel, node) {
+    panel.textContent = "";
+    var hdr = el("div", "gx-phdr");
+    hdr.appendChild(el("span", "lbl", node.label || ""));
+    hdr.appendChild(el("span", "loc", " " + (node.file || "") + (node.lines ? ":" + node.lines : "")));
+    panel.appendChild(hdr);
+    if (node.note) panel.appendChild(safeMarkdown(node.note));
+    var pre = el("pre"), code = el("code");
+    highlightTokens(node.snippet, node.lang).forEach(function (t) {
+      var span = el("span", t.cls ? "tok-" + t.cls : null); span.textContent = t.text; code.appendChild(span);
+    });
+    pre.appendChild(code); panel.appendChild(pre);
+  }
+
+  function mount(root, spec) {
+    var style = document.createElement("style"); style.textContent = STYLE;
+    document.head.appendChild(style);
+    var fb = document.getElementById("glimpse-fallback"); if (fb) fb.style.display = "none";
+
+    var wrap = el("div", "gx");
+    var views = [];
+    function addView(key, label, build) {
+      if (!spec[key]) return;
+      var v = el("div", "gx-view"); v.dataset.key = key; build(v); views.push({ key: key, label: label, v: v });
+    }
+    addView("architecture", "Architecture", function (v) {
+      if (spec.architecture.summary) v.appendChild(safeMarkdown(spec.architecture.summary));
+      (spec.architecture.components || []).forEach(function (c) {
+        var card = el("div", "gx-card");
+        card.appendChild(el("div", "lbl", c.name || c.id));
+        if (c.role) card.appendChild(el("div", "loc", c.role));
+        if (c.note) card.appendChild(safeMarkdown(c.note));
+        v.appendChild(card);
+      });
+    });
+    addView("dataflow", "Data flow", function (v) {
+      var d = el("div", "mermaid"); d.textContent = mermaidSource(spec.dataflow);
+      var box = el("div", "gx-card"); box.appendChild(d); v.appendChild(box);
+    });
+    addView("callstack", "Call stack", function (v) {
+      var grid = el("div", "gx-cs"); var list = el("div"); var panel = el("div", "gx-panel");
+      panel.appendChild(el("div", null, "Select a node to see its snippet."));
+      var steps = (spec.callstack && spec.callstack.steps) || [];
+      var byId = {}; steps.forEach(function (s) { byId[s.id] = s; });
+      function select(id) {
+        var n = byId[id]; if (!n) return;
+        list.querySelectorAll(".gx-node").forEach(function (e) { e.classList.toggle("sel", e.dataset.id === id); });
+        renderSnippet(panel, n);
+      }
+      steps.forEach(function (s, i) {
+        var node = el("div", "gx-node"); node.dataset.id = s.id;
+        node.appendChild(el("span", "lbl", (i + 1) + ". " + (s.label || s.id)));
+        node.appendChild(el("div", "loc", (s.file || "") + (s.lines ? ":" + s.lines : "")));
+        (s.calls || []).forEach(function (c) {
+          var chip = el("span", "gx-chip", (byId[c] ? byId[c].label : c) + " ↗");
+          chip.addEventListener("click", function (ev) { ev.stopPropagation(); select(c); });
+          node.appendChild(chip);
+        });
+        var ask = el("button", "gx-ask", "Ask about this");
+        var composer = el("div", "gx-composer");
+        var ta = el("textarea"); ta.setAttribute("placeholder", "Ask about this node…");
+        var send = el("button", "gx-ask", "Ask");
+        composer.appendChild(ta); composer.appendChild(send);
+        ask.addEventListener("click", function (ev) { ev.stopPropagation(); composer.classList.toggle("on"); ta.focus(); });
+        send.addEventListener("click", function (ev) {
+          ev.stopPropagation(); var q = ta.value.trim(); if (!q) return;
+          var cfg = (typeof window !== "undefined" && window.__GLIMPSE__) || {};
+          var rid = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : ("gx-" + Date.now());
+          window.parent.postMessage(buildAskMessage(s, q, cfg.channelId, rid), "*");
+          ta.value = ""; composer.classList.remove("on");
+          node.appendChild(el("div", "loc", "↳ asked (answer threads here once the agent replies)"));
+        });
+        node.appendChild(ask); node.appendChild(composer);
+        node.addEventListener("click", function () { select(s.id); });
+        list.appendChild(node);
+      });
+      grid.appendChild(list); grid.appendChild(panel); v.appendChild(grid);
+      if (spec.callstack && spec.callstack.entry) select(spec.callstack.entry);
+      else if (steps.length) select(steps[0].id);
+    });
+
+    var tabs = el("div", "gx-tabs");
+    views.forEach(function (view, idx) {
+      var t = el("div", "gx-tab", view.label); t.dataset.key = view.key;
+      t.addEventListener("click", function () {
+        tabs.querySelectorAll(".gx-tab").forEach(function (e) { e.classList.toggle("on", e === t); });
+        views.forEach(function (vv) { vv.v.classList.toggle("on", vv === view); });
+      });
+      tabs.appendChild(t);
+    });
+    if (views.length > 1) wrap.appendChild(tabs);
+    views.forEach(function (vv) { wrap.appendChild(vv.v); });
+    root.appendChild(wrap);
+
+    // default tab: Call stack if present, else first.
+    var def = views.filter(function (v) { return v.key === "callstack"; })[0] || views[0];
+    if (def) { tabs.querySelectorAll(".gx-tab").forEach(function (e) { e.classList.toggle("on", e.dataset.key === def.key); }); def.v.classList.add("on"); }
+
+    if (spec.dataflow && typeof window.mermaid !== "undefined") {
+      try {
+        window.mermaid.initialize({ startOnLoad: false, theme: "neutral", securityLevel: "strict" });
+        window.mermaid.run({ querySelector: ".mermaid" }).then(function () { wireMermaidClicks(wrap); });
+      } catch (e) { /* fallback: the source text stays visible */ }
+    }
+  }
+
+  function wireMermaidClicks(wrap) {
+    // post-render: clicking a dataflow SVG node selects the matching call-stack step.
+    wrap.querySelectorAll(".mermaid svg .node").forEach(function (g) {
+      g.style.cursor = "pointer";
+      g.addEventListener("click", function () {
+        var id = (g.id || "").replace(/^flowchart-/, "").replace(/-\d+$/, "");
+        var cs = wrap.querySelector('.gx-view[data-key="callstack"]');
+        var node = cs && cs.querySelector('.gx-node[data-id="' + (window.CSS ? window.CSS.escape(id) : id) + '"]');
+        if (node) { var csTab = wrap.querySelector('.gx-tab[data-key="callstack"]'); if (csTab) csTab.click(); node.click(); node.scrollIntoView({ block: "center" }); }
+      });
+    });
+  }
 
   if (typeof window !== "undefined" && typeof document !== "undefined") {
     // run only in the browser; tests import without triggering this.
