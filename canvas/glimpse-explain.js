@@ -63,6 +63,9 @@
     return frag;
   }
   function _mmLabel(s) {
+    // NOT full sanitization: `"`→`&quot;` only prevents quoted-label breakout, and
+    // we strip init directives + click/href/call. Raw `<`/`&`/`|` are left for
+    // Mermaid's securityLevel:'strict' (set at render in Task 6), which is load-bearing.
     return String(s == null ? "" : s)
       .replace(/%%\{[^]*?\}%%/g, " ")   // strip init directives
       .replace(/\b(click|href|call)\b/gi, " ") // strip interaction keywords

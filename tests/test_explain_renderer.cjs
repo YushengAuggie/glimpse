@@ -38,8 +38,9 @@ test("safeMarkdown allows http/mailto links, rejects javascript:", () => {
   const ok = frag2html(GX.safeMarkdown("[g](https://x.dev)"));
   assert.match(ok, /<a href="https:\/\/x\.dev"[^>]*>g<\/a>/);
   const bad = frag2html(GX.safeMarkdown("[x](javascript:alert(1))"));
-  assert.doesNotMatch(bad, /href="javascript:/);
-  assert.match(bad, /\[x\]\(javascript:alert\(1\)\)|>x</); // rendered inert (as text or hrefless)
+  assert.doesNotMatch(bad, /href="javascript:/); // never produces a javascript: href
+  assert.doesNotMatch(bad, /<a[\s>]/);           // no anchor element at all for rejected scheme
+  assert.match(bad, /\[x\]\(javascript:alert\(1\)\)/); // kept as inert literal text
 });
 
 test("safeMarkdown builds headings and list items", () => {
