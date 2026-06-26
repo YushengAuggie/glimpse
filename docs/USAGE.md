@@ -110,15 +110,22 @@ The agent runs the bridge once (under its Monitor) and answers each question:
 ```bash
 glimpse bridge                      # long-lived; one JSON line per question:
 #   {"type":"ready","port":4321}
-#   {"type":"question","id":"1718-3","slug":"arch","quote":"write-through cache","text":"why not write-back?",
+#   {"type":"question","id":"1718553600-3-6865","slug":"arch","quote":"write-through cache","text":"why not write-back?",
 #     "anchor":{"exact":"write-through cache","prefix":"uses a ","suffix":" to keep","occurrence":0}}
 #   {"type":"closed","reason":"chrome_died"}   # self-heals → wait for the next "ready" (bridge_stopped = clean stop)
 #   {"type":"error","code":"chrome_unavailable","message":"…"}  # exited (1) → re-run, or use --wait
-glimpse reply arch "Write-through keeps cache and store consistent on every write." --to 1718-3
+glimpse reply arch "Write-through keeps cache and store consistent on every write." --to 1718553600-3-6865
 ```
 
+The `id` is the turn id from the `question` line — it has the shape
+`<epoch>-<n>-<hex>` (e.g. `1718553600-3-6865`); pass it verbatim to `--to`.
+
 You (the human) just highlight + type in the page; the answer streams back in ~1s
-with no reload. A fresh agent session can reload the whole conversation:
+with no reload. Each answer gets a reply box so you can **follow up** — the thread
+keeps growing; `Enter` inserts a newline and `⌘`/`Ctrl`+`Enter` (or the Send
+button) sends. The selection toolbar also has an **Explain** button for a
+one-click, example-led explanation. A fresh agent session can reload the whole
+conversation:
 
 ```bash
 glimpse thread arch          # readable transcript  (--json for raw, --clear to wipe)
@@ -188,6 +195,10 @@ chrome-devtools MCP server (`./install.sh --mcp claude`) and use its tools.
 | `GLIMPSE_CDP_PORT` | `9222` | Chrome remote-debugging port |
 | `GLIMPSE_PROFILE` | `$GLIMPSE_DIR/chrome-profile` | dedicated Chrome profile |
 | `GLIMPSE_CHROME` | auto-detect | path to the Chrome/Chromium binary |
+| `GLIMPSE_ANNOTATE` | `1` | set `0` to disable highlight-chat injection globally |
+| `GLIMPSE_API_KEY` | — | daemon auto-answer key (falls back to `POE_API_KEY` / `ANTHROPIC_API_KEY`) |
+| `GLIMPSE_PROXY_URL` | `$ANTHROPIC_BASE_URL/v1/messages`, else `http://127.0.0.1:8787/v1/messages` | daemon answer endpoint |
+| `GLIMPSE_MODEL` | `claude-haiku-4-5` | daemon answer model |
 
 ## Troubleshooting
 

@@ -7,6 +7,7 @@ feed.json
 # brand assets (menu-bar icon) — tracked despite *.png
 !assets/menubar-on.png
 !assets/menubar-off.png
+!assets/glimpse-hero.png
 .DS_Store
 __pycache__/
 *.pyc

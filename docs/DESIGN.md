@@ -31,6 +31,30 @@ Chrome via the **Chrome DevTools Protocol** wins because:
 - It's scriptable from any language; Node ships a built-in WebSocket so the
   driver is dependency-free.
 
+## How it works (data flow)
+
+```mermaid
+flowchart LR
+  A[AI agent] -->|glimpse publish| F[(feed.json + artifacts/*.html)]
+  S[static server :4321] --- F
+  D[Glimpse dashboard\nindex.html] -->|polls feed every 1.2s| S
+  D -->|iframe| ART[artifact HTML]
+  A -->|glimpse open / CDP| C[Chrome :9222]
+  C --> D
+```
+
+- **`glimpse publish`** writes `artifacts/<slug>.html` and upserts `feed.json`.
+- A tiny **static server** (`python3 -m http.server`, loopback-bound) serves the
+  canvas dir.
+- **`index.html`** polls `feed.json` and renders the newest artifact in a
+  **sandboxed** `<iframe>` (`allow-scripts` only → opaque origin), live-reloading
+  on change. Alongside the feed it polls `threads/<slug>.json` and pushes any
+  highlight-chat turns into the iframe with no teardown.
+- **Chrome** is launched with `--remote-debugging-port` so the agent can open the
+  canvas — and read/drive any other page — over CDP.
+
+No framework, no build step, no database.
+
 ## Key design choices
 
 - **Upsert-by-slug feed, not a protocol.** Publishing is just "write a file +

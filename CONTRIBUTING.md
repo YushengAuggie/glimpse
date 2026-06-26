@@ -27,6 +27,18 @@ glimpse doctor
 - Manually verify the flow: `glimpse open`, then `glimpse publish demo "Demo" examples/architecture-overview.html`.
 - Keep changes focused; explain the "why" in the PR description.
 
+## Secret scanning
+
+This repo ships a guard so nothing sensitive reaches GitHub:
+
+- `scripts/setup-hooks.sh` installs **pre-commit** + **pre-push** hooks that run
+  [`scripts/check-secrets.sh`](scripts/check-secrets.sh), which uses
+  [gitleaks](https://github.com/gitleaks/gitleaks) when available and falls back to
+  a built-in regex scan otherwise.
+- `.gitignore` excludes `.env*`, keys, and credential files.
+- Run a manual scan any time: `scripts/check-secrets.sh all`.
+- Override a false positive with `git commit --no-verify` (and only then).
+
 ## Reporting bugs
 Open an issue with: OS, Chrome/Node/Python versions (`glimpse doctor` output),
 what you ran, and what happened.

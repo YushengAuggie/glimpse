@@ -14,7 +14,7 @@
 #   --- highlight chat (the user selects text in an artifact and asks about it) ---
 #   glimpse bridge [--wait]      stream highlight-questions as JSON lines (run under an agent Monitor)
 #   glimpse daemon [--wait]      always-on: bridge + auto-answer questions via the local API proxy
-#   glimpse menubar              macOS menu-bar app to toggle / keep the agent online (needs: pip install rumps)
+#   glimpse menubar              macOS menu-bar app to toggle / keep the agent online (needs uv, or rumps installed)
 #   glimpse reply <slug> "answer" --to <turnId>   answer a highlighted question
 #   glimpse thread <slug> [--json|--clear]   print one conversation thread
 #   glimpse threads              list conversation threads
