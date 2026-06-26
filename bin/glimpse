@@ -617,9 +617,12 @@ cmd_explain(){
   local slug="${pos[0]:-}" title="${pos[1]:-}" src="${pos[2]:-/dev/stdin}"
   [ -n "$slug" ] && [ -n "$title" ] || die "usage: glimpse explain <slug> <title> [spec.json]  (spec on stdin if omitted)"
   _validate_slug "$slug"
-  local mod; mod="$(_explain_module)" || die "explain engine not found (lib/glimpse_explain.py); reinstall glimpse"
+  [ "$src" = /dev/stdin ] || [ -f "$src" ] || die "spec file not found: $src"
+  local mod; mod="$(_explain_module)" || die "explain engine not found; searched \$SELF_DIR/../lib/, \$GLIMPSE_DIR/, \$HOME/.glimpse/ — reinstall glimpse"
   seed_root
   # validate + wrap in one read of the spec; abort (and publish nothing) on error.
+  # Exit codes: the module returns 2 for spec-content errors (we propagate it);
+  # 1 is reserved for the verb's own usage/infra failures (die).
   local html; html="$(python3 "$mod" wrap "$title" < "$src")" || exit $?
   printf '%s' "$html" | _write_artifact "$slug" /dev/stdin
   feed_upsert "$slug" "$title" "$(date +%s)" 0 0 explain     # pending=0 noannotate=0 kind=explain
