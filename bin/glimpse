@@ -115,10 +115,11 @@ seed_root(){
 # read-modify-write so concurrent publishes can't drop each other's entry).
 # args: slug title ts pending(0|1) noannotate(0|1)
 feed_upsert(){
-  SLUG="$1" TITLE="$2" TS="$3" PENDING="${4:-0}" NOANNOTATE="${5:-0}" python3 - <<'PY'
+  SLUG="$1" TITLE="$2" TS="$3" PENDING="${4:-0}" NOANNOTATE="${5:-0}" KIND="${6:-}" python3 - <<'PY'
 import json, os, fcntl
 root=os.environ["GLIMPSE_DIR"]; slug=os.environ["SLUG"]; title=os.environ["TITLE"]
 ts=int(os.environ["TS"]); pending=os.environ["PENDING"]=="1"; noann=os.environ.get("NOANNOTATE")=="1"
+kind=os.environ.get("KIND","")
 fp=os.path.join(root,"feed.json")
 lf=open(fp+".lock","w"); fcntl.flock(lf, fcntl.LOCK_EX)
 try:
@@ -129,6 +130,7 @@ try:
     e={"slug":slug,"title":title,"ts":ts}
     if pending: e["pending"]=True
     if noann: e["noannotate"]=True               # shell skips highlight-chat injection
+    if kind: e["kind"]=kind                      # "explain" → shell inlines glimpse-explain.js
     if old.get("pinned"): e["pinned"]=True       # preserve a pin across re-publish
     arts.append(e)
     tmp=fp+".tmp"
