@@ -270,11 +270,11 @@
       document.addEventListener("DOMContentLoaded", boot);
     } else { boot(); }
     function boot() {
-      var el = document.getElementById("glimpse-spec");
+      var specEl = document.getElementById("glimpse-spec");
       var root = document.getElementById("glimpse-explain");
-      if (!el || !root) return;
+      if (!specEl || !root) return;
       var spec;
-      try { spec = JSON.parse(el.textContent); }
+      try { spec = JSON.parse(specEl.textContent); }
       catch (e) {
         root.textContent = "Could not parse explain spec.";
         return;

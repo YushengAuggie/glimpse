@@ -12,21 +12,31 @@ await send("Runtime.enable");
 // Runtime.evaluate reply nests as { result: { result: { value } } }.
 const evalJs = async expr => (await send("Runtime.evaluate", { expression: expr, returnByValue: true })).result.result.value;
 
+// Structural checks resolve synchronously once the renderer has mounted.
 const checks = {
   "fallback hidden": "getComputedStyle(document.getElementById('glimpse-fallback')).display === 'none'",
   "3 tabs": "document.querySelectorAll('.gx-tab').length === 3",
   "callstack default on": "document.querySelector('.gx-view[data-key=callstack]').classList.contains('on')",
   "two nodes": "document.querySelectorAll('.gx-node').length === 2",
   "snippet panel filled": "document.querySelector('.gx-panel pre code').textContent.includes('return go()')",
-  "mermaid rendered svg": "!!document.querySelector('.mermaid svg')",
   "markdown heading": "!!document.querySelector('.gx-view[data-key=architecture] h3')",
   "ask button present": "!!document.querySelector('.gx-node .gx-ask')"
 };
+// mermaid.run() is async and depends on a live CDN fetch, so the SVG can land
+// after the structural DOM is ready. Poll this one check instead of one-shot.
+const mermaidExpr = "!!document.querySelector('.mermaid svg')";
 let ok = true;
 for (const [name, expr] of Object.entries(checks)) {
   const v = await evalJs(expr);
   console.log((v ? "PASS" : "FAIL") + ": " + name);
   if (!v) ok = false;
 }
+let mermaid = false;
+for (let i = 0; i < 25 && !mermaid; i++) {          // ~5s: 25 × 200ms
+  mermaid = await evalJs(mermaidExpr);
+  if (!mermaid) await new Promise(r => setTimeout(r, 200));
+}
+console.log((mermaid ? "PASS" : "FAIL") + ": mermaid rendered svg");
+if (!mermaid) ok = false;
 ws.close();
 process.exit(ok ? 0 : 1);
