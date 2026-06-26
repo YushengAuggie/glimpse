@@ -134,3 +134,18 @@ def test_duplicate_id_fails():
     s["callstack"]["steps"][1]["id"] = "n1"
     with pytest.raises(gx.SpecError):
         gx.validate(s)
+
+
+def test_short_snippet_unchanged():
+    assert gx.truncate_snippet("a\nb\nc") == "a\nb\nc"
+
+
+def test_long_snippet_truncated_with_marker():
+    src = "\n".join("line%d" % i for i in range(500))
+    out = gx.truncate_snippet(src)
+    assert out.count("\n") <= gx.SNIPPET_MAX_LINES + 1
+    assert "truncated — showing 200 of 500 lines" in out
+
+
+def test_non_string_snippet_becomes_empty():
+    assert gx.truncate_snippet(None) == ""
