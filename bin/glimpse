@@ -22,6 +22,7 @@
 #   glimpse serve                start the static server only
 #   glimpse stop                 stop the static server
 #   glimpse chrome               launch a debuggable Chrome only
+#   glimpse audit <slug>         report real-render layout issues (overflow/clipped/overlapping text)
 #   glimpse read <url>           navigate Chrome to a URL and print its text
 #   glimpse shot <out.png> [url] screenshot the current (or given) page
 #   glimpse doctor               check dependencies and running state
@@ -112,6 +113,7 @@ seed_root(){
   _seed_asset glimpse-annotate.js
   _seed_asset glimpse_explain.py
   _seed_asset glimpse-explain.js
+  _seed_asset glimpse-audit.js
   _seed_asset favicon.svg
 }
 
@@ -577,6 +579,49 @@ cmd_open(){
   echo "canvas open in Chrome → $target"
 }
 
+# Render-correctness check: show the artifact, let the injected auditor measure the
+# REAL layout (overflow / clipped / overlapping text), and print what's wrong so an
+# agent can fix it before a human reviews. Exit 2 if any error-severity finding.
+cmd_audit(){
+  local slug="${1:?usage: glimpse audit <slug>}"
+  _validate_slug "$slug"
+  cmd_serve >/dev/null
+  cmd_chrome >/dev/null
+  SLUG="$slug" URL="http://127.0.0.1:${PORT}/#${slug}" run_cdp '
+    const slug=process.env.SLUG, url=process.env.URL, host=new URL(url).host;
+    const same=(u)=>{ try{ return new URL(u).host===host; }catch{ return false; } };
+    const {send,close}=await cdpConnect(x=>x.type==="page" && same(x.url));
+    await send("Page.enable");
+    // Navigate to the slug, then reload: guarantees the tab runs the current shell
+    // (with the auditor) and renders the slug fresh, so the audit reflects this render.
+    await send("Page.navigate",{url});
+    await send("Page.reload",{ignoreCache:true});
+    // The auditor re-runs as fonts load + layout settles, so the first pass can be
+    // premature. Take the latest audit for this slug and accept it once it has stopped
+    // changing for ~2 polls (past an initial settle window).
+    let audit=null, stable=0, waited=0;
+    for(let i=0;i<40;i++){                          // up to ~8s
+      await new Promise(r=>setTimeout(r,200)); waited+=200;
+      let v; try{ v=(await send("Runtime.evaluate",{expression:"JSON.stringify(window.__glimpse_audit||null)",returnByValue:true})).result.value; }catch{ continue; }
+      if(!v) continue;
+      let o; try{ o=JSON.parse(v); }catch{ continue; }
+      if(o && o.slug===slug){
+        stable = (audit && audit.ts===o.ts) ? stable+1 : 0;
+        audit=o;
+        if(stable>=2 && waited>=1000) break;        // settled
+      }
+    }
+    close();
+    if(!audit){ console.log("glimpse: no layout audit for "+slug+" — is it published, and is annotate enabled? (the auditor ships with highlight-chat injection)"); process.exit(0); }
+    const f=audit.findings||[];
+    const err=f.filter(x=>x.severity==="error"), warn=f.filter(x=>x.severity!=="error");
+    console.log("glimpse audit "+slug+" @ "+audit.viewportWidth+"px viewport — "+err.length+" error, "+warn.length+" warning");
+    for(const x of f) console.log("  ["+x.severity+"] "+x.kind+"  "+x.selector+(x.overflowPx?"  (+"+x.overflowPx+"px)":""));
+    console.log(JSON.stringify({slug:audit.slug,viewportWidth:audit.viewportWidth,errors:err.length,warnings:warn.length,findings:f}));
+    process.exit(err.length?2:0);
+  '
+}
+
 cmd_publish(){
   local noann=0; local -a pos=()
   while [ $# -gt 0 ]; do
@@ -955,6 +1000,7 @@ case "${1:-help}" in
   chrome)  shift; cmd_chrome "$@";;
   read)    shift; cmd_read "$@";;
   shot)    shift; cmd_shot "$@";;
+  audit)   shift; cmd_audit "$@";;
   doctor)  shift; cmd_doctor "$@";;
   help|-h|--help) usage;;
   *) die "unknown command '${1}'. Try: glimpse help";;

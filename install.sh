@@ -33,6 +33,7 @@ echo "→ seeding canvas at $GLIMPSE_DIR"
 mkdir -p "$GLIMPSE_DIR/artifacts"
 cp "$REPO/canvas/index.html" "$GLIMPSE_DIR/index.html"
 cp "$REPO/canvas/glimpse-annotate.js" "$GLIMPSE_DIR/glimpse-annotate.js"   # highlight-chat helper (injected at render time)
+cp "$REPO/canvas/glimpse-audit.js" "$GLIMPSE_DIR/glimpse-audit.js"         # render-correctness auditor (injected at render time)
 mkdir -p "$GLIMPSE_DIR"
 cp "$REPO/lib/glimpse_explain.py" "$GLIMPSE_DIR/glimpse_explain.py"   # explain engine (validate + wrap)
 cp "$REPO/canvas/favicon.svg" "$GLIMPSE_DIR/favicon.svg"                   # tab icon

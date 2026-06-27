@@ -110,6 +110,15 @@ async function loadExplainSrc(){
   try { explainSrc = await (await fetch('glimpse-explain.js?v='+GL_EPOCH)).text(); return explainSrc; }
   catch(e){ return ""; }                // transient failure → retry on the next show()
 }
+let auditSrc = null;                    // cached canvas/glimpse-audit.js source (render-correctness auditor)
+async function loadAuditSrc(){
+  if(auditSrc) return auditSrc;
+  try { auditSrc = await (await fetch('glimpse-audit.js?v='+GL_EPOCH)).text(); return auditSrc; }
+  catch(e){ return ""; }
+}
+// Latest layout audit pushed up from the on-screen artifact; `glimpse audit <slug>`
+// reads this over CDP. One artifact shows at a time, so a single latest-buffer is enough.
+window.__glimpse_audit = window.__glimpse_audit || null;
 
 function fmt(ts){ try { return new Date(ts*1000).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); } catch(e){ return ""; } }
 function answered(slug){ return !!window.__glimpse_responses[slug]; }
@@ -163,6 +172,7 @@ async function show(slug){
   // refresh restores THIS artifact — and its anchored comments — instead of the newest.
   try { const h='#'+encodeURIComponent(slug); if(location.hash!==h) history.replaceState(null,'',h); } catch(e){}
   threadSig = "";                       // force a fresh thread push into the new iframe
+  window.__glimpse_audit = null;        // drop the previous artifact's layout audit
   document.getElementById('title').textContent = a.title;
   document.getElementById('held').hidden = !held;
   // Sandboxed iframe: allow-scripts WITHOUT allow-same-origin → opaque origin.
@@ -199,7 +209,13 @@ async function show(slug){
           // 300px clipped the panel when there were none.
           if(exsrc) extra += '\n<script>' + exsrc + '<\/script>';
         }
-        // __GLIMPSE__ is emitted exactly once here; both annotate and the renderer read it.
+        // Render-correctness auditor — injected so it can report overflow / clipped /
+        // overlapping text back up for `glimpse audit`.
+        const ausrc = await loadAuditSrc();
+        if(ausrc) extra += '\n<script>' + ausrc + '<\/script>';
+        // __GLIMPSE__ is emitted exactly once here; annotate, the renderer, and the
+        // auditor all read it. annotate (src) is already in `extra`, so it is not
+        // appended again — appending it here too would double-inject the helper.
         f.srcdoc = html + '\n<script>window.__GLIMPSE__=' + cfg + ';<\/script>' + extra;
         injected = true;
       } catch(e){ /* fall through to plain src */ }
@@ -249,6 +265,23 @@ window.addEventListener('message', (e)=>{
     });
     // ack so the artifact can move its bubble out of the "pending/unsent" state
     f.contentWindow.postMessage({ type:"glimpse:annotate:ack", v:1, channelId:currentChannel, clientTurnId:d.clientTurnId }, "*");
+    return;
+  }
+
+  // (c) layout audit — render-correctness findings from the injected auditor.
+  if(d.type === "glimpse:layout"){
+    if(d.channelId !== currentChannel) return;     // nonce: only the iframe we injected into
+    if(!current) return;
+    try { if(JSON.stringify(d).length > 256*1024) return; } catch(_){ return; }
+    const findings = Array.isArray(d.findings) ? d.findings.slice(0, 100) : [];
+    window.__glimpse_audit = {
+      slug: current,
+      viewportWidth: d.viewportWidth || null,
+      errors: findings.filter(f=>f && f.severity==='error').length,
+      warnings: findings.filter(f=>f && f.severity!=='error').length,
+      findings: findings,
+      ts: Date.now()
+    };
     return;
   }
 });
