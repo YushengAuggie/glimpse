@@ -79,7 +79,16 @@
   // (plain Enter still newlines), and guard against double-send (rapid clicks).
   function wireSend(c, ta, btn) {
     var refresh = function () { btn.disabled = !ta.value.trim(); };
-    var fire = function () { if (btn.disabled) return; btn.disabled = true; sendTurn(c, ta.value); };
+    var fire = function () {
+      if (btn.disabled) return;
+      var v = ta.value;
+      // Clear the live field NOW: on macOS a button click leaves focus on the
+      // textarea, so renderAll's focus-save would otherwise copy the sent text
+      // back into c.draft and the next textarea would render pre-filled.
+      ta.value = ""; c.draft = "";
+      btn.disabled = true;
+      sendTurn(c, v);
+    };
     ta.addEventListener("input", refresh);
     ta.addEventListener("keydown", function (e) { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); fire(); } });
     btn.addEventListener("click", fire);
@@ -223,12 +232,18 @@
     ".rail{ position:fixed; top:0; right:0; width:" + GUTTER_W + "px; height:100%; pointer-events:none;",
     "  font:13px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; z-index:2147483646; }",
     ".bubble{ position:absolute; right:12px; width:" + (GUTTER_W - 24) + "px; pointer-events:auto;",
+    "  display:flex; flex-direction:column; overflow:hidden;",   // header + scrollable turns + pinned footer; max-height set inline by reposition
     "  background:" + (dark ? "#1c2030" : "#ffffff") + "; color:" + (dark ? "#e6e8ee" : "#1a1d24") + ";",
     "  border:1px solid " + (dark ? "#2a3040" : "#e3e6ee") + "; border-radius:8px;",
-    "  box-shadow:0 4px 16px rgba(0,0,0," + (dark ? ".45" : ".12") + ");",
-    "  max-height:calc(100vh - 56px); overflow-y:auto;",   // tall threads scroll inside so the reply box stays reachable",
-    "  transition:max-height .12s ease-out; }",
-    ".bubble .hd{ display:flex; align-items:center; gap:8px; padding:8px 10px; border-bottom:1px solid " + (dark ? "#2a3040" : "#eef0f6") + "; }",
+    "  box-shadow:0 4px 16px rgba(0,0,0," + (dark ? ".45" : ".12") + "); }",
+    ".bubble .hd{ display:flex; align-items:center; gap:8px; padding:8px 10px; flex:0 0 auto; cursor:pointer; border-bottom:1px solid " + (dark ? "#2a3040" : "#eef0f6") + "; }",
+    ".bubble.collapsed .hd{ border-bottom:0; }",
+    ".bubble .count{ flex:0 0 auto; font-size:10.5px; opacity:.55; }",
+    ".bubble .tog{ flex:0 0 auto; background:none; border:0; color:inherit; opacity:.55; cursor:pointer; font-size:12px; line-height:1; padding:2px 3px; }",
+    ".bubble .tog:hover{ opacity:1; }",
+    ".scroll{ overflow-y:auto; min-height:0; padding:8px 10px; display:flex; flex-direction:column; gap:8px; }",   // turns scroll so the footer stays pinned
+    ".foot{ flex:0 0 auto; padding:8px 10px; border-top:1px solid " + (dark ? "#2a3040" : "#eef0f6") + "; }",
+    ".bubble.collapsed .scroll, .bubble.collapsed .foot{ display:none; }",
     ".badge{ flex:0 0 auto; width:18px; height:18px; border-radius:5px; color:#fff; font-weight:700;",
     "  font-size:11px; display:flex; align-items:center; justify-content:center; }",
     ".quote{ flex:1; min-width:0; font-size:11.5px; opacity:.75; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }",
@@ -441,23 +456,37 @@
     b.setAttribute("role", "complementary");
     b.setAttribute("aria-label", "Discussion " + c.num + ": " + (c.quote || "selection").slice(0, 60));
     b.tabIndex = -1;
+    if (c._collapsed) b.classList.add("collapsed");
     var hd = el("div", "hd");
     var badge = el("div", "badge"); badge.style.background = c.color; badge.textContent = String(c.num);
     var quote = el("div", "quote"); quote.textContent = c.quote || "(selection)";
     hd.appendChild(badge); hd.appendChild(quote);
     if (c.unanchored) { var w = el("span", "tag warn"); w.textContent = "passage changed"; hd.appendChild(w); }
+    var nTurns = (c.turns || []).length;
+    if (nTurns) { var cnt = el("span", "count"); cnt.textContent = String(nTurns); hd.appendChild(cnt); }
+    // minimize / expand toggle — keeps the rail clean and stops long threads from
+    // covering the Send button or other comments.
+    var tog = el("button", "tog"); tog.type = "button";
+    var syncTog = function () { tog.textContent = c._collapsed ? "▸" : "▾"; tog.title = c._collapsed ? "Expand" : "Minimize"; tog.setAttribute("aria-label", tog.title); };
+    syncTog();
+    tog.addEventListener("click", function (e) {
+      e.stopPropagation();
+      c._collapsed = !c._collapsed; b.classList.toggle("collapsed", c._collapsed); syncTog(); queueReposition();
+    });
+    hd.appendChild(tog);
+    hd.addEventListener("click", function (e) { if (e.target !== tog && c._collapsed) tog.click(); });   // header click expands a collapsed bubble
     b.appendChild(hd);
 
-    var body = el("div", "body");
+    var scroll = el("div", "scroll");   // the turns (scrolls)
+    var foot = el("div", "foot");       // the composer (pinned — Send always visible)
     if (c.state === "composing") {
-      // initial composer: quote preview + textarea (Enter = newline) + Cancel / Ask
       var qq = el("div", "turn u"); var qs = el("span", "q"); qs.textContent = "❝" + (c.quote || "selection") + "❞"; qq.appendChild(qs);
-      body.appendChild(qq);
-      var ta = mkInput(c, "Ask about this…  (⌘⏎ to send)"); body.appendChild(ta);
+      scroll.appendChild(qq);
+      var ta = mkInput(c, "Ask about this…  (⌘⏎ to send)"); foot.appendChild(ta);
       var row = el("div", "row");
       var cancel = el("button", "ghost"); cancel.textContent = "Cancel"; cancel.addEventListener("click", function () { dropComment(c); });
       var ask = el("button", "primary"); ask.textContent = "Ask";
-      row.appendChild(cancel); row.appendChild(ask); body.appendChild(row);
+      row.appendChild(cancel); row.appendChild(ask); foot.appendChild(row);
       wireSend(c, ta, ask);
     } else {
       // the growing conversation: user / agent / user / agent …
@@ -467,44 +496,44 @@
       if (start > 0) {
         var more = el("button", "more"); more.textContent = "Show " + start + " earlier";
         more.addEventListener("click", function () { c._expanded = true; renderAll(); });
-        body.appendChild(more);
+        scroll.appendChild(more);
       }
       for (var i = start; i < turns.length; i++) {
         var t = turns[i];
-        if (t.role === "agent") { var at = el("div", "turn a"); at.textContent = t.text; body.appendChild(at); continue; }
+        if (t.role === "agent") { var at = el("div", "turn a"); at.textContent = t.text; scroll.appendChild(at); continue; }
         // user turn
-        var ut = el("div", "turn u"); var usp = el("span", "q"); usp.textContent = t.text; ut.appendChild(usp); body.appendChild(ut);
+        var ut = el("div", "turn u"); var usp = el("span", "q"); usp.textContent = t.text; ut.appendChild(usp); scroll.appendChild(ut);
         var answered = t.status === "answered" || (turns[i + 1] && turns[i + 1].role === "agent");
         if (!answered) {
           if (t.status === "unsent") {   // always actionable, wherever it sits
             var wm = el("div", "meta"); var wt = el("span", "tag warn"); wt.textContent = "not sent"; wm.appendChild(wt);
             var rt = el("button", "ghost"); rt.textContent = "Retry";
             (function (tt) { rt.addEventListener("click", function () { tt.status = "pending"; renderAll(); resendTurn(c, tt); }); })(t);
-            wm.appendChild(rt); body.appendChild(wm);
+            wm.appendChild(rt); scroll.appendChild(wm);
           } else if (i === turns.length - 1) {   // pending/offline only on the latest turn (avoid stacked "agent offline")
             var pend = el("div", "meta");
             if (!bridgeLive) { var off = el("span", "tag off"); off.textContent = "agent offline"; pend.appendChild(off); }
             else { var dots = el("div", "dots" + (t.status === "acknowledged" ? " ack" : "")); dots.appendChild(el("span")); dots.appendChild(el("span")); dots.appendChild(el("span")); pend.appendChild(dots); }
             var ago = el("span"); ago.textContent = t.status === "acknowledged" ? "  sent · waiting" : "  asked"; pend.appendChild(ago);
-            body.appendChild(pend);
+            scroll.appendChild(pend);
           }
         }
       }
       if (c._expanded && turns.length > COLLAPSE_AFTER) {
         var less = el("button", "more"); less.textContent = "Show less";
         less.addEventListener("click", function () { c._expanded = false; renderAll(); });
-        body.appendChild(less);
+        scroll.appendChild(less);
       }
       // follow-up box — keep the conversation going. Enter = newline; Send sends.
-      var fta = mkInput(c, "Reply…  (Enter = new line, ⌘⏎ to send)"); body.appendChild(fta);
+      var fta = mkInput(c, "Reply…  (Enter = new line, ⌘⏎ to send)"); foot.appendChild(fta);
       var frow = el("div", "row");
       var send = el("button", "primary"); send.textContent = "Send";
-      frow.appendChild(send); body.appendChild(frow);
+      frow.appendChild(send); foot.appendChild(frow);
       wireSend(c, fta, send);
     }
-    b.appendChild(body);
+    b.appendChild(scroll); b.appendChild(foot);
     b.addEventListener("click", function (e) {
-      if (e.target.closest && e.target.closest("button, textarea, .more")) return;
+      if (e.target.closest && e.target.closest("button, textarea, .more, .hd")) return;
       revealComment(c.gid);
     });
     rail.appendChild(b);
@@ -528,7 +557,9 @@
     requestAnimationFrame(function () {
       repositionQueued = false;
       var bubbles = rail.querySelectorAll(".bubble");
-      var lastBottom = 8, vw = window.innerWidth;
+      var vw = window.innerWidth, vh = window.innerHeight;
+      var MARGIN = 12, GAP = 10, MIN_VISIBLE = 132;   // always keep at least header + footer on screen
+      var lastBottom = MARGIN;
       for (var i = 0; i < bubbles.length; i++) {
         var b = bubbles[i], mark = b._mark, top;
         var r = mark ? mark.getBoundingClientRect() : null;
@@ -544,11 +575,16 @@
           b.style.left = (vx - (vw - GUTTER_W)) + "px";
         } else {
           b.style.right = "12px"; b.style.left = "auto"; b.style.width = "";
-          top = r ? r.top : lastBottom + 4;   // unanchored → flow under the previous
+          top = r ? r.top : lastBottom + 4;   // align to the highlight; unanchored flows under the previous
           if (top < lastBottom) top = lastBottom;
         }
+        // never push a bubble so low that its header/footer fall off the bottom edge
+        if (top > vh - MIN_VISIBLE) top = Math.max(MARGIN, vh - MIN_VISIBLE);
         b.style.top = top + "px";
-        lastBottom = top + b.offsetHeight + 10;
+        // cap height to the room below `top` so the pinned footer (Send) stays on screen;
+        // the turns area scrolls inside. Collapsed bubbles hide their body, so this is moot for them.
+        b.style.maxHeight = Math.max(MIN_VISIBLE, vh - top - MARGIN) + "px";
+        lastBottom = top + b.offsetHeight + GAP;
       }
     });
   }
@@ -567,7 +603,7 @@
     var text = (value || "").trim(); if (!text) return;
     var cid = uuid();
     var turn = { role: "user", text: text, status: "pending", cid: cid, _optimistic: true, ts: Date.now() / 1000 };
-    c.turns.push(turn); c.state = "open"; c.draft = "";
+    c.turns.push(turn); c.state = "open"; c.draft = ""; c._collapsed = false;
     renderAll();
     post({ type: "glimpse:annotate", v: 1, channelId: CHANNEL, intent: "ask",
            clientTurnId: cid, anchor: c.anchor, quote: c.quote, text: text });
