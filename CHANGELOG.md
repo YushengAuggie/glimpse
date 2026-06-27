@@ -5,6 +5,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 ### Added
+- **`glimpse audit <slug>` — render-correctness loop.** An auditor is injected
+  into every artifact; after fonts load and layout settles it checks the *real*
+  browser render for horizontal/element overflow, clipped text, and overlapping
+  text (Glimpse's own highlight marks excluded). `glimpse audit` reports the
+  findings (with selectors + severity) and exits non-zero on errors, so an agent
+  can catch an unreadable layout before a human sees it. (Inspired by lavish-axi.)
 - **Follow-up conversations.** A comment is now a growing thread anchored to one
   passage: each answered comment has a reply box (Enter = newline, a **Send**
   button sends — never Enter) so you can keep asking. Turns render in
