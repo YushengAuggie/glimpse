@@ -148,7 +148,16 @@
     ".gx-panel .tok-kw{color:#9bb7ff}.gx-panel .tok-str{color:#b5e8a0}.gx-panel .tok-com{color:#8b93a7}",
     ".gx-chip{display:inline-block;font-size:12px;background:#eef1ff;color:#26408b;border:1px solid #d6ddfb;border-radius:999px;padding:2px 9px;margin:2px 4px 0 0;cursor:pointer}",
     ".gx-composer{margin-top:8px;border:1px dashed #c3ccea;border-radius:9px;padding:9px;background:#f7f8ff;display:none}",
-    ".gx-composer.on{display:block}.gx-composer textarea{width:100%;border:1px solid #e6e6ee;border-radius:7px;padding:7px;font:14px inherit}"
+    ".gx-composer.on{display:block}.gx-composer textarea{width:100%;border:1px solid #e6e6ee;border-radius:7px;padding:7px;font:14px inherit}",
+    // inline per-node conversation: the user's question + the agent's threaded reply
+    ".gx-replies{margin-top:8px;display:none;flex-direction:column;gap:7px}",
+    ".gx-replies.on{display:flex}",
+    ".gx-reply{font-size:13.5px;line-height:1.5}",
+    ".gx-reply .gx-who{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:#5b6472;margin-bottom:2px}",
+    ".gx-reply-user{color:#1d1d22}",
+    ".gx-reply-agent{background:#eef1ff;border-left:2px solid #8aa0ec;border-radius:6px;padding:7px 9px}",
+    ".gx-reply-agent p{margin:.3em 0}.gx-reply-agent p:first-child{margin-top:0}.gx-reply-agent p:last-child{margin-bottom:0}",
+    ".gx-reply-pending{font-size:12px;color:#5b6472;font-style:italic}"
   ].join("\n");
 
   function el(tag, cls, txt) {
@@ -156,6 +165,51 @@
     if (cls) e.className = cls;
     if (txt != null) e.textContent = txt;
     return e;
+  }
+
+  // node id -> the <div.gx-replies> mounted under that node's card. Populated by
+  // the call-stack builder; read by the mountNodeReply hook so node-anchored thread
+  // turns from the annotate layer render inline next to the right node.
+  var nodeReplies = {};
+
+  // Render a node's whole conversation (user question + agent answer, oldest first)
+  // into its reply container. User text via textContent; agent text via safeMarkdown
+  // (the same trusted markdown path used everywhere else) — never innerHTML.
+  function renderNodeReplies(container, turns) {
+    container.textContent = "";
+    var list = (turns || []).slice().sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); });
+    var sawAgent = false;
+    list.forEach(function (t) {
+      var row = el("div", "gx-reply");
+      if (t.role === "agent") {
+        sawAgent = true;
+        row.className = "gx-reply gx-reply-agent";
+        row.appendChild(el("span", "gx-who", "Answer"));
+        row.appendChild(safeMarkdown(t.text));
+      } else {
+        row.className = "gx-reply gx-reply-user";
+        row.appendChild(el("span", "gx-who", "You"));
+        row.appendChild(document.createTextNode(String(t.text == null ? "" : t.text)));
+      }
+      container.appendChild(row);
+    });
+    // user has asked but no agent reply yet → show a quiet pending line.
+    var hasUser = list.some(function (t) { return t.role === "user"; });
+    if (hasUser && !sawAgent) container.appendChild(el("div", "gx-reply-pending", "Waiting for the agent's reply…"));
+    container.classList.toggle("on", list.length > 0);
+  }
+
+  // Public hook the annotate layer calls with node-anchored turns. Renders into
+  // the per-node container if it exists yet (the call-stack view is mounted);
+  // silently no-ops otherwise. Registered only in the browser (Node test imports
+  // have no `window` at this point).
+  if (typeof window !== "undefined") {
+    window.__GLIMPSE_EXPLAIN__ = window.__GLIMPSE_EXPLAIN__ || {};
+    window.__GLIMPSE_EXPLAIN__.mountNodeReply = function (nodeId, turns) {
+      var container = nodeReplies[nodeId];
+      if (!container) return;
+      renderNodeReplies(container, turns);
+    };
   }
 
   function renderSnippet(panel, node) {
@@ -223,6 +277,9 @@
         var ta = el("textarea"); ta.setAttribute("placeholder", "Ask about this node…");
         var send = el("button", "gx-ask", "Ask");
         composer.appendChild(ta); composer.appendChild(send);
+        // per-node inline conversation; the annotate layer fills this via mountNodeReply
+        // once the thread (question + agent reply) is pushed back into the iframe.
+        var replies = el("div", "gx-replies"); nodeReplies[s.id] = replies;
         ask.addEventListener("click", function (ev) { ev.stopPropagation(); composer.classList.toggle("on"); ta.focus(); });
         send.addEventListener("click", function (ev) {
           ev.stopPropagation(); var q = ta.value.trim(); if (!q) return;
@@ -230,9 +287,12 @@
           var rid = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : ("gx-" + Date.now());
           window.parent.postMessage(buildAskMessage(s, q, cfg.channelId, rid), "*");
           ta.value = ""; composer.classList.remove("on");
-          node.appendChild(el("div", "loc", "↳ asked (answer threads here once the agent replies)"));
+          // optimistic echo: show the question immediately + a pending line. The
+          // authoritative thread push (with the agent's answer) replaces this via
+          // mountNodeReply once it round-trips back through the annotate layer.
+          renderNodeReplies(replies, [{ role: "user", text: q, ts: Date.now() / 1000 }]);
         });
-        node.appendChild(ask); node.appendChild(composer);
+        node.appendChild(ask); node.appendChild(composer); node.appendChild(replies);
         node.addEventListener("click", function () { select(s.id); });
         list.appendChild(node);
       });
