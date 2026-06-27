@@ -254,6 +254,7 @@ glimpse stop                         stop the static server
 glimpse chrome                       launch a debuggable Chrome only
 glimpse read <url>                   navigate Chrome to a URL and print its text
 glimpse shot <out.png> [url]         screenshot the current (or given) page
+glimpse audit <slug>                 report real-render layout issues (overflow / clipped / overlapping text)
 glimpse doctor                       check dependencies and running state
 ```
 
