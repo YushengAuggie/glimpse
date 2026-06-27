@@ -120,6 +120,31 @@ for the trust model.
 
 ---
 
+## Code explainer
+
+Instead of a wall of prose after a non-trivial change, the agent can publish an
+**interactive code explainer** — three linked views in one artifact: an
+**Architecture** summary with component cards, a **Data flow** Mermaid diagram,
+and a clickable **Call stack** where each node opens its code snippet in a side
+panel. Every call-stack node also carries an **Ask about this** button: your
+question is pinned to that node and answered inline (by your live session, or the
+always-on daemon). Just say *"explain what you built"* (or `/explain`) — the
+agent builds the spec and the renderer (shipped with Glimpse) draws it.
+
+```bash
+glimpse explain auth-flow "Auth flow" /tmp/spec.json   # or pipe the spec on stdin
+```
+
+**Optional nudge.** To be reminded to publish an explainer after non-trivial
+changes in a given repo, `touch .glimpse-explain-auto` at its root and wire
+`scripts/glimpse-explain-hook.sh` as a Stop hook. It's a pure no-op unless that
+marker exists *and* a canvas is already up — it never launches Chrome or blocks.
+
+See [`docs/USAGE.md`](docs/USAGE.md) for the loop and the `explain` skill for the
+spec contract.
+
+---
+
 ## Always-on (no session needed)
 
 By default a highlighted question is answered by the agent session that runs
@@ -191,13 +216,14 @@ MCP server (`./install.sh --mcp claude`) and use its tools.
 
 ## Agent integration
 
-Glimpse ships two **skills** (for Claude Code / compatible agents) so you never
+Glimpse ships three **skills** (for Claude Code / compatible agents) so you never
 type the plumbing — just talk:
 
 | Skill | Trigger | What it does |
 |---|---|---|
 | `canvas` | "show this on the canvas", "/canvas" | publish rich output to Glimpse |
 | `chrome-cdp` | "use chrome", "read this page" | drive a real Chrome over CDP |
+| `explain` | "explain what you built", "/explain" | turn the code you just wrote into an interactive architecture / data-flow / call-stack view on the canvas, with per-node snippets and ask-on-node |
 
 Under the hood both call the `glimpse` CLI. For other agents, just teach them the
 core commands: `glimpse open`, `glimpse publish`, `glimpse ask`, `glimpse read`.
@@ -237,6 +263,7 @@ The sidebar reflects `feed.json`. As it grows, manage it two ways:
 ```
 glimpse open [url|#slug]              serve + launch Chrome + navigate to the canvas
 glimpse publish <slug> <title> [file] [--no-annotate]  publish an HTML artifact (stdin if no file)
+glimpse explain <slug> <title> [spec.json]   publish an interactive code explainer (spec on stdin if no file)
 glimpse ask <slug> <title> [file] [--timeout N]  publish interactive, block for a response (JSON)
 glimpse bridge [--wait]              stream highlight-questions as JSON lines (run under an agent Monitor)
 glimpse reply <slug> "answer" --to <turnId>   answer a highlighted question

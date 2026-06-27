@@ -46,6 +46,7 @@ if [ "$DO_SKILLS" = 1 ]; then
   mkdir -p "$SKILLS_DIR"
   cp -R "$REPO/skills/canvas" "$SKILLS_DIR/"
   cp -R "$REPO/skills/chrome-cdp" "$SKILLS_DIR/"
+  cp -R "$REPO/skills/explain" "$SKILLS_DIR/"
 fi
 
 if [ -n "$MCP" ] && ! command -v "$MCP" >/dev/null 2>&1; then
@@ -79,4 +80,4 @@ case ":$PATH:" in
 esac
 echo "  Try:  glimpse doctor   then   glimpse open"
 echo "  Uninstall:  launchctl bootout gui/\$(id -u)/com.glimpse.menubar 2>/dev/null; rm -f ~/Library/LaunchAgents/com.glimpse.menubar.plist"
-echo "              rm -f $PREFIX/glimpse && rm -rf $GLIMPSE_DIR $SKILLS_DIR/canvas $SKILLS_DIR/chrome-cdp"
+echo "              rm -f $PREFIX/glimpse && rm -rf $GLIMPSE_DIR $SKILLS_DIR/canvas $SKILLS_DIR/chrome-cdp $SKILLS_DIR/explain"

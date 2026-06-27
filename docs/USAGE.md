@@ -176,6 +176,56 @@ tools, and writes nothing but the answer. Only one reader runs at a time (the
 bridge/daemon share a lockfile), so the menu-bar app and a manual `glimpse bridge`
 won't double-answer.
 
+## Code explainer (explain what you built)
+
+Where `publish` renders any HTML, `glimpse explain` renders a **structured code
+explainer** from a JSON spec — three linked views in one artifact:
+
+- **Architecture** — a Markdown summary + component cards.
+- **Data flow** — a Mermaid flowchart of how data moves between nodes.
+- **Call stack** — an ordered list of steps; click one to pin its code snippet in
+  a side panel, and follow `calls` chips to jump between steps.
+
+```bash
+glimpse explain auth-flow "Auth flow" /tmp/spec.json   # spec from a file
+build-spec-json | glimpse explain auth-flow "Auth flow" # ...or on stdin
+# on success:  published → http://127.0.0.1:4321/#auth-flow
+# on a spec error: prints the reason and exits 2 (nothing is published)
+```
+
+You don't hand-write the HTML — the renderer ships with Glimpse. You produce the
+**spec** (the data). The `explain` skill (`skills/explain/SKILL.md`) documents the
+full spec contract: required `scope`, valid IDs, the per-view shapes, the snippet
+caps, and the Markdown subset for `summary`/`note` fields. Re-running the same
+slug live-updates the open view.
+
+### Asking about a node
+
+Each call-stack node has an **Ask about this** button. A question there threads
+into `~/.glimpse/threads/<slug>.json` — a node-anchored turn
+(`{"kind":"node","id":…}`) — exactly like highlight-chat, and the node shows a
+"Waiting for the agent's reply…" line. Answer it the same way:
+
+```bash
+glimpse threads                       # list threads with pending questions
+glimpse thread auth-flow              # see the question + its turn id
+glimpse reply auth-flow "Because the hash check is constant-time, …" --to <turnId>
+```
+
+The reply renders **inline next to that node** within ~1s (agent text goes
+through the renderer's Markdown subset). Node questions arrive on the same
+`glimpse bridge` stream as highlight questions, so the same Monitor answers both;
+the always-on daemon, if running, answers them too.
+
+### Optional nudge (per-repo, opt-in)
+
+To be reminded to publish an explainer after a non-trivial change in a repo,
+`touch .glimpse-explain-auto` at its root and wire `scripts/glimpse-explain-hook.sh`
+as a **Stop hook**. The hook is a pure no-op unless that marker exists *and* a
+canvas is reachable on `GLIMPSE_PORT`; it never launches Chrome, never enables the
+daemon, never blocks, and emits at most one reminder line. (A hook can't generate
+a spec — that needs the model — so it only nudges.)
+
 ## Reading & driving the web
 
 ```bash
