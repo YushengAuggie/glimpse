@@ -56,7 +56,10 @@
   var comments = [];    // [{gid, key, anchor, quote, num, color, unanchored, state, turns:[], draft, _expanded}]
   var byKey = {};       // anchorKey -> comment
   var gidSeq = 0;       // safe DOM id source (anchor text is unsafe as an id)
-  function anchorKey(a) { return (a && a.exact) ? ("a:" + a.exact + "#" + (a.occurrence || 0)) : null; }
+  function anchorKey(a) {
+    if (a && a.kind === "node" && a.id) return "node:" + a.id;
+    return (a && a.exact) ? ("a:" + a.exact + "#" + (a.occurrence || 0)) : null;
+  }
   function getByGid(gid) { for (var i = 0; i < comments.length; i++) if (comments[i].gid === gid) return comments[i]; return null; }
   function newComment(anchor, quote) {
     var c = { gid: "c" + (++gidSeq), key: anchorKey(anchor), anchor: anchor || null, quote: quote || "",
@@ -652,6 +655,32 @@
   // The thread file is authoritative. Group its turns by anchor into conversations,
   // preserving in-flight optimistic turns not yet persisted.
   function ingestThread(turns) {
+    // Node-anchored turns belong to the code-explainer renderer, not the text rail.
+    // When that renderer exposes a hook, peel those turns off (grouped by node id,
+    // each group carrying its user turns AND the agent replies that point at them)
+    // and hand each group to the hook; the rest flows through the rail logic below
+    // unchanged. With no hook present this is a no-op (full back-compat).
+    var EX = window.__GLIMPSE_EXPLAIN__;
+    if (EX && typeof EX.mountNodeReply === "function") {
+      var nodeIdOf = function (a) { return (a && a.kind === "node" && a.id) ? a.id : null; };
+      // user turn id -> node id, for routing agent replies to the right group.
+      var userNode = {};
+      turns.forEach(function (t) {
+        if (t.role === "user") { var nid = nodeIdOf(t.anchor); if (nid) userNode[t.id] = nid; }
+      });
+      var groups = {}, rest = [];
+      turns.forEach(function (t) {
+        var nid = null;
+        if (t.role === "user") nid = nodeIdOf(t.anchor);
+        else if (t.role === "agent" && t.replyTo) nid = userNode[t.replyTo] || null;
+        if (nid) { (groups[nid] = groups[nid] || []).push(t); }
+        else rest.push(t);
+      });
+      Object.keys(groups).forEach(function (nid) {
+        try { EX.mountNodeReply(nid, groups[nid]); } catch (e) {}
+      });
+      turns = rest;
+    }
     var agentByReply = {};
     turns.forEach(function (t) { if (t.role === "agent" && t.replyTo) { (agentByReply[t.replyTo] = agentByReply[t.replyTo] || []).push(t); } });
     var users = turns.filter(function (t) { return t.role === "user"; });
