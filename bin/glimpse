@@ -236,13 +236,22 @@ try:
                 try: anchor=json.loads(os.environ["ANCHOR"])
                 except Exception: anchor=None
             if isinstance(anchor, dict):
-                # The anchor carries the *selected text* (exact/prefix/suffix); scrub +
-                # cap it like quote/text — it would otherwise smuggle secrets past the guard.
-                for k in ("exact","prefix","suffix"):
-                    if isinstance(anchor.get(k), str): anchor[k]=scrub(anchor[k])
-                    elif k in anchor: anchor.pop(k, None)
-                try: anchor["occurrence"]=int(anchor.get("occurrence",0))
-                except Exception: anchor["occurrence"]=0
+                if anchor.get("kind") == "node":
+                    # node anchor: scrub agent text fields; no occurrence (keyed by id).
+                    for k in ("label","file","lines"):
+                        if isinstance(anchor.get(k), str): anchor[k]=scrub(anchor[k])
+                        elif k in anchor: anchor.pop(k, None)
+                    if not isinstance(anchor.get("id"), str): anchor=None
+                    else: anchor={"kind":"node","id":anchor["id"],
+                                  "label":anchor.get("label",""),"file":anchor.get("file",""),"lines":anchor.get("lines","")}
+                else:
+                    # The anchor carries the *selected text* (exact/prefix/suffix); scrub +
+                    # cap it like quote/text — it would otherwise smuggle secrets past the guard.
+                    for k in ("exact","prefix","suffix"):
+                        if isinstance(anchor.get(k), str): anchor[k]=scrub(anchor[k])
+                        elif k in anchor: anchor.pop(k, None)
+                    try: anchor["occurrence"]=int(anchor.get("occurrence",0))
+                    except Exception: anchor["occurrence"]=0
             else:
                 anchor=None
             if os.environ.get("ARTIFACT_TS"):
