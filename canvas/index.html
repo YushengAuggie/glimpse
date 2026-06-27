@@ -179,22 +179,25 @@ async function show(slug){
   const cid = 'ch-' + GL_EPOCH + '-' + (++glSeq);
   currentChannel = cid;
   let injected = false;
-  if(!a.noannotate && !readingMode){
-    const src = await loadAnnotateSrc();
-    if(src){
+  // Annotate is gated on reading mode; the explain renderer is NOT — an explain
+  // artifact must always inline its renderer, or reading mode strips it to the raw body.
+  const wantAnnotate = !a.noannotate && !readingMode;
+  const wantExplain  = a.kind === 'explain';
+  if(wantAnnotate || wantExplain){
+    const src = wantAnnotate ? await loadAnnotateSrc() : '';
+    if(src || wantExplain){
       const firstRun = !sessionStorage.getItem('gl_hinted'); sessionStorage.setItem('gl_hinted','1');
-      const cfg = JSON.stringify({channelId:cid, origin:CANVAS_ORIGIN, slug:a.slug, artifactTs:a.ts, firstRun:firstRun, annotate:true});
+      const cfg = JSON.stringify({channelId:cid, origin:CANVAS_ORIGIN, slug:a.slug, artifactTs:a.ts, firstRun:firstRun, annotate:!!src});
       try {
         const html = await (await fetch('artifacts/'+encodeURIComponent(a.slug)+'.html?v='+a.ts)).text();
         let extra = '';
-        if(a.kind === 'explain'){
+        if(src) extra += '\n<script>' + src + '<\/script>';
+        if(wantExplain){
           const exsrc = await loadExplainSrc();
-          // The explainer's side panel reserves right-edge room only when the
-          // comment rail actually shows bubbles (annotate.js sets the gutter var);
-          // injecting a fixed 300px here clipped the panel when there were none.
-          if(exsrc) extra = '\n<script>' + exsrc + '<\/script>';
+          if(exsrc) extra += '\n<script>document.documentElement.style.setProperty("--glimpse-gutter-reserved","300px");<\/script>\n<script>' + exsrc + '<\/script>';
         }
-        f.srcdoc = html + '\n<script>window.__GLIMPSE__=' + cfg + ';<\/script>\n<script>' + src + '<\/script>' + extra;
+        // __GLIMPSE__ is emitted exactly once here; both annotate and the renderer read it.
+        f.srcdoc = html + '\n<script>window.__GLIMPSE__=' + cfg + ';<\/script>' + extra;
         injected = true;
       } catch(e){ /* fall through to plain src */ }
     }
