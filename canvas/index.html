@@ -194,7 +194,10 @@ async function show(slug){
         if(src) extra += '\n<script>' + src + '<\/script>';
         if(wantExplain){
           const exsrc = await loadExplainSrc();
-          if(exsrc) extra += '\n<script>document.documentElement.style.setProperty("--glimpse-gutter-reserved","300px");<\/script>\n<script>' + exsrc + '<\/script>';
+          // No fixed gutter px here: the renderer CSS defaults --glimpse-gutter-reserved
+          // to 0px and annotate.js widens it only when comment bubbles exist. A hardcoded
+          // 300px clipped the panel when there were none.
+          if(exsrc) extra += '\n<script>' + exsrc + '<\/script>';
         }
         // __GLIMPSE__ is emitted exactly once here; both annotate and the renderer read it.
         f.srcdoc = html + '\n<script>window.__GLIMPSE__=' + cfg + ';<\/script>' + extra;
