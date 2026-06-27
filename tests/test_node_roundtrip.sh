@@ -9,6 +9,9 @@
 # it SKIPs cleanly (exit 0), so it's safe in headless CI. It publishes a throwaway
 # `gx-roundtrip` artifact + thread and removes both on exit (no residue).
 set -euo pipefail
+# Opt-in only: this drives a live shared canvas, so a casual `bash tests/*.sh`
+# sweep must never touch someone's open canvas. Set GLIMPSE_RUNTIME_TESTS=1 to run.
+[ "${GLIMPSE_RUNTIME_TESTS:-}" = "1" ] || { echo "SKIP: runtime CDP test (set GLIMPSE_RUNTIME_TESTS=1 to run)"; exit 0; }
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 PORT="${GLIMPSE_PORT:-4321}"
 CDP="http://127.0.0.1:${GLIMPSE_CDP_PORT:-9222}"
