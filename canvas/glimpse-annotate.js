@@ -61,7 +61,7 @@
   function newComment(anchor, quote) {
     var c = { gid: "c" + (++gidSeq), key: anchorKey(anchor), anchor: anchor || null, quote: quote || "",
               num: comments.length + 1, color: hueFor(comments.length), unanchored: !anchor,
-              state: "composing", turns: [], draft: "", _expanded: false };
+              state: "composing", turns: [], draft: "", _expanded: false, _collapsed: false };
     comments.push(c); if (c.key) byKey[c.key] = c;
     return c;
   }
@@ -662,7 +662,10 @@
       if (!c) {
         // maybe this persisted turn is one we sent optimistically (match by cid)
         if (u.clientTurnId) c = comments.filter(function (cc) { return cc.turns.some(function (tt) { return tt.cid === u.clientTurnId; }); })[0];
-        if (!c) c = newComment(u.anchor, u.quote);
+        // A conversation loaded from the thread file (not one we're actively composing
+        // or just sent) starts minimized, so opening a doc shows a clean rail. Only set
+        // it on first creation — a comment the user later expands stays expanded.
+        if (!c) { c = newComment(u.anchor, u.quote); c._collapsed = true; }
         c.key = k; byKey[k] = c;
       }
       c.anchor = u.anchor || c.anchor; c.quote = u.quote || c.quote; c.unanchored = !c.anchor;
