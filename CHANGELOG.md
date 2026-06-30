@@ -12,8 +12,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
   findings (with selectors + severity) and exits non-zero on errors, so an agent
   can catch an unreadable layout before a human sees it. (Inspired by lavish-axi.)
 - **Follow-up conversations.** A comment is now a growing thread anchored to one
-  passage: each answered comment has a reply box (Enter = newline, a **Send**
-  button sends — never Enter) so you can keep asking. Turns render in
+  passage: each answered comment has a reply box (Enter sends, Shift+Enter for a
+  newline, or the **Send** button) so you can keep asking. Turns render in
   chronological order (user/agent/user/agent…); the daemon answers each follow-up
   with the prior turns of that passage as context, so replies stay coherent. The
   liveness pill shows a brief "connecting…" after a reload instead of flashing
@@ -55,6 +55,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
   validated by the shell → read back over CDP (no inbound network endpoint).
   Sidebar shows an "awaiting you" → "answered" badge. New `examples/ask-template.html`.
 - `glimpse stop` (+ server PID file).
+
+### Changed
+- **Friendlier message boxes (annotate rail + code-explainer composer).**
+  **Enter** now sends and **Shift+Enter** inserts a newline (⌘/Ctrl+Enter still
+  sends); an IME-composition Enter — e.g. picking a Chinese/Japanese candidate —
+  never sends. Inputs **auto-grow** to fit what you type (capped, then scroll)
+  while still allowing a manual drag-resize. Agent replies in the annotate rail
+  now render as **Markdown** (bold/italic/code/links/lists/headings) via the same
+  DOM-only `safeMarkdown` path the explainer uses — never `innerHTML`.
 
 ### Fixed (post-review)
 - Concurrent `publish` no longer races `feed.json` (exclusive `flock`).
