@@ -144,35 +144,41 @@
   // ---- browser entry (Task 6) ---------------------------------------------
   var STYLE = [
     "#glimpse-fallback{display:none!important}",
-    ".gx{font:15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1d1d22;max-width:1100px;margin:0 auto;padding:18px 20px 80px}",
-    ".gx-tabs{display:flex;gap:6px;border-bottom:1px solid #e6e6ee;margin-bottom:14px}",
-    ".gx-tab{padding:8px 14px;border-radius:8px 8px 0 0;cursor:pointer;font-weight:600;color:#5b6472}",
-    ".gx-tab.on{background:#3b5bdb;color:#fff}",
+    // Themeable tokens — light defaults; .gx-dark (set when the artifact's body is dark) overrides.
+    ".gx{--gx-fg:#1d1d22;--gx-dim:#5b6472;--gx-bg:#fff;--gx-line:#e6e6ee;--gx-accent:#3b5bdb;--gx-accent-fg:#fff;--gx-accent-bg:#eef1ff;--gx-accent-border:#d6ddfb;--gx-soft:#f7f8ff;--gx-pre-bg:#0f1117;--gx-pre-fg:#e6e7ea;",
+    "  font:15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:var(--gx-fg);max-width:1100px;margin:0 auto;padding:18px 20px 80px}",
+    ".gx.gx-dark{--gx-fg:#e6e8ee;--gx-dim:#aeb6c6;--gx-bg:#1c2030;--gx-line:#2a3040;--gx-accent:#7aa2f7;--gx-accent-fg:#0f1115;--gx-accent-bg:#222a3f;--gx-accent-border:#33405e;--gx-soft:#171b27;--gx-pre-bg:#0e1118;--gx-pre-fg:#e6e7ea}",
+    ".gx-tabs{display:flex;gap:6px;border-bottom:1px solid var(--gx-line);margin-bottom:14px}",
+    ".gx-tab{padding:8px 14px;border-radius:8px 8px 0 0;cursor:pointer;font-weight:600;color:var(--gx-dim)}",
+    ".gx-tab.on{background:var(--gx-accent);color:var(--gx-accent-fg)}",
+    ".gx-tab:focus-visible{outline:2px solid var(--gx-accent);outline-offset:-2px}",
     ".gx-view{display:none}.gx-view.on{display:block}",
-    ".gx-card{border:1px solid #e6e6ee;border-radius:12px;padding:14px 16px;margin:10px 0;background:#fff}",
+    ".gx-card{border:1px solid var(--gx-line);border-radius:12px;padding:14px 16px;margin:10px 0;background:var(--gx-bg)}",
     // Panel column grows by whatever right-edge gutter the comment rail reserves,
     // so the snippet keeps its width (~420px) instead of being eaten by margin-right.
     ".gx-cs{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,calc(var(--gx-panel,420px) + var(--glimpse-gutter-reserved,0px)));gap:16px}",
     "@media(max-width:1000px){.gx-cs{grid-template-columns:1fr}.gx-panel{position:static!important;max-height:none!important}}",
-    ".gx-node{border:1px solid #e6e6ee;border-radius:10px;padding:10px 12px;margin:0 0 16px;cursor:pointer;position:relative}",
-    ".gx-node.sel{border-color:#3b5bdb;background:#eef1ff}",
-    ".gx-node .lbl{font-weight:700}.gx-node .loc{font:12px ui-monospace,Menlo,monospace;color:#5b6472}",
-    ".gx-ask{margin-top:8px;font-size:13px;font-weight:600;color:#fff;background:#3b5bdb;border:0;border-radius:7px;padding:6px 11px;cursor:pointer}",
-    ".gx-panel{position:sticky;top:8px;align-self:start;border:1px solid #e6e6ee;border-radius:12px;background:#fff;max-height:calc(100vh - 24px);overflow:auto;margin-right:calc(var(--glimpse-gutter-reserved,0px))}",
-    ".gx-panel pre{background:#0f1117;color:#e6e7ea;border-radius:8px;padding:12px;overflow:auto;font:12.5px/1.5 ui-monospace,Menlo,monospace}",
+    ".gx-node{border:1px solid var(--gx-line);border-radius:10px;padding:10px 12px;margin:0 0 16px;cursor:pointer;position:relative}",
+    ".gx-node.sel{border-color:var(--gx-accent);background:var(--gx-accent-bg)}",
+    ".gx-node:focus-visible,.gx-chip:focus-visible{outline:2px solid var(--gx-accent);outline-offset:2px}",
+    ".gx-node .lbl{font-weight:700}.gx-node .loc{font:12px ui-monospace,Menlo,monospace;color:var(--gx-dim)}",
+    ".gx-ask{margin-top:8px;font-size:13px;font-weight:600;color:var(--gx-accent-fg);background:var(--gx-accent);border:0;border-radius:7px;padding:6px 11px;cursor:pointer}",
+    ".gx-ask:focus-visible{outline:2px solid var(--gx-accent);outline-offset:2px}",
+    ".gx-panel{position:sticky;top:8px;align-self:start;border:1px solid var(--gx-line);border-radius:12px;background:var(--gx-bg);max-height:calc(100vh - 24px);overflow:auto;margin-right:calc(var(--glimpse-gutter-reserved,0px))}",
+    ".gx-panel pre{background:var(--gx-pre-bg);color:var(--gx-pre-fg);border-radius:8px;padding:12px;overflow:auto;font:12.5px/1.5 ui-monospace,Menlo,monospace}",
     ".gx-panel .tok-kw{color:#9bb7ff}.gx-panel .tok-str{color:#b5e8a0}.gx-panel .tok-com{color:#8b93a7}",
-    ".gx-chip{display:inline-block;font-size:12px;background:#eef1ff;color:#26408b;border:1px solid #d6ddfb;border-radius:999px;padding:2px 9px;margin:2px 4px 0 0;cursor:pointer}",
-    ".gx-composer{margin-top:8px;border:1px dashed #c3ccea;border-radius:9px;padding:9px;background:#f7f8ff;display:none}",
-    ".gx-composer.on{display:block}.gx-composer textarea{width:100%;box-sizing:border-box;resize:vertical;min-height:40px;max-height:220px;overflow-y:auto;border:1px solid #e6e6ee;border-radius:7px;padding:7px;font:14px inherit}",
+    ".gx-chip{display:inline-block;font-size:12px;background:var(--gx-accent-bg);color:var(--gx-accent);border:1px solid var(--gx-accent-border);border-radius:999px;padding:2px 9px;margin:2px 4px 0 0;cursor:pointer}",
+    ".gx-composer{margin-top:8px;border:1px dashed var(--gx-accent-border);border-radius:9px;padding:9px;background:var(--gx-soft);display:none}",
+    ".gx-composer.on{display:block}.gx-composer textarea{width:100%;box-sizing:border-box;resize:vertical;min-height:40px;max-height:220px;overflow-y:auto;border:1px solid var(--gx-line);border-radius:7px;padding:7px;font:14px inherit;background:var(--gx-bg);color:var(--gx-fg)}",
     // inline per-node conversation: the user's question + the agent's threaded reply
     ".gx-replies{margin-top:8px;display:none;flex-direction:column;gap:7px}",
     ".gx-replies.on{display:flex}",
     ".gx-reply{font-size:13.5px;line-height:1.5}",
-    ".gx-reply .gx-who{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:#5b6472;margin-bottom:2px}",
-    ".gx-reply-user{color:#1d1d22}",
-    ".gx-reply-agent{background:#eef1ff;border-left:2px solid #8aa0ec;border-radius:6px;padding:7px 9px}",
+    ".gx-reply .gx-who{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--gx-dim);margin-bottom:2px}",
+    ".gx-reply-user{color:var(--gx-fg)}",
+    ".gx-reply-agent{background:var(--gx-accent-bg);border-left:2px solid var(--gx-accent);border-radius:6px;padding:7px 9px}",
     ".gx-reply-agent p{margin:.3em 0}.gx-reply-agent p:first-child{margin-top:0}.gx-reply-agent p:last-child{margin-bottom:0}",
-    ".gx-reply-pending{font-size:12px;color:#5b6472;font-style:italic}"
+    ".gx-reply-pending{font-size:12px;color:var(--gx-dim);font-style:italic}"
   ].join("\n");
 
   function el(tag, cls, txt) {
@@ -247,10 +253,18 @@
     var fb = document.getElementById("glimpse-fallback"); if (fb) fb.style.display = "none";
 
     var wrap = el("div", "gx");
+    // Match the artifact's theme: if the page body is dark, flip the renderer dark too.
+    try {
+      var _bg = getComputedStyle(document.body).backgroundColor, _m = (_bg || "").match(/\d+(\.\d+)?/g);
+      if (_m) { var _l = (0.2126 * +_m[0] + 0.7152 * +_m[1] + 0.0722 * +_m[2]) / 255; if (_l < 0.35) wrap.classList.add("gx-dark"); }
+    } catch (e) {}
+    var darkTheme = wrap.classList.contains("gx-dark");
     var views = [];
     function addView(key, label, build) {
       if (!spec[key]) return;
-      var v = el("div", "gx-view"); v.dataset.key = key; build(v); views.push({ key: key, label: label, v: v });
+      var v = el("div", "gx-view"); v.dataset.key = key;
+      v.setAttribute("role", "tabpanel"); v.setAttribute("tabindex", "0"); v.setAttribute("aria-label", label);
+      build(v); views.push({ key: key, label: label, v: v });
     }
     addView("architecture", "Architecture", function (v) {
       if (spec.architecture.summary) v.appendChild(safeMarkdown(spec.architecture.summary));
@@ -275,16 +289,27 @@
       var byId = {}; steps.forEach(function (s) { byId[s.id] = s; });
       function select(id) {
         var n = byId[id]; if (!n) return;
-        list.querySelectorAll(".gx-node").forEach(function (e) { e.classList.toggle("sel", e.dataset.id === id); });
+        list.querySelectorAll(".gx-node").forEach(function (e) {
+          var on = e.dataset.id === id; e.classList.toggle("sel", on);
+          if (on) e.setAttribute("aria-current", "true"); else e.removeAttribute("aria-current");
+        });
         renderSnippet(panel, n);
       }
       steps.forEach(function (s, i) {
         var node = el("div", "gx-node"); node.dataset.id = s.id;
+        node.setAttribute("role", "button"); node.tabIndex = 0;
+        node.setAttribute("aria-label", "Step " + (i + 1) + ": " + (s.label || s.id));
+        node.addEventListener("keydown", function (e) {
+          if (e.target === node && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); select(s.id); }
+        });
         node.appendChild(el("span", "lbl", (i + 1) + ". " + (s.label || s.id)));
         node.appendChild(el("div", "loc", (s.file || "") + (s.lines ? ":" + s.lines : "")));
         (s.calls || []).forEach(function (c) {
           var chip = el("span", "gx-chip", (byId[c] ? byId[c].label : c) + " ↗");
+          chip.setAttribute("role", "button"); chip.tabIndex = 0;
+          chip.setAttribute("aria-label", "Jump to " + (byId[c] ? byId[c].label : c));
           chip.addEventListener("click", function (ev) { ev.stopPropagation(); select(c); });
+          chip.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); ev.stopPropagation(); select(c); } });
           node.appendChild(chip);
         });
         var ask = el("button", "gx-ask", "Ask about this");
@@ -294,7 +319,7 @@
         composer.appendChild(ta); composer.appendChild(send);
         // per-node inline conversation; the annotate layer fills this via mountNodeReply
         // once the thread (question + agent reply) is pushed back into the iframe.
-        var replies = el("div", "gx-replies"); nodeReplies[s.id] = replies;
+        var replies = el("div", "gx-replies"); replies.setAttribute("aria-live", "polite"); nodeReplies[s.id] = replies;
         ask.addEventListener("click", function (ev) { ev.stopPropagation(); composer.classList.toggle("on"); ta.focus(); });
         // Send via the button OR Enter (Shift+Enter newlines; IME Enter never sends).
         var fire = function (ev) {
@@ -334,7 +359,7 @@
       var src = node.getAttribute("data-src") || node.textContent;   // pristine source, set at build time
       mermaidDone = true;
       try {
-        if (!mermaidInit) { window.mermaid.initialize({ startOnLoad: false, theme: "neutral", securityLevel: "strict" }); mermaidInit = true; }
+        if (!mermaidInit) { window.mermaid.initialize({ startOnLoad: false, theme: darkTheme ? "dark" : "neutral", securityLevel: "strict" }); mermaidInit = true; }
         // Use render() + inject, NOT run(): run() measures the live element in place
         // and collapses to a 0-size SVG inside our grid; render() lays out in mermaid's
         // own sandbox and returns correct geometry. The SVG is mermaid's structured
@@ -347,13 +372,27 @@
       } catch (e) { mermaidDone = false; /* fallback: the source text stays visible */ }
     }
 
-    var tabs = el("div", "gx-tabs");
+    var tabs = el("div", "gx-tabs"); tabs.setAttribute("role", "tablist"); tabs.setAttribute("aria-label", "Views");
+    // Activate a tab: toggle panels + roving tabindex + aria-selected (WAI-ARIA tabs pattern).
+    function activateTab(view, moveFocus) {
+      tabs.querySelectorAll(".gx-tab").forEach(function (e) {
+        var on = e.dataset.key === view.key;
+        e.classList.toggle("on", on); e.setAttribute("aria-selected", String(on)); e.tabIndex = on ? 0 : -1;
+      });
+      views.forEach(function (vv) { vv.v.classList.toggle("on", vv === view); });
+      renderMermaid();
+      if (moveFocus) { var sel = tabs.querySelector('.gx-tab[aria-selected="true"]'); if (sel) sel.focus(); }
+    }
     views.forEach(function (view, idx) {
       var t = el("div", "gx-tab", view.label); t.dataset.key = view.key;
-      t.addEventListener("click", function () {
-        tabs.querySelectorAll(".gx-tab").forEach(function (e) { e.classList.toggle("on", e === t); });
-        views.forEach(function (vv) { vv.v.classList.toggle("on", vv === view); });
-        renderMermaid();
+      t.setAttribute("role", "tab"); t.setAttribute("aria-selected", "false"); t.tabIndex = -1;
+      t.addEventListener("click", function () { activateTab(view); });
+      t.addEventListener("keydown", function (e) {
+        if (e.key === "ArrowRight" || e.key === "ArrowDown") { e.preventDefault(); activateTab(views[(idx + 1) % views.length], true); }
+        else if (e.key === "ArrowLeft" || e.key === "ArrowUp") { e.preventDefault(); activateTab(views[(idx - 1 + views.length) % views.length], true); }
+        else if (e.key === "Home") { e.preventDefault(); activateTab(views[0], true); }
+        else if (e.key === "End") { e.preventDefault(); activateTab(views[views.length - 1], true); }
+        else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); activateTab(view, true); }
       });
       tabs.appendChild(t);
     });
@@ -363,7 +402,7 @@
 
     // default tab: Call stack if present, else first.
     var def = views.filter(function (v) { return v.key === "callstack"; })[0] || views[0];
-    if (def) { tabs.querySelectorAll(".gx-tab").forEach(function (e) { e.classList.toggle("on", e.dataset.key === def.key); }); def.v.classList.add("on"); }
+    if (def) activateTab(def);
     renderMermaid();   // covers the case where Data flow is the default/only view
   }
 

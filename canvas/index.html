@@ -193,7 +193,7 @@ function itemEl(a, isHidden){
   const el = document.createElement('div');
   el.dataset.slug = a.slug;
   el.className = 'item' + (a.slug===current ? ' active':'') + (pinned ? ' pinned':'');
-  el.setAttribute('role','listitem'); el.tabIndex = 0;
+  el.setAttribute('role','listitem'); el.tabIndex = -1;   // roving: render() promotes one item to tabIndex 0
   const t = document.createElement('div'); t.className='t';
   if(pinned){ const p=document.createElement('span'); p.className='pinmark'; p.setAttribute('aria-hidden','true'); p.textContent='📌 '; el.title='pinned'; t.appendChild(p); }
   t.appendChild(document.createTextNode(a.title));
@@ -283,6 +283,9 @@ function render(){
     list.appendChild(moreRow((showHidden?'▾ ':'▸ ')+hiddenSlugs.size+' hidden', ()=>{ showHidden=!showHidden; _refocus='.more'; render(); }));
     if(showHidden) feed.filter(a=>hiddenSlugs.has(a.slug)).forEach(a=>list.appendChild(itemEl(a, true)));
   }
+  // roving tabindex: exactly one item is a tab stop (the active one, else the first)
+  const rowItems = list.querySelectorAll('.item');
+  if(rowItems.length){ ([...rowItems].find(x=>x.dataset.slug===current) || rowItems[0]).tabIndex = 0; }
   if(_refocus){ const el = list.querySelector(_refocus); if(el) el.focus(); _refocus = null; }
 }
 
@@ -514,6 +517,18 @@ window.addEventListener('hashchange', ()=>{
   if(h && h!==current && feed.some(a=>a.slug===h)){ held = true; show(h); }
 });
 document.getElementById('filter').addEventListener('input', (e)=>{ filterText = e.target.value; render(); });
+// Roving-tabindex arrow navigation across list items (added once; the list element persists).
+document.getElementById('list').addEventListener('keydown', (e)=>{
+  if(!/^(ArrowDown|ArrowUp|Home|End)$/.test(e.key)) return;
+  const items=[...document.getElementById('list').querySelectorAll('.item')]; if(!items.length) return;
+  const cur = e.target.closest ? e.target.closest('.item') : null;
+  let i = items.indexOf(cur);
+  if(e.key==='ArrowDown') i = i<0?0:Math.min(items.length-1,i+1);
+  else if(e.key==='ArrowUp') i = i<0?0:Math.max(0,i-1);
+  else if(e.key==='Home') i=0; else i=items.length-1;
+  e.preventDefault();
+  items.forEach(x=>x.tabIndex=-1); items[i].tabIndex=0; items[i].focus();
+});
 // '/' focuses the filter from anywhere; Escape clears it.
 document.addEventListener('keydown', (e)=>{
   const tag = (e.target && e.target.tagName) || '';
