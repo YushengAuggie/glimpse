@@ -48,10 +48,11 @@
   .item.pinned .t { padding-right:48px; }           /* keep the always-on buttons off the title */
   .item:hover { background:var(--panel2); }
   .item:focus-visible { border-color:var(--accent); }
-  .item.active { background:var(--panel2); border-color:var(--line); }
+  .item.active { background:var(--panel2); border-color:var(--line); box-shadow:inset 3px 0 0 var(--accent); }
   .item.flash { animation:flash 0.9s ease-out; }
   @keyframes flash { 0%{ border-color:var(--accent2); background:#22301f; } 100%{ } }
-  .item .t { font-weight:550; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .item .t { font-weight:550; font-size:14px; color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .item.active .t, .item:hover .t { color:var(--text); }   /* selection/hover read as state vs the dimmed rest */
   .pinmark { color:var(--amber); }
   .item .m { color:var(--dim); font-size:12px; margin-top:2px; display:flex; gap:6px; align-items:center; }
   .badge { font-size:10.5px; font-weight:700; border-radius:5px; padding:1px 6px; text-transform:uppercase; letter-spacing:.3px; }
@@ -78,7 +79,13 @@
   .annpill.off  { color:var(--dim); opacity:.65; }
   .bar .note { font-size:12.5px; color:var(--accent2); opacity:0; transition:opacity .2s; margin-left:10px; }
   .bar .note.show { opacity:1; }
-  iframe { border:0; width:100%; height:100%; background:#fff; }
+  iframe { border:0; width:100%; height:100%; background:var(--panel); opacity:0; transition:opacity .15s ease; }
+  .toast { position:fixed; left:14px; bottom:14px; z-index:60; display:flex; gap:12px; align-items:center;
+    background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:8px 12px; font-size:12.5px;
+    color:var(--text); box-shadow:0 6px 22px rgba(0,0,0,.45); max-width:260px; }
+  .toast button { background:none; border:0; color:var(--accent); cursor:pointer; font:inherit; font-weight:650; padding:0; }
+  .toast button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
+  @media (prefers-reduced-motion: reduce) { .app, iframe, .item.flash { transition:none; animation:none; } }
   .welcome { padding:48px; color:var(--dim); max-width:640px; }
   .welcome h2 { color:var(--text); }
   code { background:var(--panel2); padding:2px 6px; border-radius:5px; font-size:13px; }
@@ -88,12 +95,12 @@
 <div class="app">
   <aside>
     <div class="brand"><span class="dot" id="dot" role="img" aria-label="connection: live"></span><b><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><path d="M3 16C8 7 24 7 29 16C24 25 8 25 3 16Z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/><circle cx="16" cy="16" r="5" fill="currentColor"/></svg>Glimpse</b></div>
-    <div class="filter"><input id="filter" type="search" placeholder="Filter artifacts…" aria-label="Filter artifacts" autocomplete="off"></div>
+    <div class="filter"><input id="filter" type="search" placeholder="Filter artifacts…   ( / )" aria-label="Filter artifacts" autocomplete="off"></div>
     <div class="list" id="list" role="list"><div class="empty">No artifacts yet…</div></div>
-    <div class="foot"><span id="count">0 artifacts</span><span id="clock" aria-hidden="true"></span></div>
+    <div class="foot"><span id="count" role="status" aria-live="polite">0 artifacts</span><span id="clock" aria-hidden="true"></span></div>
   </aside>
   <main>
-    <div class="bar"><button id="navtog" class="iconbtn" type="button" aria-pressed="false" aria-label="Hide sidebar" title="Toggle sidebar"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="1.25" y="2.25" width="13.5" height="11.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="6" y1="2.25" x2="6" y2="13.75" stroke="currentColor" stroke-width="1.5"/></svg></button><h1 id="title">Welcome</h1><span class="held" id="held" hidden>held</span><span class="annpill" id="annpill" role="button" tabindex="0" hidden title="Highlight-chat — click to toggle reading mode">Annotate</span><span class="note" id="note">✓ response recorded</span></div>
+    <div class="bar"><button id="navtog" class="iconbtn" type="button" aria-pressed="false" aria-label="Hide sidebar" title="Toggle sidebar"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="1.25" y="2.25" width="13.5" height="11.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="6" y1="2.25" x2="6" y2="13.75" stroke="currentColor" stroke-width="1.5"/></svg></button><h1 id="title">Welcome</h1><span class="held" id="held" hidden>held</span><span class="annpill" id="annpill" role="button" tabindex="0" hidden title="Highlight-chat — click to toggle reading mode">Annotate</span><span class="note" id="note" role="status" aria-live="polite">✓ response recorded</span></div>
     <div id="stage" style="flex:1; min-height:0;">
       <div class="welcome">
         <h2>This is your live canvas.</h2>
@@ -103,6 +110,7 @@
     </div>
   </main>
 </div>
+<div id="toast" class="toast" hidden></div>
 <script>
 let feed = [], current = null, lastSig = "", held = false;
 let filterText = "", showHidden = false;
@@ -166,12 +174,28 @@ function answered(slug){ return !!window.__glimpse_responses[slug]; }
 // Static thumbtack glyph for the pin toggle — monochrome (currentColor) so it
 // matches the ✕ rather than the colorful 📌 emoji. Constant markup, no user data.
 const PIN_SVG = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4h6l-1 6 3 3H7l3-3-1-6z"/><line x1="12" y1="13" x2="12" y2="20"/></svg>';
+
+// Optimistic pin intents awaiting daemon confirmation: slug -> {pinned, ts}. The
+// canvas can't write feed.json, so a pin only "sticks" once the daemon drains the
+// outbox and rewrites the feed. reconcilePins() (in poll) confirms or reverts these.
+const pendingPins = new Map();
+function effPinned(a){ const p = pendingPins.get(a.slug); return p ? p.pinned : !!a.pinned; }
+function cssEsc(s){ return (window.CSS && CSS.escape) ? CSS.escape(s) : String(s).replace(/["\\]/g,'\\$&'); }
+let _refocus = null;   // selector to focus after the next render() (keyboard continuity)
+function showNote(msg, ms){ const n=document.getElementById('note'); n.textContent=msg; n.classList.add('show'); clearTimeout(n._t); n._t=setTimeout(()=>n.classList.remove('show'), ms||2500); }
+function toast(msg, label, fn){
+  const t=document.getElementById('toast'); t.textContent=''; t.appendChild(document.createTextNode(msg));
+  if(label && fn){ const b=document.createElement('button'); b.type='button'; b.textContent=label; b.onclick=()=>{ t.hidden=true; fn(); }; t.appendChild(b); }
+  t.hidden=false; clearTimeout(t._t); t._t=setTimeout(()=>{ t.hidden=true; }, 5500);
+}
 function itemEl(a, isHidden){
+  const pinned = effPinned(a);
   const el = document.createElement('div');
-  el.className = 'item' + (a.slug===current ? ' active':'') + (a.pinned ? ' pinned':'');
+  el.dataset.slug = a.slug;
+  el.className = 'item' + (a.slug===current ? ' active':'') + (pinned ? ' pinned':'');
   el.setAttribute('role','listitem'); el.tabIndex = 0;
   const t = document.createElement('div'); t.className='t';
-  if(a.pinned){ const p=document.createElement('span'); p.className='pinmark'; p.setAttribute('aria-hidden','true'); p.textContent='📌 '; el.title='pinned'; t.appendChild(p); }
+  if(pinned){ const p=document.createElement('span'); p.className='pinmark'; p.setAttribute('aria-hidden','true'); p.textContent='📌 '; el.title='pinned'; t.appendChild(p); }
   t.appendChild(document.createTextNode(a.title));
   const meta = document.createElement('div'); meta.className='m';
   const when = document.createElement('span'); when.textContent = fmt(a.ts); meta.appendChild(when);
@@ -186,23 +210,29 @@ function itemEl(a, isHidden){
   hb.textContent = isHidden ? '↩' : '✕';
   hb.title = isHidden ? 'Restore to list' : 'Hide from list';
   hb.setAttribute('aria-label', (isHidden?'Restore ':'Hide ') + a.title);
-  hb.onclick = (e)=>{ e.stopPropagation(); if(isHidden) hiddenSlugs.delete(a.slug); else hiddenSlugs.add(a.slug); LS.set('gl_hidden',[...hiddenSlugs]); render(); };
+  hb.onclick = (e)=>{ e.stopPropagation();
+    if(isHidden){ hiddenSlugs.delete(a.slug); LS.set('gl_hidden',[...hiddenSlugs]); _refocus='.item[data-slug="'+cssEsc(a.slug)+'"]'; render(); }
+    else { hiddenSlugs.add(a.slug); LS.set('gl_hidden',[...hiddenSlugs]); _refocus='.more'; render();
+           toast('Hid “'+a.title+'”', 'Undo', ()=>{ hiddenSlugs.delete(a.slug); LS.set('gl_hidden',[...hiddenSlugs]); render(); }); }
+  };
   el.appendChild(hb);
   // pin / unpin — sent to the daemon via the outbox (the canvas can't write feed.json).
   // Optimistically reflect the toggle; the 1.2s feed poll reconciles (reverts if the
   // daemon isn't running to drain it). Only on real items, not the hidden list.
   if(!isHidden){
     const pb = document.createElement('button'); pb.type='button';
-    pb.className = 'itempin' + (a.pinned ? ' on':'');
-    pb.title = a.pinned ? 'Unpin' : 'Pin to top';
-    pb.setAttribute('aria-label', (a.pinned?'Unpin ':'Pin ') + a.title);
-    pb.setAttribute('aria-pressed', String(!!a.pinned));
+    pb.className = 'itempin' + (pinned ? ' on':'');
+    pb.title = pinned ? 'Unpin' : 'Pin to top';
+    pb.setAttribute('aria-label', (pinned?'Unpin ':'Pin ') + a.title);
+    pb.setAttribute('aria-pressed', String(!!pinned));
     pb.innerHTML = PIN_SVG;
     pb.onclick = (e)=>{
       e.stopPropagation();
-      const intent = a.pinned ? 'unpin' : 'pin';
-      window.__glimpse_outbox.push({ id: GL_EPOCH+'-'+(++glSeq), intent, slug: a.slug, ts: Date.now() });
-      a.pinned = !a.pinned; render();
+      const want = !pinned;
+      window.__glimpse_outbox.push({ id: GL_EPOCH+'-'+(++glSeq), intent: want?'pin':'unpin', slug: a.slug, ts: Date.now() });
+      pendingPins.set(a.slug, { pinned: want, ts: Date.now() });   // optimistic; poll reconciles/reverts
+      _refocus = '.item[data-slug="'+cssEsc(a.slug)+'"] .itempin';
+      render();
     };
     el.appendChild(pb);
   }
@@ -211,12 +241,12 @@ function itemEl(a, isHidden){
 // A foldable group header: ▾/▸ + label + count. Toggling persists the folded set.
 function groupHeader(key, count){
   const folded = foldedGroups.has(key);
-  const d = document.createElement('div'); d.className='section fold';
+  const d = document.createElement('div'); d.className='section fold'; d.dataset.group=key;
   d.setAttribute('role','button'); d.tabIndex=0; d.setAttribute('aria-expanded', String(!folded));
   const car = document.createElement('span'); car.className='caret'; car.textContent = folded ? '▸' : '▾'; d.appendChild(car);
   d.appendChild(document.createTextNode(key));
   const c = document.createElement('span'); c.className='gcount'; c.textContent = String(count); d.appendChild(c);
-  const toggle = ()=>{ if(foldedGroups.has(key)) foldedGroups.delete(key); else foldedGroups.add(key); LS.set('gl_folded',[...foldedGroups]); render(); };
+  const toggle = ()=>{ if(foldedGroups.has(key)) foldedGroups.delete(key); else foldedGroups.add(key); LS.set('gl_folded',[...foldedGroups]); _refocus='.section.fold[data-group="'+cssEsc(key)+'"]'; render(); };
   d.onclick = toggle; d.onkeydown = (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); toggle(); } };
   return d;
 }
@@ -237,21 +267,23 @@ function render(){
   if(q){
     // Search is flat across visible artifacts; folding/grouping don't apply.
     const items = visible.filter(match);
+    document.getElementById('count').textContent = items.length + ' of ' + visible.length + ' match';
     if(!items.length){ const e=document.createElement('div'); e.className='empty'; e.textContent='No matches.'; list.appendChild(e); }
     else items.forEach(a=>list.appendChild(itemEl(a)));
   } else {
-    const pinned = visible.filter(a=>a.pinned);
+    const pinned = visible.filter(a=>effPinned(a));
     if(pinned.length) appendGroup('Pinned', pinned);
-    const rest = visible.filter(a=>!a.pinned);
+    const rest = visible.filter(a=>!effPinned(a));
     const buckets = {};
     rest.forEach(a=>{ const g=groupOf(a); (buckets[g]=buckets[g]||[]).push(a); });
     GROUP_ORDER.forEach(g=>{ if(buckets[g] && buckets[g].length) appendGroup(g, buckets[g]); });
   }
   // Hidden artifacts: a footer toggle reveals them with a restore button.
   if(hiddenSlugs.size){
-    list.appendChild(moreRow((showHidden?'▾ ':'▸ ')+hiddenSlugs.size+' hidden', ()=>{ showHidden=!showHidden; render(); }));
+    list.appendChild(moreRow((showHidden?'▾ ':'▸ ')+hiddenSlugs.size+' hidden', ()=>{ showHidden=!showHidden; _refocus='.more'; render(); }));
     if(showHidden) feed.filter(a=>hiddenSlugs.has(a.slug)).forEach(a=>list.appendChild(itemEl(a, true)));
   }
+  if(_refocus){ const el = list.querySelector(_refocus); if(el) el.focus(); _refocus = null; }
 }
 
 async function show(slug){
@@ -313,7 +345,7 @@ async function show(slug){
   if(!injected) f.src = 'artifacts/' + encodeURIComponent(a.slug) + '.html?v=' + a.ts;
   if(currentChannel !== cid) return;    // a newer show() superseded us mid-await
   f.dataset.cid = cid;
-  f.addEventListener('load', ()=>{ threadSig=""; pollThread(); updateLiveness(); });
+  f.addEventListener('load', ()=>{ f.style.opacity='1'; threadSig=""; pollThread(); updateLiveness(); });
   stage.appendChild(f);
   render();
 }
@@ -331,8 +363,7 @@ window.addEventListener('message', (e)=>{
     try { if(JSON.stringify(value).length > 64*1024) return; } catch(_){ return; }   // size cap
     if(!current) return;
     window.__glimpse_responses[current] = { value: value, ts: Date.now() };
-    const note = document.getElementById('note'); note.classList.add('show');
-    setTimeout(()=>note.classList.remove('show'), 2500);
+    showNote('✓ response recorded');
     render();
     return;
   }
@@ -376,10 +407,23 @@ window.addEventListener('message', (e)=>{
 });
 
 function flashItem(slug){
-  const a = feed.find(x=>x.slug===slug); if(!a) return;
-  for(const el of document.querySelectorAll('.item')){
-    if(el.querySelector('.t')?.textContent.endsWith(a.title)){ el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
-  }
+  const el = document.querySelector('.item[data-slug="'+cssEsc(slug)+'"]');
+  if(el){ el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
+}
+// Confirm or revert optimistic pin intents against the freshly-fetched feed.
+function reconcilePins(items){
+  if(!pendingPins.size) return;
+  const live = (Date.now() - (window.__glimpse_bridge_live||0)) < 4000;
+  const bySlug = {}; items.forEach(i=>bySlug[i.slug]=i);
+  let changed=false, failed=false;
+  pendingPins.forEach((p, slug)=>{
+    const it = bySlug[slug];
+    if(!it){ pendingPins.delete(slug); changed=true; return; }                 // artifact gone
+    if(!!it.pinned === p.pinned){ pendingPins.delete(slug); changed=true; return; }   // daemon confirmed
+    if(!live && Date.now()-p.ts > 3500){ pendingPins.delete(slug); changed=true; failed=true; }  // gave up → revert
+  });
+  if(failed) showNote('Pin didn’t stick — is the glimpse daemon running?', 4500);
+  if(changed) render();
 }
 
 async function poll(){
@@ -391,7 +435,12 @@ async function poll(){
     if(sig !== lastSig){
       const firstLoad = (current === null);
       const prevTs = current ? (feed.find(a=>a.slug===current)||{}).ts : null;
-      feed = items; render();
+      feed = items;
+      // prune hidden slugs that no longer exist — bounds the set + stops slug reuse inheriting 'hidden'
+      let pruned=false; const liveSet=new Set(items.map(i=>i.slug));
+      hiddenSlugs.forEach(s=>{ if(!liveSet.has(s)){ hiddenSlugs.delete(s); pruned=true; } });
+      if(pruned) LS.set('gl_hidden',[...hiddenSlugs]);
+      render();
       const hash = decodeURIComponent((location.hash||'').replace(/^#/,''));
       const cur = feed.find(a=>a.slug===current);
       if(firstLoad && hash && feed.some(a=>a.slug===hash)){ held = true; show(hash); }
@@ -400,6 +449,7 @@ async function poll(){
       else if(!held && feed.length){ show(feed[0].slug); }                         // not held → follow newest
       lastSig = sig;
     }
+    reconcilePins(items);   // confirm/revert optimistic pins every poll, even when the feed sig is unchanged
   } catch(e){
     const dot=document.getElementById('dot'); dot.classList.add('stale'); dot.setAttribute('aria-label','connection: lost');
   }
@@ -449,6 +499,7 @@ document.getElementById('annpill').addEventListener('keydown', (e)=>{ if(e.key==
 // Sidebar collapse — reflect navCollapsed onto the grid + button, persisted.
 function applyNav(){
   document.querySelector('.app').classList.toggle('nav-collapsed', navCollapsed);
+  document.querySelector('aside').inert = navCollapsed;   // off-screen sidebar leaves tab order + a11y tree
   const b = document.getElementById('navtog');
   b.setAttribute('aria-pressed', String(navCollapsed));
   b.setAttribute('aria-label', navCollapsed ? 'Show sidebar' : 'Hide sidebar');
@@ -463,6 +514,15 @@ window.addEventListener('hashchange', ()=>{
   if(h && h!==current && feed.some(a=>a.slug===h)){ held = true; show(h); }
 });
 document.getElementById('filter').addEventListener('input', (e)=>{ filterText = e.target.value; render(); });
+// '/' focuses the filter from anywhere; Escape clears it.
+document.addEventListener('keydown', (e)=>{
+  const tag = (e.target && e.target.tagName) || '';
+  if(e.key === '/' && !/^(INPUT|TEXTAREA|SELECT)$/.test(tag) && !e.metaKey && !e.ctrlKey && !e.altKey){
+    e.preventDefault(); const fi=document.getElementById('filter'); fi.focus(); fi.select();
+  } else if(e.key === 'Escape' && e.target && e.target.id === 'filter'){
+    filterText=''; e.target.value=''; render(); e.target.blur();
+  }
+});
 setInterval(()=>{ document.getElementById('clock').textContent = new Date().toLocaleTimeString(); }, 1000);
 setInterval(poll, 1200); poll();
 setInterval(pollThread, 1000);

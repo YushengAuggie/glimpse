@@ -18,12 +18,6 @@
   } catch (e) { /* mermaid optional */ }
 
   // ---- pure helpers (tested in Node) --------------------------------------
-  function escapeHtml(s) {
-    return String(s == null ? "" : s)
-      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
-  }
-
   function appendInline(parent, text) {
     // tokenize inline marks on already-untrusted text; emit DOM nodes only.
     var re = /(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|(`([^`]+)`)|(\[([^\]]+)\]\(([^)]+)\))/g;
@@ -406,6 +400,6 @@
   }
 
   if (typeof module !== "undefined" && module.exports) {
-    module.exports = { escapeHtml, safeMarkdown, mermaidSource, highlightTokens, buildAskMessage, shouldSend };
+    module.exports = { safeMarkdown, mermaidSource, highlightTokens, buildAskMessage, shouldSend };
   }
 })();

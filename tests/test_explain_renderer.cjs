@@ -10,7 +10,7 @@ function frag2html(frag) {
 }
 
 test("module exports the pure helpers", () => {
-  for (const fn of ["escapeHtml", "safeMarkdown", "mermaidSource", "buildAskMessage", "highlightTokens", "shouldSend"]) {
+  for (const fn of ["safeMarkdown", "mermaidSource", "buildAskMessage", "highlightTokens", "shouldSend"]) {
     assert.strictEqual(typeof GX[fn], "function", "missing export: " + fn);
   }
 });
@@ -22,12 +22,6 @@ test("shouldSend: Enter sends, Shift+Enter newlines, IME Enter never sends", () 
   assert.strictEqual(GX.shouldSend({ key: "Enter", isComposing: true }), false);
   assert.strictEqual(GX.shouldSend({ key: "Enter", keyCode: 229 }), false);
   assert.strictEqual(GX.shouldSend({ key: "a" }), false);
-});
-
-test("escapeHtml neutralizes HTML metacharacters", () => {
-  assert.strictEqual(GX.escapeHtml('<img src=x onerror=1>&"'),
-    "&lt;img src=x onerror=1&gt;&amp;&quot;");
-  assert.strictEqual(GX.escapeHtml(null), "");
 });
 
 test("safeMarkdown renders inline marks as elements, not raw", () => {
