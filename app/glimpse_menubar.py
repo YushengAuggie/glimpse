@@ -172,15 +172,25 @@ class GlimpseMenuBar(rumps.App):
         # lives in a dedicated-profile Chrome that may be behind other apps — so
         # also raise that Chrome to the foreground (macOS) by its process id.
         try:
-            subprocess.run(
+            r = subprocess.run(
                 [GLIMPSE, "open"],
                 env=os.environ,
                 timeout=25,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
             )
         except Exception as e:
             rumps.notification("Glimpse", "Could not open the canvas", str(e))
+            return
+        # Surface the real reason instead of failing silently — the most common is a
+        # missing `node` on the launchd PATH (CDP needs it). Show the last line.
+        if r.returncode != 0:
+            tail = (r.stderr or r.stdout or "").strip().splitlines()
+            rumps.notification(
+                "Glimpse",
+                "Could not open the canvas",
+                tail[-1] if tail else ("exit %d" % r.returncode),
+            )
             return
         self._activate_canvas_chrome()
 

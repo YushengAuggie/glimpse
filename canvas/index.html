@@ -39,6 +39,13 @@
     opacity:0; transition:opacity .12s; }
   .item:hover .itemhide, .item:focus-within .itemhide { opacity:.55; }
   .itemhide:hover, .itemhide:focus-visible { opacity:1; color:var(--text); background:var(--panel2); outline:none; }
+  .itempin { position:absolute; top:7px; right:31px; width:20px; height:20px; padding:0; display:inline-flex;
+    align-items:center; justify-content:center; border:0; border-radius:5px; background:var(--panel);
+    color:var(--dim); cursor:pointer; opacity:0; transition:opacity .12s; }
+  .item:hover .itempin, .item:focus-within .itempin { opacity:.55; }
+  .itempin:hover, .itempin:focus-visible { opacity:1; color:var(--text); background:var(--panel2); outline:none; }
+  .itempin.on { opacity:1; color:var(--amber); }   /* pinned: always shown, amber like the 📌 mark */
+  .item.pinned .t { padding-right:48px; }           /* keep the always-on buttons off the title */
   .item:hover { background:var(--panel2); }
   .item:focus-visible { border-color:var(--accent); }
   .item.active { background:var(--panel2); border-color:var(--line); }
@@ -156,9 +163,12 @@ window.__glimpse_audit = window.__glimpse_audit || null;
 function fmt(ts){ try { return new Date(ts*1000).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); } catch(e){ return ""; } }
 function answered(slug){ return !!window.__glimpse_responses[slug]; }
 
+// Static thumbtack glyph for the pin toggle — monochrome (currentColor) so it
+// matches the ✕ rather than the colorful 📌 emoji. Constant markup, no user data.
+const PIN_SVG = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4h6l-1 6 3 3H7l3-3-1-6z"/><line x1="12" y1="13" x2="12" y2="20"/></svg>';
 function itemEl(a, isHidden){
   const el = document.createElement('div');
-  el.className = 'item' + (a.slug===current ? ' active':'');
+  el.className = 'item' + (a.slug===current ? ' active':'') + (a.pinned ? ' pinned':'');
   el.setAttribute('role','listitem'); el.tabIndex = 0;
   const t = document.createElement('div'); t.className='t';
   if(a.pinned){ const p=document.createElement('span'); p.className='pinmark'; p.setAttribute('aria-hidden','true'); p.textContent='📌 '; el.title='pinned'; t.appendChild(p); }
@@ -178,6 +188,24 @@ function itemEl(a, isHidden){
   hb.setAttribute('aria-label', (isHidden?'Restore ':'Hide ') + a.title);
   hb.onclick = (e)=>{ e.stopPropagation(); if(isHidden) hiddenSlugs.delete(a.slug); else hiddenSlugs.add(a.slug); LS.set('gl_hidden',[...hiddenSlugs]); render(); };
   el.appendChild(hb);
+  // pin / unpin — sent to the daemon via the outbox (the canvas can't write feed.json).
+  // Optimistically reflect the toggle; the 1.2s feed poll reconciles (reverts if the
+  // daemon isn't running to drain it). Only on real items, not the hidden list.
+  if(!isHidden){
+    const pb = document.createElement('button'); pb.type='button';
+    pb.className = 'itempin' + (a.pinned ? ' on':'');
+    pb.title = a.pinned ? 'Unpin' : 'Pin to top';
+    pb.setAttribute('aria-label', (a.pinned?'Unpin ':'Pin ') + a.title);
+    pb.setAttribute('aria-pressed', String(!!a.pinned));
+    pb.innerHTML = PIN_SVG;
+    pb.onclick = (e)=>{
+      e.stopPropagation();
+      const intent = a.pinned ? 'unpin' : 'pin';
+      window.__glimpse_outbox.push({ id: GL_EPOCH+'-'+(++glSeq), intent, slug: a.slug, ts: Date.now() });
+      a.pinned = !a.pinned; render();
+    };
+    el.appendChild(pb);
+  }
   return el;
 }
 // A foldable group header: ▾/▸ + label + count. Toggling persists the folded set.

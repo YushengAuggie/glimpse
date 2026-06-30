@@ -77,8 +77,27 @@ _bridge_cleanup(){
   return 0
 }
 
+# Put node on PATH when it isn't already. Launchd starts the menu-bar app via a
+# login *bash* shell, which never sources the zsh setup that fnm (or nvm) installs
+# — so `node` is missing even though it's installed, and every CDP/bridge call from
+# the menu bar silently dies. Probe stable, non-session install locations (NOT the
+# per-shell fnm multishell dirs, which don't exist outside an interactive shell)
+# and prepend the first that works. Override with GLIMPSE_NODE=/path/to/node.
+_ensure_node(){
+  have node && return 0
+  local c
+  for c in "${GLIMPSE_NODE:-}" \
+           "$HOME/.local/share/fnm/aliases/default/bin/node" \
+           "$HOME/.fnm/aliases/default/bin/node" \
+           "/opt/homebrew/bin/node" "/usr/local/bin/node"; do
+    [ -n "$c" ] && [ -x "$c" ] && { PATH="$(dirname "$c"):$PATH"; export PATH; return 0; }
+  done
+  return 1
+}
+
 require_node(){
-  have node || die "node is required to drive Chrome over CDP (need v22+ for global WebSocket)"
+  _ensure_node || true
+  have node || die "node is required to drive Chrome over CDP (need v22+ for global WebSocket); set GLIMPSE_NODE=/path/to/node if it's installed somewhere unusual"
   node -e 'process.exit(parseInt(process.version.slice(1),10)>=22?0:1)' 2>/dev/null \
     || die "node $(node --version) is too old — CDP needs node 22+ (global WebSocket). Please upgrade node."
 }
@@ -501,6 +520,16 @@ while(true){
     if(!data || data.origin!==expectedOrigin) continue;
     for(const m of (data.outbox||[])){
       if(!m||!m.id||seen.has(m.id)) continue;
+      // Feed-mutation intents (pin/unpin) — route to the CLI, which validates the
+      // slug and rewrites feed.json under a lock. NOT a thread turn, so it never
+      // goes through persistUser / the question path. The canvas re-polls feed.json
+      // and reflects the new pin state on its own.
+      if(m.intent==="pin" || m.intent==="unpin"){
+        seen.add(m.id); saveState();
+        try{ execFileSync("bash",[BIN, m.intent, String(m.slug||"")],{encoding:"utf8"}); }
+        catch(e){ emit({type:"error",code:"pin_failed",message:String((e&&e.message)||e).split("\n").pop()}); }
+        continue;
+      }
       let turnId;
       try{ turnId=persistUser(m); }
       catch(e){ emit({type:"error",code:"persist_failed",message:String((e&&e.message)||e).split("\n").pop()}); seen.add(m.id); saveState(); continue; }
