@@ -10,9 +10,18 @@ function frag2html(frag) {
 }
 
 test("module exports the pure helpers", () => {
-  for (const fn of ["escapeHtml", "safeMarkdown", "mermaidSource", "buildAskMessage", "highlightTokens"]) {
+  for (const fn of ["escapeHtml", "safeMarkdown", "mermaidSource", "buildAskMessage", "highlightTokens", "shouldSend"]) {
     assert.strictEqual(typeof GX[fn], "function", "missing export: " + fn);
   }
+});
+
+test("shouldSend: Enter sends, Shift+Enter newlines, IME Enter never sends", () => {
+  assert.strictEqual(GX.shouldSend({ key: "Enter" }), true);
+  assert.strictEqual(GX.shouldSend({ key: "Enter", shiftKey: true }), false);
+  assert.strictEqual(GX.shouldSend({ key: "Enter", metaKey: true }), true);
+  assert.strictEqual(GX.shouldSend({ key: "Enter", isComposing: true }), false);
+  assert.strictEqual(GX.shouldSend({ key: "Enter", keyCode: 229 }), false);
+  assert.strictEqual(GX.shouldSend({ key: "a" }), false);
 });
 
 test("escapeHtml neutralizes HTML metacharacters", () => {

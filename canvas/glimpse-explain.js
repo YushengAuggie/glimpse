@@ -116,6 +116,27 @@
     if (i < s.length) toks.push({ text: s.slice(i), cls: "" });
     return toks;
   }
+  // Should this composer keydown send? Enter sends; Shift+Enter newlines;
+  // Cmd/Ctrl+Enter always sends; an IME-composition Enter (isComposing / keyCode
+  // 229, e.g. selecting a CJK candidate) never sends.
+  function shouldSend(e) {
+    if (!e || e.key !== "Enter") return false;
+    if (e.isComposing || e.keyCode === 229) return false;
+    if (e.metaKey || e.ctrlKey) return true;
+    return !e.shiftKey;
+  }
+
+  // Grow a textarea to fit its content (capped at `max`px), unless the user has
+  // manually dragged it taller/shorter — then leave their size alone.
+  function autoGrow(ta, max) {
+    if (!ta || ta._manual) return;
+    max = max || 220;
+    if (ta._autoH != null && Math.abs(ta.offsetHeight - ta._autoH) > 2) { ta._manual = true; return; }
+    ta.style.height = "auto";
+    ta.style.height = Math.min(ta.scrollHeight, max) + "px";
+    ta._autoH = ta.offsetHeight;
+  }
+
   function buildAskMessage(node, question, channelId, randomId) {
     return {
       type: "glimpse:annotate", v: 1, channelId: channelId, intent: "ask",
@@ -148,7 +169,7 @@
     ".gx-panel .tok-kw{color:#9bb7ff}.gx-panel .tok-str{color:#b5e8a0}.gx-panel .tok-com{color:#8b93a7}",
     ".gx-chip{display:inline-block;font-size:12px;background:#eef1ff;color:#26408b;border:1px solid #d6ddfb;border-radius:999px;padding:2px 9px;margin:2px 4px 0 0;cursor:pointer}",
     ".gx-composer{margin-top:8px;border:1px dashed #c3ccea;border-radius:9px;padding:9px;background:#f7f8ff;display:none}",
-    ".gx-composer.on{display:block}.gx-composer textarea{width:100%;border:1px solid #e6e6ee;border-radius:7px;padding:7px;font:14px inherit}",
+    ".gx-composer.on{display:block}.gx-composer textarea{width:100%;box-sizing:border-box;resize:vertical;min-height:40px;max-height:220px;overflow-y:auto;border:1px solid #e6e6ee;border-radius:7px;padding:7px;font:14px inherit}",
     // inline per-node conversation: the user's question + the agent's threaded reply
     ".gx-replies{margin-top:8px;display:none;flex-direction:column;gap:7px}",
     ".gx-replies.on{display:flex}",
@@ -274,24 +295,29 @@
         });
         var ask = el("button", "gx-ask", "Ask about this");
         var composer = el("div", "gx-composer");
-        var ta = el("textarea"); ta.setAttribute("placeholder", "Ask about this node…");
+        var ta = el("textarea"); ta.setAttribute("placeholder", "Ask about this node…  (⏎ send · ⇧⏎ newline)");
         var send = el("button", "gx-ask", "Ask");
         composer.appendChild(ta); composer.appendChild(send);
         // per-node inline conversation; the annotate layer fills this via mountNodeReply
         // once the thread (question + agent reply) is pushed back into the iframe.
         var replies = el("div", "gx-replies"); nodeReplies[s.id] = replies;
         ask.addEventListener("click", function (ev) { ev.stopPropagation(); composer.classList.toggle("on"); ta.focus(); });
-        send.addEventListener("click", function (ev) {
-          ev.stopPropagation(); var q = ta.value.trim(); if (!q) return;
+        // Send via the button OR Enter (Shift+Enter newlines; IME Enter never sends).
+        var fire = function (ev) {
+          if (ev && ev.stopPropagation) ev.stopPropagation();
+          var q = ta.value.trim(); if (!q) return;
           var cfg = (typeof window !== "undefined" && window.__GLIMPSE__) || {};
           var rid = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : ("gx-" + Date.now());
           window.parent.postMessage(buildAskMessage(s, q, cfg.channelId, rid), "*");
-          ta.value = ""; composer.classList.remove("on");
+          ta.value = ""; autoGrow(ta); composer.classList.remove("on");
           // optimistic echo: show the question immediately + a pending line. The
           // authoritative thread push (with the agent's answer) replaces this via
           // mountNodeReply once it round-trips back through the annotate layer.
           renderNodeReplies(replies, [{ role: "user", text: q, ts: Date.now() / 1000 }]);
-        });
+        };
+        send.addEventListener("click", fire);
+        ta.addEventListener("keydown", function (e) { if (shouldSend(e)) { e.preventDefault(); fire(e); } });
+        ta.addEventListener("input", function () { autoGrow(ta); });
         node.appendChild(ask); node.appendChild(composer); node.appendChild(replies);
         node.addEventListener("click", function () { select(s.id); });
         list.appendChild(node);
@@ -380,6 +406,6 @@
   }
 
   if (typeof module !== "undefined" && module.exports) {
-    module.exports = { escapeHtml, safeMarkdown, mermaidSource, highlightTokens, buildAskMessage };
+    module.exports = { escapeHtml, safeMarkdown, mermaidSource, highlightTokens, buildAskMessage, shouldSend };
   }
 })();

@@ -21,6 +21,95 @@
  */
 (function () {
   "use strict";
+
+  /* =========================================================================
+   * Pure, DOM-only helpers (also exported at the bottom for Node unit tests).
+   * Defined BEFORE the config bail so `require()` in tests gets them even though
+   * the browser-only chrome below never runs without a __GLIMPSE__ config.
+   * ======================================================================= */
+
+  // Inline markdown → DOM nodes. Mirrors glimpse-explain.js's appendInline so the
+  // rail renders agent replies the same way the code-explainer does. Builds nodes
+  // with createElement/textContent/createTextNode ONLY — never innerHTML — which
+  // keeps the module's security invariant intact (untrusted text is never parsed
+  // as HTML).
+  function appendInline(parent, text) {
+    var re = /(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|(`([^`]+)`)|(\[([^\]]+)\]\(([^)]+)\))/g;
+    var i = 0, m;
+    while ((m = re.exec(text))) {
+      if (m.index > i) parent.appendChild(document.createTextNode(text.slice(i, m.index)));
+      if (m[1]) { var b = document.createElement("strong"); b.textContent = m[2]; parent.appendChild(b); }
+      else if (m[3]) { var em = document.createElement("em"); em.textContent = m[4]; parent.appendChild(em); }
+      else if (m[5]) { var c = document.createElement("code"); c.textContent = m[6]; parent.appendChild(c); }
+      else if (m[7]) {
+        var label = m[8], url = m[9];
+        if (/^(https?:|mailto:)/i.test(url)) {
+          var a = document.createElement("a"); a.setAttribute("href", url);
+          a.setAttribute("target", "_blank"); a.setAttribute("rel", "noopener noreferrer");
+          a.textContent = label; parent.appendChild(a);
+        } else {
+          parent.appendChild(document.createTextNode(m[7]));   // inert: keep literal "[x](url)"
+        }
+      }
+      i = re.lastIndex;
+    }
+    if (i < text.length) parent.appendChild(document.createTextNode(text.slice(i)));
+  }
+
+  // Block markdown (headings / unordered lists / paragraphs) → a DocumentFragment.
+  function safeMarkdown(md) {
+    var frag = document.createDocumentFragment();
+    var lines = String(md == null ? "" : md).split("\n");
+    var list = null;
+    for (var li = 0; li < lines.length; li++) {
+      var line = lines[li];
+      var h = /^(#{1,3})\s+(.*)$/.exec(line);
+      var item = /^[-*]\s+(.*)$/.exec(line);
+      if (item) {
+        if (!list) { list = document.createElement("ul"); frag.appendChild(list); }
+        var liEl = document.createElement("li"); appendInline(liEl, item[1]); list.appendChild(liEl);
+        continue;
+      }
+      list = null;
+      if (h) {
+        var tag = h[1].length === 1 ? "h2" : h[1].length === 2 ? "h3" : "h4";
+        var hEl = document.createElement(tag); appendInline(hEl, h[2]); frag.appendChild(hEl);
+      } else if (line.trim() === "") {
+        // blank line → implicit paragraph break
+      } else {
+        var p = document.createElement("p"); appendInline(p, line); frag.appendChild(p);
+      }
+    }
+    return frag;
+  }
+
+  // Should this textarea keydown send the message? Enter sends; Shift+Enter inserts
+  // a newline; Cmd/Ctrl+Enter always sends. Critically for CJK users: a keydown that
+  // is confirming an IME composition (e.g. selecting a Chinese candidate with Enter)
+  // reports isComposing/keyCode 229 and must NEVER send.
+  function shouldSend(e) {
+    if (!e || e.key !== "Enter") return false;
+    if (e.isComposing || e.keyCode === 229) return false;
+    if (e.metaKey || e.ctrlKey) return true;
+    return !e.shiftKey;
+  }
+
+  // Grow a textarea to fit its content (capped at `max`px; it scrolls past that),
+  // unless the user has manually dragged the resize handle — then leave their size
+  // alone. Drag is detected as a rendered-height change we didn't make.
+  function autoGrow(ta, max) {
+    if (!ta || ta._manual) return;
+    max = max || 220;
+    if (ta._autoH != null && Math.abs(ta.offsetHeight - ta._autoH) > 2) { ta._manual = true; return; }
+    ta.style.height = "auto";
+    ta.style.height = Math.min(ta.scrollHeight, max) + "px";
+    ta._autoH = ta.offsetHeight;
+  }
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = { safeMarkdown: safeMarkdown, appendInline: appendInline, shouldSend: shouldSend };
+  }
+
   var CFG = window.__GLIMPSE__;
   // Bail unless the shell injected a config and annotation is enabled. Running
   // twice (e.g. double-injection) is a no-op.
@@ -68,18 +157,21 @@
     comments.push(c); if (c.key) byKey[c.key] = c;
     return c;
   }
-  // A textarea bound to the comment's draft. Enter inserts a NEWLINE (never sends);
-  // sending is the button's job only.
+  // A textarea bound to the comment's draft. It auto-grows to fit what's typed
+  // (so long drafts are readable) while still allowing a manual drag-resize.
   function mkInput(c, placeholder) {
     var ta = document.createElement("textarea");
     ta.setAttribute("aria-label", "Your message about the selected passage");
     ta.placeholder = placeholder;
     ta.value = c.draft || "";
-    ta.addEventListener("input", function () { c.draft = ta.value; });
+    ta.addEventListener("input", function () { c.draft = ta.value; autoGrow(ta); });
+    // Fit to any restored draft once the textarea is laid out in the shadow tree.
+    requestAnimationFrame(function () { autoGrow(ta); });
     return ta;
   }
-  // Wire a textarea + Send button: disable Send when empty, send on Cmd/Ctrl+Enter
-  // (plain Enter still newlines), and guard against double-send (rapid clicks).
+  // Wire a textarea + Send button: disable Send when empty, send on Enter
+  // (Shift+Enter / IME-composition Enter still insert a newline), and guard against
+  // double-send (rapid clicks).
   function wireSend(c, ta, btn) {
     var refresh = function () { btn.disabled = !ta.value.trim(); };
     var fire = function () {
@@ -93,7 +185,7 @@
       sendTurn(c, v);
     };
     ta.addEventListener("input", refresh);
-    ta.addEventListener("keydown", function (e) { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); fire(); } });
+    ta.addEventListener("keydown", function (e) { if (shouldSend(e)) { e.preventDefault(); fire(); } });
     btn.addEventListener("click", fire);
     refresh();
   }
@@ -257,6 +349,12 @@
     ".turn.u{ opacity:.95; }",
     ".turn.a{ background:" + hexToRgba(dark ? "#7aa2f7" : "#3b5bdb", dark ? 0.1 : 0.07) + "; padding:7px 9px; border-radius:6px;",
     "  border-left:2px solid " + hexToRgba(dark ? "#7aa2f7" : "#3b5bdb", 0.55) + "; }",   // mark agent replies vs the user's bold question
+    // agent replies are rendered markdown (safeMarkdown) — keep the block elements tight
+    ".turn.a p{ margin:.35em 0; } .turn.a p:first-child{ margin-top:0; } .turn.a p:last-child{ margin-bottom:0; }",
+    ".turn.a ul{ margin:.35em 0; padding-left:1.25em; } .turn.a li{ margin:.12em 0; }",
+    ".turn.a h2,.turn.a h3,.turn.a h4{ margin:.5em 0 .25em; font-size:1.02em; line-height:1.3; }",
+    ".turn.a code{ font:12px ui-monospace,Menlo,monospace; background:" + (dark ? "#0e1118" : "#eef0f6") + "; padding:.05em .3em; border-radius:3px; }",
+    ".turn.a a{ color:" + (dark ? "#7aa2f7" : "#3b5bdb") + "; }",
     ".q{ font-weight:650; }",
     "button[disabled]{ opacity:.45; cursor:default; }",
     ".meta{ font-size:11px; opacity:.6; margin-top:2px; }",
@@ -268,7 +366,7 @@
     ".tag{ font-size:10.5px; font-weight:700; padding:1px 6px; border-radius:5px; text-transform:uppercase; letter-spacing:.3px; }",
     ".tag.off{ background:" + (dark ? "#3a2e15" : "#fff3bf") + "; color:" + (dark ? "#e0af68" : "#a8730a") + "; }",
     ".tag.warn{ background:" + (dark ? "#3a1f1f" : "#ffe3e3") + "; color:" + (dark ? "#f7768e" : "#c92a2a") + "; }",
-    "textarea{ width:100%; box-sizing:border-box; resize:vertical; min-height:46px; font:inherit;",
+    "textarea{ width:100%; box-sizing:border-box; resize:vertical; min-height:46px; max-height:220px; overflow-y:auto; font:inherit;",
     "  border:1px solid " + (dark ? "#2a3040" : "#d0d5e2") + "; border-radius:6px; padding:6px 8px;",
     "  background:" + (dark ? "#11141d" : "#fbfcff") + "; color:inherit; outline:none; }",
     "textarea:focus{ border-color:" + (dark ? "#7aa2f7" : "#3b5bdb") + "; }",
@@ -485,7 +583,7 @@
     if (c.state === "composing") {
       var qq = el("div", "turn u"); var qs = el("span", "q"); qs.textContent = "❝" + (c.quote || "selection") + "❞"; qq.appendChild(qs);
       scroll.appendChild(qq);
-      var ta = mkInput(c, "Ask about this…  (⌘⏎ to send)"); foot.appendChild(ta);
+      var ta = mkInput(c, "Ask about this…  (⏎ send · ⇧⏎ newline)"); foot.appendChild(ta);
       var row = el("div", "row");
       var cancel = el("button", "ghost"); cancel.textContent = "Cancel"; cancel.addEventListener("click", function () { dropComment(c); });
       var ask = el("button", "primary"); ask.textContent = "Ask";
@@ -503,7 +601,7 @@
       }
       for (var i = start; i < turns.length; i++) {
         var t = turns[i];
-        if (t.role === "agent") { var at = el("div", "turn a"); at.textContent = t.text; scroll.appendChild(at); continue; }
+        if (t.role === "agent") { var at = el("div", "turn a"); at.appendChild(safeMarkdown(t.text)); scroll.appendChild(at); continue; }
         // user turn
         var ut = el("div", "turn u"); var usp = el("span", "q"); usp.textContent = t.text; ut.appendChild(usp); scroll.appendChild(ut);
         var answered = t.status === "answered" || (turns[i + 1] && turns[i + 1].role === "agent");
@@ -527,8 +625,8 @@
         less.addEventListener("click", function () { c._expanded = false; renderAll(); });
         scroll.appendChild(less);
       }
-      // follow-up box — keep the conversation going. Enter = newline; Send sends.
-      var fta = mkInput(c, "Reply…  (Enter = new line, ⌘⏎ to send)"); foot.appendChild(fta);
+      // follow-up box — keep the conversation going. Enter sends; Shift+Enter newlines.
+      var fta = mkInput(c, "Reply…  (⏎ send · ⇧⏎ newline)"); foot.appendChild(fta);
       var frow = el("div", "row");
       var send = el("button", "primary"); send.textContent = "Send";
       frow.appendChild(send); foot.appendChild(frow);
