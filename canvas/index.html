@@ -14,8 +14,9 @@
   * { box-sizing:border-box; }
   html,body { margin:0; height:100%; background:var(--bg); color:var(--text);
     font:15px/1.55 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif; }
-  .app { display:grid; grid-template-columns:280px 1fr; height:100vh; }
-  aside { background:var(--panel); border-right:1px solid var(--line); display:flex; flex-direction:column; min-width:0; }
+  .app { display:grid; grid-template-columns:280px 1fr; height:100vh; transition:grid-template-columns .18s ease; }
+  .app.nav-collapsed { grid-template-columns:0 1fr; }
+  aside { background:var(--panel); border-right:1px solid var(--line); display:flex; flex-direction:column; min-width:0; overflow:hidden; }
   .brand { padding:16px 18px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:10px; }
   .brand b { font-size:15px; letter-spacing:.3px; display:inline-flex; align-items:center; }
   .brand-mark { width:17px; height:17px; margin-right:7px; color:var(--accent); flex:0 0 auto; }
@@ -27,7 +28,17 @@
   .filter input:focus { border-color:var(--accent); }
   .list { overflow:auto; padding:8px; flex:1; }
   .section { color:var(--dim); font-size:10.5px; font-weight:700; letter-spacing:.6px; text-transform:uppercase; padding:12px 12px 4px; }
-  .item { padding:10px 12px; border-radius:8px; cursor:pointer; border:1px solid transparent; outline:none; }
+  .section.fold { cursor:pointer; user-select:none; display:flex; align-items:center; gap:5px; outline:none; border-radius:6px; }
+  .section.fold:hover { color:var(--text); }
+  .section.fold:focus-visible { box-shadow:0 0 0 1px var(--accent); }
+  .section .caret { font-size:9px; opacity:.8; width:9px; }
+  .section .gcount { margin-left:auto; opacity:.6; font-weight:600; }
+  .item { position:relative; padding:10px 12px; border-radius:8px; cursor:pointer; border:1px solid transparent; outline:none; }
+  .itemhide { position:absolute; top:7px; right:7px; width:20px; height:20px; padding:0; line-height:18px;
+    border:0; border-radius:5px; background:var(--panel); color:var(--dim); cursor:pointer; font-size:13px;
+    opacity:0; transition:opacity .12s; }
+  .item:hover .itemhide, .item:focus-within .itemhide { opacity:.55; }
+  .itemhide:hover, .itemhide:focus-visible { opacity:1; color:var(--text); background:var(--panel2); outline:none; }
   .item:hover { background:var(--panel2); }
   .item:focus-visible { border-color:var(--accent); }
   .item.active { background:var(--panel2); border-color:var(--line); }
@@ -47,6 +58,10 @@
   main { min-width:0; display:flex; flex-direction:column; }
   .bar { padding:12px 18px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:12px; background:var(--panel); }
   .bar h1 { font-size:16px; margin:0; font-weight:650; }
+  .iconbtn { flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; width:30px; height:28px;
+    background:none; border:1px solid var(--line); border-radius:7px; color:var(--dim); cursor:pointer; padding:0; }
+  .iconbtn:hover { color:var(--text); border-color:var(--accent); }
+  .iconbtn:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
   .bar .held { font-size:11px; color:var(--dim); border:1px solid var(--line); border-radius:6px; padding:1px 7px; }
   .annpill { margin-left:auto; font-size:11px; color:var(--dim); border:1px solid var(--line); border-radius:6px; padding:1px 9px; cursor:pointer; outline:none; }
   .annpill:focus-visible { border-color:var(--accent); }
@@ -71,7 +86,7 @@
     <div class="foot"><span id="count">0 artifacts</span><span id="clock" aria-hidden="true"></span></div>
   </aside>
   <main>
-    <div class="bar"><h1 id="title">Welcome</h1><span class="held" id="held" hidden>held</span><span class="annpill" id="annpill" role="button" tabindex="0" hidden title="Highlight-chat — click to toggle reading mode">Annotate</span><span class="note" id="note">✓ response recorded</span></div>
+    <div class="bar"><button id="navtog" class="iconbtn" type="button" aria-pressed="false" aria-label="Hide sidebar" title="Toggle sidebar"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="1.25" y="2.25" width="13.5" height="11.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="6" y1="2.25" x2="6" y2="13.75" stroke="currentColor" stroke-width="1.5"/></svg></button><h1 id="title">Welcome</h1><span class="held" id="held" hidden>held</span><span class="annpill" id="annpill" role="button" tabindex="0" hidden title="Highlight-chat — click to toggle reading mode">Annotate</span><span class="note" id="note">✓ response recorded</span></div>
     <div id="stage" style="flex:1; min-height:0;">
       <div class="welcome">
         <h2>This is your live canvas.</h2>
@@ -83,8 +98,25 @@
 </div>
 <script>
 let feed = [], current = null, lastSig = "", held = false;
-let filterText = "", showOlder = false;
-const OLDER_LIMIT = 14;
+let filterText = "", showHidden = false;
+// Sidebar UI prefs live in localStorage — never in feed.json (the agent owns that).
+const LS = {
+  get(k, d){ try { const v = localStorage.getItem(k); return v==null ? d : JSON.parse(v); } catch(e){ return d; } },
+  set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} }
+};
+let navCollapsed = LS.get('gl_nav_collapsed', false);
+let hiddenSlugs  = new Set(LS.get('gl_hidden', []));
+let foldedGroups = new Set(LS.get('gl_folded', ['Earlier']));   // big "Earlier" bucket folded by default
+// Date buckets are the sidebar's "topics": grouped + individually foldable.
+const GROUP_ORDER = ['Today','Yesterday','This week','Earlier'];
+function dayStart(ms){ const d = new Date(ms); d.setHours(0,0,0,0); return d.getTime(); }
+function groupOf(a){
+  const today = dayStart(Date.now()), t = a.ts*1000;
+  if(t >= today) return 'Today';
+  if(t >= today - 864e5) return 'Yesterday';
+  if(t >= today - 6*864e5) return 'This week';
+  return 'Earlier';
+}
 // Responses captured from artifacts (browser → agent). The CLI reads this via CDP.
 window.__glimpse_responses = window.__glimpse_responses || {};
 
@@ -124,7 +156,7 @@ window.__glimpse_audit = window.__glimpse_audit || null;
 function fmt(ts){ try { return new Date(ts*1000).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); } catch(e){ return ""; } }
 function answered(slug){ return !!window.__glimpse_responses[slug]; }
 
-function itemEl(a){
+function itemEl(a, isHidden){
   const el = document.createElement('div');
   el.className = 'item' + (a.slug===current ? ' active':'');
   el.setAttribute('role','listitem'); el.tabIndex = 0;
@@ -139,31 +171,59 @@ function itemEl(a){
   const open = ()=>{ held = true; show(a.slug); };
   el.onclick = open;
   el.onkeydown = (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); open(); } };
+  // hide ✕ / restore ↩ — toggles this slug in the local hidden set (never touches feed.json)
+  const hb = document.createElement('button'); hb.type='button'; hb.className='itemhide';
+  hb.textContent = isHidden ? '↩' : '✕';
+  hb.title = isHidden ? 'Restore to list' : 'Hide from list';
+  hb.setAttribute('aria-label', (isHidden?'Restore ':'Hide ') + a.title);
+  hb.onclick = (e)=>{ e.stopPropagation(); if(isHidden) hiddenSlugs.delete(a.slug); else hiddenSlugs.add(a.slug); LS.set('gl_hidden',[...hiddenSlugs]); render(); };
+  el.appendChild(hb);
   return el;
 }
-function sectionLabel(text){ const d=document.createElement('div'); d.className='section'; d.textContent=text; return d; }
+// A foldable group header: ▾/▸ + label + count. Toggling persists the folded set.
+function groupHeader(key, count){
+  const folded = foldedGroups.has(key);
+  const d = document.createElement('div'); d.className='section fold';
+  d.setAttribute('role','button'); d.tabIndex=0; d.setAttribute('aria-expanded', String(!folded));
+  const car = document.createElement('span'); car.className='caret'; car.textContent = folded ? '▸' : '▾'; d.appendChild(car);
+  d.appendChild(document.createTextNode(key));
+  const c = document.createElement('span'); c.className='gcount'; c.textContent = String(count); d.appendChild(c);
+  const toggle = ()=>{ if(foldedGroups.has(key)) foldedGroups.delete(key); else foldedGroups.add(key); LS.set('gl_folded',[...foldedGroups]); render(); };
+  d.onclick = toggle; d.onkeydown = (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); toggle(); } };
+  return d;
+}
 function moreRow(label, fn){ const m=document.createElement('div'); m.className='more'; m.setAttribute('role','button'); m.tabIndex=0; m.textContent=label; m.onclick=fn; m.onkeydown=(e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); fn(); } }; return m; }
 
 function render(){
   const list = document.getElementById('list');
-  document.getElementById('count').textContent = feed.length + (feed.length===1?' artifact':' artifacts');
+  const visible = feed.filter(a=>!hiddenSlugs.has(a.slug));
+  document.getElementById('count').textContent = visible.length + (visible.length===1?' artifact':' artifacts');
   list.textContent = '';
   if(!feed.length){ const e=document.createElement('div'); e.className='empty'; e.textContent='No artifacts yet…'; list.appendChild(e); return; }
+  const appendGroup = (key, items)=>{
+    list.appendChild(groupHeader(key, items.length));
+    if(!foldedGroups.has(key)) items.forEach(a=>list.appendChild(itemEl(a)));
+  };
   const q = filterText.trim().toLowerCase();
   const match = (a)=> !q || (a.title||'').toLowerCase().includes(q) || a.slug.toLowerCase().includes(q);
-  const items = feed.filter(match);
   if(q){
-    if(!items.length){ const e=document.createElement('div'); e.className='empty'; e.textContent='No matches.'; list.appendChild(e); return; }
-    items.forEach(a=>list.appendChild(itemEl(a)));
-    return;
+    // Search is flat across visible artifacts; folding/grouping don't apply.
+    const items = visible.filter(match);
+    if(!items.length){ const e=document.createElement('div'); e.className='empty'; e.textContent='No matches.'; list.appendChild(e); }
+    else items.forEach(a=>list.appendChild(itemEl(a)));
+  } else {
+    const pinned = visible.filter(a=>a.pinned);
+    if(pinned.length) appendGroup('Pinned', pinned);
+    const rest = visible.filter(a=>!a.pinned);
+    const buckets = {};
+    rest.forEach(a=>{ const g=groupOf(a); (buckets[g]=buckets[g]||[]).push(a); });
+    GROUP_ORDER.forEach(g=>{ if(buckets[g] && buckets[g].length) appendGroup(g, buckets[g]); });
   }
-  const pinned = items.filter(a=>a.pinned), rest = items.filter(a=>!a.pinned);
-  if(pinned.length){ list.appendChild(sectionLabel('Pinned')); pinned.forEach(a=>list.appendChild(itemEl(a))); if(rest.length) list.appendChild(sectionLabel('Recent')); }
-  const shown = showOlder ? rest : rest.slice(0, OLDER_LIMIT);
-  shown.forEach(a=>list.appendChild(itemEl(a)));
-  const hiddenN = rest.length - shown.length;
-  if(hiddenN > 0) list.appendChild(moreRow('▸ '+hiddenN+' older', ()=>{ showOlder=true; render(); }));
-  else if(showOlder && rest.length > OLDER_LIMIT) list.appendChild(moreRow('▾ show less', ()=>{ showOlder=false; render(); }));
+  // Hidden artifacts: a footer toggle reveals them with a restore button.
+  if(hiddenSlugs.size){
+    list.appendChild(moreRow((showHidden?'▾ ':'▸ ')+hiddenSlugs.size+' hidden', ()=>{ showHidden=!showHidden; render(); }));
+    if(showHidden) feed.filter(a=>hiddenSlugs.has(a.slug)).forEach(a=>list.appendChild(itemEl(a, true)));
+  }
 }
 
 async function show(slug){
@@ -358,13 +418,23 @@ function toggleReading(){ readingMode = !readingMode; if(current) show(current);
 document.getElementById('annpill').addEventListener('click', toggleReading);
 document.getElementById('annpill').addEventListener('keydown', (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); toggleReading(); } });
 
+// Sidebar collapse — reflect navCollapsed onto the grid + button, persisted.
+function applyNav(){
+  document.querySelector('.app').classList.toggle('nav-collapsed', navCollapsed);
+  const b = document.getElementById('navtog');
+  b.setAttribute('aria-pressed', String(navCollapsed));
+  b.setAttribute('aria-label', navCollapsed ? 'Show sidebar' : 'Hide sidebar');
+}
+document.getElementById('navtog').addEventListener('click', ()=>{ navCollapsed = !navCollapsed; LS.set('gl_nav_collapsed', navCollapsed); applyNav(); });
+applyNav();
+
 // Follow the URL hash when it changes in-place (e.g. `glimpse open #slug` while the
 // canvas is already open). show() uses replaceState, so plain clicks don't fire this.
 window.addEventListener('hashchange', ()=>{
   const h = decodeURIComponent((location.hash||'').replace(/^#/,''));
   if(h && h!==current && feed.some(a=>a.slug===h)){ held = true; show(h); }
 });
-document.getElementById('filter').addEventListener('input', (e)=>{ filterText = e.target.value; showOlder = false; render(); });
+document.getElementById('filter').addEventListener('input', (e)=>{ filterText = e.target.value; render(); });
 setInterval(()=>{ document.getElementById('clock').textContent = new Date().toLocaleTimeString(); }, 1000);
 setInterval(poll, 1200); poll();
 setInterval(pollThread, 1000);
