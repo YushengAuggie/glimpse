@@ -659,32 +659,38 @@
       repositionQueued = false;
       var bubbles = rail.querySelectorAll(".bubble");
       var vw = window.innerWidth, vh = window.innerHeight;
-      var MARGIN = 12, GAP = 10, MIN_VISIBLE = 132;   // always keep at least header + footer on screen
+      var MARGIN = 12, GAP = 10;
+      var MAX_H = Math.max(160, vh - MARGIN * 2);   // a bubble never exceeds the viewport
       var lastBottom = MARGIN;
       for (var i = 0; i < bubbles.length; i++) {
-        var b = bubbles[i], mark = b._mark, top;
+        var b = bubbles[i], mark = b._mark, desired;
         var r = mark ? mark.getBoundingClientRect() : null;
         if (narrowMode) {
           // No side room: render each bubble as a callout just under its highlighted line.
           var w = Math.min(GUTTER_W - 24, vw - 24);
           b.style.width = w + "px"; b.style.right = "auto";
-          top = r ? r.bottom + 6 : lastBottom + 4;
-          if (top < lastBottom) top = lastBottom;
+          desired = r ? r.bottom + 6 : lastBottom + 4;
           // `left` is relative to the fixed rail (its left edge sits at vw-GUTTER_W),
           // so translate the desired viewport-x back into rail coordinates.
           var vx = r ? Math.max(8, Math.min(r.left, vw - w - 8)) : 8;
           b.style.left = (vx - (vw - GUTTER_W)) + "px";
         } else {
           b.style.right = "12px"; b.style.left = "auto"; b.style.width = "";
-          top = r ? r.top : lastBottom + 4;   // align to the highlight; unanchored flows under the previous
-          if (top < lastBottom) top = lastBottom;
+          desired = r ? r.top : lastBottom + 4;   // align to the highlight; unanchored flows under the previous
         }
-        // never push a bubble so low that its header/footer fall off the bottom edge
-        if (top > vh - MIN_VISIBLE) top = Math.max(MARGIN, vh - MIN_VISIBLE);
+        if (desired < lastBottom) desired = lastBottom;   // stack below the previous bubble — never overlap
+        // Measure the bubble's natural height under a viewport cap, then place it so
+        // the WHOLE bubble stays on screen. A bubble whose mark sits near the page
+        // bottom grows UPWARD instead of being pinned to the bottom with its turns
+        // crushed to an unreadable sliver (the old fixed-MIN_VISIBLE bug).
+        b.style.maxHeight = MAX_H + "px";
+        var h = Math.min(b.offsetHeight, MAX_H);
+        var top = Math.min(desired, vh - h - MARGIN);
+        if (top < MARGIN) top = MARGIN;
         b.style.top = top + "px";
-        // cap height to the room below `top` so the pinned footer (Send) stays on screen;
-        // the turns area scrolls inside. Collapsed bubbles hide their body, so this is moot for them.
-        b.style.maxHeight = Math.max(MIN_VISIBLE, vh - top - MARGIN) + "px";
+        // final cap to the room actually below `top` — covers the content-taller-than-
+        // viewport case, where the turns scroll inside while the footer stays pinned.
+        b.style.maxHeight = Math.max(0, vh - top - MARGIN) + "px";
         lastBottom = top + b.offsetHeight + GAP;
       }
     });
