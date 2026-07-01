@@ -551,7 +551,22 @@ cmd_serve(){
   fi
   have python3 || die "python3 is required for the static server"
   # Bind to loopback only — the canvas, feed, and artifacts are local data.
-  nohup python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$GLIMPSE_DIR" >"$GLIMPSE_DIR/.server.log" 2>&1 &
+  # Quiet server: `python -m http.server` logs every request to stderr, which
+  # grew .server.log past 100 MB on long runs (the canvas polls the feed
+  # constantly). Suppress per-request logging (keep real errors); threaded +
+  # reuse-address to match the CLI's behavior. Same loopback bind and root.
+  nohup python3 - "$PORT" "$GLIMPSE_DIR" >"$GLIMPSE_DIR/.server.log" 2>&1 <<'PY' &
+import os, sys, http.server, socketserver
+port, root = int(sys.argv[1]), sys.argv[2]
+os.chdir(root)
+class Quiet(http.server.SimpleHTTPRequestHandler):
+    def log_message(self, *a):  # drop the per-request access log
+        pass
+class Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+Server(("127.0.0.1", port), Quiet).serve_forever()
+PY
   echo $! > "$GLIMPSE_DIR/.server.pid"
   for _ in $(seq 1 20); do
     curl -fsS "http://127.0.0.1:${PORT}/feed.json" >/dev/null 2>&1 && { echo "canvas serving at http://127.0.0.1:${PORT}/  (root: $GLIMPSE_DIR)"; return; }
@@ -575,7 +590,30 @@ cmd_chrome(){
     return
   fi
   local chrome; chrome="$(detect_chrome)" || die "could not find Chrome; set GLIMPSE_CHROME=/path/to/chrome"
-  mkdir -p "$PROFILE"
+  mkdir -p "$PROFILE/Default"
+  # Brand the profile so the automation window is unmistakable at a glance: its
+  # toolbar profile chip reads "🤖 Glimpse (automation)" instead of your Google
+  # account name/photo. Chrome shows the name from Local State's info_cache (the
+  # authoritative display name), so patch that as well as per-profile Preferences.
+  # Patch (never overwrite) so existing settings survive; picked up on next launch.
+  GLIMPSE_PROFILE_LABEL="${GLIMPSE_PROFILE_LABEL:-🤖 Glimpse (automation)}" \
+  python3 - "$PROFILE" <<'PY' 2>/dev/null || true
+import json, os, sys
+root, label, sub = sys.argv[1], os.environ["GLIMPSE_PROFILE_LABEL"], "Default"
+def load(p):
+    try:
+        return json.load(open(p)) if os.path.exists(p) else {}
+    except Exception:
+        return {}
+prefs = os.path.join(root, sub, "Preferences")
+d = load(prefs); d.setdefault("profile", {})["name"] = label
+os.makedirs(os.path.dirname(prefs), exist_ok=True); json.dump(d, open(prefs, "w"))
+lp = os.path.join(root, "Local State")
+ls = load(lp)
+ic = ls.setdefault("profile", {}).setdefault("info_cache", {}).setdefault(sub, {})
+ic["name"] = label; ic["is_using_default_name"] = False
+json.dump(ls, open(lp, "w"))
+PY
   echo "launching Chrome (CDP 127.0.0.1:$CDP_PORT, profile: $PROFILE)"
   # Bind the debug socket to loopback explicitly — never expose CDP on the LAN.
   "$chrome" --remote-debugging-port="$CDP_PORT" --remote-debugging-address=127.0.0.1 \
@@ -846,8 +884,16 @@ cmd_menubar(){
   [ -f "$app" ] || app="$GLIMPSE_DIR/glimpse_menubar.py"
   [ -f "$app" ] || die "menu-bar app not found (app/glimpse_menubar.py) — reinstall glimpse"
   local self; self="$SELF_DIR/$(basename "$SOURCE")"; export GLIMPSE_BIN_PATH="$self"
-  if python3 -c "import rumps" >/dev/null 2>&1; then exec python3 "$app"
-  elif have uv; then echo "glimpse: launching menu-bar via uv (fetching rumps the first time)…" >&2; exec uv run --with rumps python3 "$app"
+  if python3 -c "import rumps" >/dev/null 2>&1; then exec python3 "$app"; fi
+  # Resolve uv even under a minimal PATH. launchd runs this via `bash -lc`, which
+  # reads bash login files — not the interactive zsh PATH — so `command -v uv`
+  # misses ~/.local/bin and the menu-bar silently never starts. Fall back to uv's
+  # usual install locations before giving up.
+  local uv; uv="$(command -v uv 2>/dev/null || true)"
+  local c; for c in "$HOME/.local/bin/uv" "/opt/homebrew/bin/uv" "/usr/local/bin/uv"; do
+    [ -n "$uv" ] && break; [ -x "$c" ] && uv="$c"
+  done
+  if [ -n "$uv" ]; then echo "glimpse: launching menu-bar via uv (fetching rumps the first time)…" >&2; exec "$uv" run --with rumps python3 "$app"
   else die "the menu-bar needs the 'rumps' package — install uv (https://docs.astral.sh/uv/) then it's automatic, or:  uv pip install rumps"; fi
 }
 

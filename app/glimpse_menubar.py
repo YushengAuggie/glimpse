@@ -16,6 +16,8 @@ binary path is passed in `GLIMPSE_BIN_PATH`.
 import os
 import sys
 import shutil
+import signal
+import atexit
 import subprocess
 import plistlib
 from pathlib import Path
@@ -90,6 +92,16 @@ class GlimpseMenuBar(rumps.App):
         ]
         self._set_state("offline")  # show the icon immediately
         self._hide_dock_icon()
+        # Reap the detached CDP Chrome on quit / logout / crash. The daemon spawns
+        # Chrome as a detached process, so terminating the daemon alone leaves it
+        # orphaned under launchd (holding the CDP port and its tabs' RAM). atexit
+        # covers a normal quit; the signal handlers cover logout / `kill` / SIGINT.
+        atexit.register(self._cleanup)
+        for _sig in (signal.SIGTERM, signal.SIGINT):
+            try:
+                signal.signal(_sig, self._on_signal)
+            except Exception:
+                pass
         # Watchdog: reflect reality if the daemon dies on its own.
         self._timer = rumps.Timer(self._tick, 5)
         self._timer.start()
@@ -161,6 +173,7 @@ class GlimpseMenuBar(rumps.App):
             except Exception:
                 self.daemon.kill()
         self.daemon = None
+        self._kill_canvas_chrome()  # reap the detached Chrome, not just the daemon
         self._set_state("offline")
 
     def toggle(self, _):
@@ -238,6 +251,66 @@ class GlimpseMenuBar(rumps.App):
             if app is not None:
                 app.activateWithOptions_(opts)
                 return
+
+    def _kill_canvas_chrome(self, *_):
+        """Terminate the dedicated CDP Chrome the daemon spawned.
+
+        The daemon launches Chrome detached, so it outlives the daemon and is
+        re-parented to launchd — orphaned, still bound to the CDP port and
+        holding its tabs' RAM. Find it by the same signature _activate_canvas_chrome
+        uses (the --remote-debugging-port process that is the main browser, i.e.
+        no --type= child flag) and, as an extra guard against killing some other
+        CDP Chrome, require the Glimpse profile dir in its command line. SIGTERM
+        on the main process reaps all its renderer/GPU/utility children.
+        """
+        cdp = os.environ.get("GLIMPSE_CDP_PORT", "9222")
+        try:
+            out = subprocess.run(
+                ["pgrep", "-f", "remote-debugging-port=" + cdp],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            ).stdout
+        except Exception:
+            return
+        for tok in out.split():
+            if not tok.isdigit():
+                continue
+            try:
+                cmd = subprocess.run(
+                    ["ps", "-p", tok, "-o", "command="],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                ).stdout
+            except Exception:
+                continue
+            if "--type=" in cmd:
+                continue  # child helper; killing the main process reaps it
+            if "chrome-profile" not in cmd:
+                continue  # not the Glimpse instance — never touch other Chromes
+            try:
+                os.kill(int(tok), signal.SIGTERM)
+            except Exception:
+                pass
+
+    def _cleanup(self, *_):
+        """Best-effort teardown for atexit / signals: stop the daemon and reap
+        the detached CDP Chrome so nothing is orphaned on quit / logout / crash."""
+        try:
+            if self.daemon is not None and self.daemon.poll() is None:
+                self.daemon.terminate()
+                try:
+                    self.daemon.wait(timeout=5)
+                except Exception:
+                    self.daemon.kill()
+        except Exception:
+            pass
+        self._kill_canvas_chrome()
+
+    def _on_signal(self, *_):
+        self._cleanup()
+        os._exit(0)
 
     def _tick(self, _):
         # If we believe we're online but the daemon died, reflect it AND surface why.
