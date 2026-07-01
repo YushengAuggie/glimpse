@@ -699,7 +699,18 @@
   // Clicks inside the shadow UI retarget to the host (#__glimpse_layer) at the
   // document level, so guard on the host id, not ".bubble".
   document.addEventListener("mousedown", function (e) { if (spotEl && !(e.target.closest && e.target.closest("#__glimpse_layer, mark.glimpse-mark"))) clearSpot(); }, true);
-  window.addEventListener("resize", function () { renderAll(); });
+  // Resize only changes layout, not anchoring — so debounce and just recompute the
+  // narrow/side-rail mode + reposition, instead of a full renderAll() (which re-walks
+  // the DOM and rebuilds every mark). Cheaper and avoids thrash while dragging the edge.
+  var _resizeT = null;
+  window.addEventListener("resize", function () {
+    clearTimeout(_resizeT);
+    _resizeT = setTimeout(function () {
+      narrowMode = window.innerWidth < (700 + GUTTER_W);
+      reserveGutter();
+      queueReposition();
+    }, 120);
+  });
 
   /* =========================================================================
    * 5. Submit + messaging (validated postMessage to/from the shell)

@@ -366,6 +366,12 @@
         // output with strict-escaped, _mmLabel-sanitized labels — safe to inject.
         window.mermaid.render("gx-mermaid-" + (++mermaidSeq), src).then(function (res) {
           node.innerHTML = res.svg;
+          var svg = node.querySelector("svg");
+          if (svg) {
+            var nn = ((spec.dataflow && spec.dataflow.nodes) || []).length, ne = ((spec.dataflow && spec.dataflow.edges) || []).length;
+            svg.setAttribute("role", "img");
+            svg.setAttribute("aria-label", "Data-flow diagram: " + nn + " node" + (nn===1?"":"s") + ", " + ne + " edge" + (ne===1?"":"s") + ". Use the Call stack tab for a keyboard-navigable view.");
+          }
           if (res.bindFunctions) res.bindFunctions(node);
           wireMermaidClicks(wrap);
         }).catch(function () { mermaidDone = false; });
@@ -410,12 +416,15 @@
     // post-render: clicking a dataflow SVG node selects the matching call-stack step.
     wrap.querySelectorAll(".mermaid svg .node").forEach(function (g) {
       g.style.cursor = "pointer";
-      g.addEventListener("click", function () {
+      g.setAttribute("role", "button"); g.setAttribute("tabindex", "0");
+      var jump = function () {
         var id = (g.id || "").replace(/^flowchart-/, "").replace(/-\d+$/, "");
         var cs = wrap.querySelector('.gx-view[data-key="callstack"]');
         var node = cs && cs.querySelector('.gx-node[data-id="' + (window.CSS ? window.CSS.escape(id) : id) + '"]');
         if (node) { var csTab = wrap.querySelector('.gx-tab[data-key="callstack"]'); if (csTab) csTab.click(); node.click(); node.scrollIntoView({ block: "center" }); }
-      });
+      };
+      g.addEventListener("click", jump);
+      g.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); jump(); } });
     });
   }
 
