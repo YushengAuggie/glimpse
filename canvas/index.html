@@ -347,6 +347,18 @@ async function show(slug){
         // overlapping text back up for `glimpse audit`.
         const ausrc = await loadAuditSrc();
         if(ausrc) extra += '\n<script>' + ausrc + '<\/script>';
+        // In-page anchor fix: a srcdoc document inherits THIS shell's URL as its base,
+        // so an artifact's <a href="#id"> resolves to <shell-origin>/#id and navigates
+        // the frame to the canvas shell (blank) instead of scrolling. Intercept same-page
+        // fragment clicks and scroll within the artifact. (The plain f.src path below is a
+        // real URL, where native fragment nav already works — so this is only for srcdoc.)
+        extra += '\n<script>(function(){document.addEventListener("click",function(e){'
+          + 'var a=e.target&&e.target.closest?e.target.closest(\'a[href^="#"]\'):null;if(!a)return;'
+          + 'var id=(a.getAttribute("href")||"").slice(1);'
+          + 'if(!id){e.preventDefault();window.scrollTo({top:0,behavior:"smooth"});return;}'
+          + 'var el=null;try{el=document.getElementById(id)||document.querySelector(\'[name="\'+(window.CSS&&CSS.escape?CSS.escape(id):id)+\'"]\');}catch(_){}'
+          + 'if(!el)return;e.preventDefault();el.scrollIntoView({behavior:"smooth",block:"start"});'
+          + '},true);})();<\/script>';
         // __GLIMPSE__ is emitted exactly once here; annotate, the renderer, and the
         // auditor all read it. annotate (src) is already in `extra`, so it is not
         // appended again — appending it here too would double-inject the helper.
