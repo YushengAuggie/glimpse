@@ -373,11 +373,20 @@ read -r -d '' BRIDGE_JS <<'JS' || true
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, renameSync } from "node:fs";
 const PORT=process.env.PORT, DIR=process.env.GLIMPSE_DIR, BIN=process.env.GLIMPSE_BIN, WAIT=process.env.WAIT==="1";
-const expectedOrigin="http://127.0.0.1:"+PORT;
+const expectedOrigin="http://127.0.0.1:"+PORT;   // canonical spelling (used in messages)
 const statePath=DIR+"/.bridge.state";
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const emit=o=>process.stdout.write(JSON.stringify(o)+"\n");
-const isCanvas=t=>{ try{ return t.type==="page" && new URL(t.url).origin===expectedOrigin; }catch{ return false; } };
+// The canvas is our static server on the loopback interface. Chrome or the user
+// may reach it as 127.0.0.1, localhost, or ::1 — all the same server on this
+// machine — so accept ANY loopback host on our port, not one exact origin.
+// Anchored to an explicit host allowlist + exact port (never a substring test,
+// so evil.localhost / 127.0.0.1.evil.com are rejected). Without this a tab opened
+// at http://localhost:PORT gets no liveness stamp and no question capture, so the
+// agent looks "offline" and everything typed into it silently vanishes.
+const LOOPBACK_HOSTS=new Set(["127.0.0.1","localhost","[::1]"]);
+const isCanvasOrigin=u=>{ try{ const p=new URL(u); return p.protocol==="http:" && LOOPBACK_HOSTS.has(p.hostname) && p.port===String(PORT); }catch{ return false; } };
+const isCanvas=t=>t.type==="page" && isCanvasOrigin(t.url);
 
 // Daemon mode (glimpse daemon): auto-answer each question via the local
 // Anthropic-compatible proxy. Q&A only — the question text is untrusted data.
@@ -517,7 +526,7 @@ while(true){
     let data=null;
     try{ const r=await c.send("Runtime.evaluate",{expression:EVAL,returnByValue:true}); data=JSON.parse(r.result.value); }
     catch(e){ try{c.close();}catch{} conns.delete(id); continue; }   // tab closed/crashed → drop, re-added on next sync
-    if(!data || data.origin!==expectedOrigin) continue;
+    if(!data || !isCanvasOrigin(data.origin)) continue;
     for(const m of (data.outbox||[])){
       if(!m||!m.id||seen.has(m.id)) continue;
       // Feed-mutation intents (pin/unpin) — route to the CLI, which validates the
