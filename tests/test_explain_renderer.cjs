@@ -51,6 +51,43 @@ test("safeMarkdown builds headings and list items", () => {
   assert.match(frag2html(GX.safeMarkdown("- one\n- two")), /<li>one<\/li>\s*<li>two<\/li>/);
 });
 
+function frag2text(frag) {
+  const d = document.createElement("div"); d.appendChild(frag); return d.textContent;
+}
+
+test("safeMarkdown renders a fenced code block as <pre><code>, not paragraphs", () => {
+  const html = frag2html(GX.safeMarkdown("```js\nconst a = 1;\n```"));
+  assert.match(html, /<pre[^>]*><code>/);      // real code block
+  assert.match(html, /<\/code><\/pre>/);
+  assert.doesNotMatch(html, /<p>const/);        // never line-by-line paragraphs
+  assert.match(html, /data-gx-copy/);           // copy affordance present
+  assert.match(html, /data-gx-expand/);         // expand affordance present
+  assert.match(frag2text(GX.safeMarkdown("```js\nconst a = 1;\n```")), /const a = 1;/); // verbatim
+});
+
+test("safeMarkdown keeps inline marks inert inside a code block", () => {
+  const md = "```\na = **b** and `c`\n```";
+  const html = frag2html(GX.safeMarkdown(md));
+  assert.doesNotMatch(html, /<strong>/);        // ** not turned into bold
+  assert.doesNotMatch(html, /<em>/);
+  assert.doesNotMatch(html, /<code>c<\/code>/);  // backticks inside a block are literal
+  assert.match(frag2text(GX.safeMarkdown(md)), /a = \*\*b\*\* and `c`/); // preserved char-for-char
+});
+
+test("safeMarkdown tags the language and tolerates an unterminated fence", () => {
+  const html = frag2html(GX.safeMarkdown("```python\nx=1"));   // no closing ```
+  assert.match(html, /<span>python<\/span>/);   // language label
+  assert.match(html, /<pre[^>]*><code>/);
+  assert.match(frag2text(GX.safeMarkdown("```python\nx=1")), /x=1/);
+});
+
+test("safeMarkdown mixes a fenced block with surrounding paragraphs", () => {
+  const html = frag2html(GX.safeMarkdown("Here:\n```\ncode\n```\nDone"));
+  assert.match(html, /<p>Here:<\/p>/);
+  assert.match(html, /<p>Done<\/p>/);
+  assert.match(html, /<pre[^>]*><code>/);
+});
+
 test("mermaidSource quotes+escapes labels and respects direction", () => {
   const src = GX.mermaidSource({ direction: "TB",
     nodes: [{ id: "a", label: 'A"x' }, { id: "b", label: "B" }],

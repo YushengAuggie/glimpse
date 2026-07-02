@@ -48,6 +48,18 @@
     var list = null;
     for (var li = 0; li < lines.length; li++) {
       var line = lines[li];
+      // Fenced code block: ```lang … ``` — collect verbatim to the closing fence
+      // (or end of text, if the agent's reply left it unterminated) and render as a
+      // real highlighted <pre>, never line-by-line paragraphs.
+      var fence = /^```(\w*)\s*$/.exec(line);
+      if (fence) {
+        list = null;
+        var buf = [];
+        li++;
+        while (li < lines.length && !/^```\s*$/.test(lines[li])) { buf.push(lines[li]); li++; }
+        frag.appendChild(buildCodeBlock(buf.join("\n"), fence[1] || ""));
+        continue; // li now sits on the closing fence (or past end); for-loop advances it
+      }
       var h = /^(#{1,3})\s+(.*)$/.exec(line);
       var item = /^[-*]\s+(.*)$/.exec(line);
       if (item) {
@@ -110,6 +122,37 @@
     if (i < s.length) toks.push({ text: s.slice(i), cls: "" });
     return toks;
   }
+
+  // Build a highlighted, viewer-friendly code block for a fenced ``` span. Pure DOM
+  // (createElement / textContent only — never innerHTML, never addEventListener here,
+  // so the Node DOM-shim can render it in tests). The copy/expand buttons carry only
+  // data-hooks; mount() wires them via event delegation in the browser.
+  function buildCodeBlock(code, lang) {
+    var fig = document.createElement("figure"); fig.className = "gx-code";
+    var bar = document.createElement("div"); bar.className = "gx-code-bar";
+    var tag = document.createElement("span"); tag.className = "gx-code-lang";
+    tag.textContent = lang || "code"; bar.appendChild(tag);
+    var btns = document.createElement("span"); btns.className = "gx-code-btns";
+    var expand = document.createElement("button");
+    expand.className = "gx-code-btn"; expand.setAttribute("type", "button");
+    expand.setAttribute("data-gx-expand", "1"); expand.setAttribute("aria-label", "Expand code");
+    expand.textContent = "Expand";
+    var copy = document.createElement("button");
+    copy.className = "gx-code-btn"; copy.setAttribute("type", "button");
+    copy.setAttribute("data-gx-copy", "1"); copy.setAttribute("aria-label", "Copy code");
+    copy.textContent = "Copy";
+    btns.appendChild(expand); btns.appendChild(copy); bar.appendChild(btns);
+    fig.appendChild(bar);
+    var pre = document.createElement("pre"); pre.className = "gx-code-pre";
+    var codeEl = document.createElement("code");
+    highlightTokens(code, lang).forEach(function (t) {
+      var span = document.createElement("span");
+      if (t.cls) span.className = "tok-" + t.cls;
+      span.textContent = t.text; codeEl.appendChild(span);
+    });
+    pre.appendChild(codeEl); fig.appendChild(pre);
+    return fig;
+  }
   // Should this composer keydown send? Enter sends; Shift+Enter newlines;
   // Cmd/Ctrl+Enter always sends; an IME-composition Enter (isComposing / keyCode
   // 229, e.g. selecting a CJK candidate) never sends.
@@ -166,7 +209,7 @@
     ".gx-ask:focus-visible{outline:2px solid var(--gx-accent);outline-offset:2px}",
     ".gx-panel{position:sticky;top:8px;align-self:start;border:1px solid var(--gx-line);border-radius:12px;background:var(--gx-bg);max-height:calc(100vh - 24px);overflow:auto;margin-right:calc(var(--glimpse-gutter-reserved,0px))}",
     ".gx-panel pre{background:var(--gx-pre-bg);color:var(--gx-pre-fg);border-radius:8px;padding:12px;overflow:auto;font:12.5px/1.5 ui-monospace,Menlo,monospace}",
-    ".gx-panel .tok-kw{color:#9bb7ff}.gx-panel .tok-str{color:#b5e8a0}.gx-panel .tok-com{color:#8b93a7}",
+    ".gx-panel .tok-kw,.gx-code-pre .tok-kw,.gx-code-modal .tok-kw{color:#9bb7ff}.gx-panel .tok-str,.gx-code-pre .tok-str,.gx-code-modal .tok-str{color:#b5e8a0}.gx-panel .tok-com,.gx-code-pre .tok-com,.gx-code-modal .tok-com{color:#8b93a7}",
     ".gx-chip{display:inline-block;font-size:12px;background:var(--gx-accent-bg);color:var(--gx-accent);border:1px solid var(--gx-accent-border);border-radius:999px;padding:2px 9px;margin:2px 4px 0 0;cursor:pointer}",
     ".gx-composer{margin-top:8px;border:1px dashed var(--gx-accent-border);border-radius:9px;padding:9px;background:var(--gx-soft);display:none}",
     ".gx-composer.on{display:block}.gx-composer textarea{width:100%;box-sizing:border-box;resize:vertical;min-height:40px;max-height:220px;overflow-y:auto;border:1px solid var(--gx-line);border-radius:7px;padding:7px;font:14px inherit;background:var(--gx-bg);color:var(--gx-fg)}",
@@ -178,7 +221,27 @@
     ".gx-reply-user{color:var(--gx-fg)}",
     ".gx-reply-agent{background:var(--gx-accent-bg);border-left:2px solid var(--gx-accent);border-radius:6px;padding:7px 9px}",
     ".gx-reply-agent p{margin:.3em 0}.gx-reply-agent p:first-child{margin-top:0}.gx-reply-agent p:last-child{margin-bottom:0}",
-    ".gx-reply-pending{font-size:12px;color:var(--gx-dim);font-style:italic}"
+    ".gx-reply-pending{font-size:12px;color:var(--gx-dim);font-style:italic}",
+    // fenced code block inside markdown (agent replies, notes, summaries)
+    ".gx-code{margin:.5em 0;border:1px solid var(--gx-line);border-radius:9px;overflow:hidden;background:var(--gx-pre-bg)}",
+    ".gx-code-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 6px 4px 10px;background:var(--gx-pre-bg);border-bottom:1px solid rgba(255,255,255,.08)}",
+    ".gx-code-lang{font:11px ui-monospace,Menlo,monospace;color:var(--gx-pre-fg);opacity:.6;text-transform:lowercase}",
+    ".gx-code-btns{display:flex;gap:4px}",
+    ".gx-code-btn{font:11px/1 -apple-system,BlinkMacSystemFont,sans-serif;font-weight:600;color:var(--gx-pre-fg);background:rgba(255,255,255,.09);border:0;border-radius:6px;padding:5px 9px;cursor:pointer;opacity:.85}",
+    ".gx-code-btn:hover{opacity:1;background:rgba(255,255,255,.16)}",
+    ".gx-code-btn:focus-visible{outline:2px solid var(--gx-accent);outline-offset:1px}",
+    // scrollable both axes + user can drag it taller; overrides .gx-reply-agent's <pre> reset
+    ".gx-code-pre{margin:0;background:var(--gx-pre-bg);color:var(--gx-pre-fg);padding:11px 12px;overflow:auto;resize:vertical;max-height:340px;min-height:44px;font:12.5px/1.5 ui-monospace,Menlo,monospace}",
+    ".gx-code-pre code{white-space:pre;font:inherit}",
+    // expand overlay: fixed dialog filling the iframe viewport
+    ".gx-code-overlay{display:none;position:fixed;inset:0;z-index:9999;background:rgba(8,10,16,.62);padding:24px;box-sizing:border-box}",
+    ".gx-code-overlay.on{display:flex;align-items:center;justify-content:center}",
+    ".gx-code-modal{display:flex;flex-direction:column;width:min(1000px,100%);max-height:100%;background:var(--gx-bg);border:1px solid var(--gx-line);border-radius:12px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.5)}",
+    ".gx-code-modal .gx-code-bar{background:var(--gx-bg);border-bottom:1px solid var(--gx-line)}",
+    ".gx-code-modal .gx-code-lang{color:var(--gx-dim);opacity:1}",
+    ".gx-code-modal .gx-code-btn{color:var(--gx-fg);background:var(--gx-soft)}",
+    ".gx-code-modal .gx-code-btn:hover{background:var(--gx-accent-bg)}",
+    ".gx-code-modal pre{margin:0;flex:1;background:var(--gx-pre-bg);color:var(--gx-pre-fg);padding:14px 16px;overflow:auto;max-height:82vh;font:13px/1.55 ui-monospace,Menlo,monospace}"
   ].join("\n");
 
   function el(tag, cls, txt) {
@@ -405,11 +468,108 @@
     if (views.length > 1) wrap.appendChild(tabs);
     views.forEach(function (vv) { wrap.appendChild(vv.v); });
     root.appendChild(wrap);
+    wireCodeBlocks(wrap);
 
     // default tab: Call stack if present, else first.
     var def = views.filter(function (v) { return v.key === "callstack"; })[0] || views[0];
     if (def) activateTab(def);
     renderMermaid();   // covers the case where Data flow is the default/only view
+  }
+
+  // Wire the copy/expand affordances on every fenced code block via one delegated
+  // listener on the renderer root (buildCodeBlock leaves only data-hooks, so this is
+  // the sole place browser events touch those buttons — keeps the DOM-shim tests pure).
+  // A single reusable overlay hosts the expanded view.
+  function wireCodeBlocks(wrap) {
+    if (typeof document === "undefined" || !wrap || !wrap.addEventListener) return;
+
+    var overlay = document.createElement("div");
+    overlay.className = "gx-code-overlay";
+    overlay.setAttribute("role", "dialog"); overlay.setAttribute("aria-modal", "true");
+    overlay.setAttribute("aria-label", "Expanded code");
+    var modal = document.createElement("div"); modal.className = "gx-code-modal";
+    var bar = document.createElement("div"); bar.className = "gx-code-bar";
+    var oLang = document.createElement("span"); oLang.className = "gx-code-lang";
+    var oBtns = document.createElement("span"); oBtns.className = "gx-code-btns";
+    var oCopy = document.createElement("button");
+    oCopy.className = "gx-code-btn"; oCopy.setAttribute("type", "button");
+    oCopy.setAttribute("data-gx-copy", "1"); oCopy.setAttribute("aria-label", "Copy code");
+    oCopy.textContent = "Copy";
+    var oClose = document.createElement("button");
+    oClose.className = "gx-code-btn"; oClose.setAttribute("type", "button");
+    oClose.setAttribute("data-gx-close", "1"); oClose.setAttribute("aria-label", "Close");
+    oClose.textContent = "Close";
+    oBtns.appendChild(oCopy); oBtns.appendChild(oClose);
+    bar.appendChild(oLang); bar.appendChild(oBtns);
+    var oPre = document.createElement("pre"); var oCode = document.createElement("code");
+    oPre.appendChild(oCode);
+    modal.appendChild(bar); modal.appendChild(oPre); overlay.appendChild(modal);
+    // Append inside the renderer root (not document.body) so the overlay inherits the
+    // .gx CSS custom properties (--gx-pre-bg/-fg, tokens) and .gx-dark theme. It stays
+    // position:fixed → still fills the viewport since .gx creates no fixed containing block.
+    wrap.appendChild(overlay);
+
+    var lastFocus = null;
+    function flash(btn) {
+      var prev = btn.getAttribute("aria-label"); var txt = btn.textContent;
+      btn.textContent = "Copied"; btn.setAttribute("aria-label", "Copied");
+      setTimeout(function () { btn.textContent = txt; btn.setAttribute("aria-label", prev); }, 1200);
+    }
+    function copyText(text, btn) {
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(function () { flash(btn); }, function () {});
+          return;
+        }
+      } catch (e) { /* fall through */ }
+      try {
+        var ta = document.createElement("textarea"); ta.value = text;
+        ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.focus(); ta.select();
+        document.execCommand("copy"); document.body.removeChild(ta); flash(btn);
+      } catch (e) { /* clipboard unavailable — quietly no-op */ }
+    }
+    function openOverlay(fig, trigger) {
+      var srcCode = fig.querySelector(".gx-code-pre code");
+      var srcLang = fig.querySelector(".gx-code-lang");
+      oLang.textContent = srcLang ? srcLang.textContent : "code";
+      oCode.textContent = "";
+      if (srcCode) {
+        var kids = srcCode.childNodes;
+        for (var i = 0; i < kids.length; i++) oCode.appendChild(kids[i].cloneNode(true));
+      }
+      lastFocus = trigger || null;
+      overlay.classList.add("on");
+      oClose.focus();
+    }
+    function closeOverlay() {
+      if (!overlay.classList.contains("on")) return;
+      overlay.classList.remove("on");
+      if (lastFocus && lastFocus.focus) lastFocus.focus();
+      lastFocus = null;
+    }
+
+    wrap.addEventListener("click", function (e) {
+      var t = e.target; if (!t || !t.closest) return;
+      var copyBtn = t.closest("[data-gx-copy]");
+      if (copyBtn) {
+        var f = copyBtn.closest(".gx-code");
+        var c = f && f.querySelector(".gx-code-pre code");
+        if (c) copyText(c.textContent, copyBtn);
+        return;
+      }
+      var expandBtn = t.closest("[data-gx-expand]");
+      if (expandBtn) { var f2 = expandBtn.closest(".gx-code"); if (f2) openOverlay(f2, expandBtn); }
+    });
+    overlay.addEventListener("click", function (e) {
+      var t = e.target; if (!t) return;
+      if (t === overlay || (t.closest && t.closest("[data-gx-close]"))) { closeOverlay(); return; }
+      var cb = t.closest && t.closest("[data-gx-copy]");
+      if (cb) copyText(oCode.textContent, cb);
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") closeOverlay();
+    });
   }
 
   function wireMermaidClicks(wrap) {
