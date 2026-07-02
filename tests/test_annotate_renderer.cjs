@@ -46,6 +46,36 @@ test("safeMarkdown builds headings and list items", () => {
   assert.match(frag2html(AN.safeMarkdown("- one\n- two")), /<li>one<\/li>\s*<li>two<\/li>/);
 });
 
+function frag2text(frag) {
+  const d = document.createElement("div"); d.appendChild(frag); return d.textContent;
+}
+
+test("safeMarkdown renders a fenced code block as <pre><code>, not paragraphs", () => {
+  const html = frag2html(AN.safeMarkdown("```python\ntokens = []\n```"));
+  assert.match(html, /<pre[^>]*><code>/);
+  assert.match(html, /<\/code><\/pre>/);
+  assert.doesNotMatch(html, /<p>tokens/);       // never line-by-line paragraphs
+  assert.match(html, /data-gx-copy/);           // copy affordance
+  assert.match(html, /data-gx-expand/);         // expand affordance
+  assert.match(frag2text(AN.safeMarkdown("```python\ntokens = []\n```")), /tokens = \[\]/);
+});
+
+test("safeMarkdown keeps inline marks inert inside a code block", () => {
+  const md = "```\na = **b** and `c`\n```";
+  const html = frag2html(AN.safeMarkdown(md));
+  assert.doesNotMatch(html, /<strong>/);
+  assert.doesNotMatch(html, /<em>/);
+  assert.doesNotMatch(html, /<code>c<\/code>/);
+  assert.match(frag2text(AN.safeMarkdown(md)), /a = \*\*b\*\* and `c`/);
+});
+
+test("safeMarkdown tags the language and tolerates an unterminated fence", () => {
+  const html = frag2html(AN.safeMarkdown("```js\nconst x=1"));   // no closing ```
+  assert.match(html, /<span>js<\/span>/);
+  assert.match(html, /<pre[^>]*><code>/);
+  assert.match(frag2text(AN.safeMarkdown("```js\nconst x=1")), /const x=1/);
+});
+
 test("shouldSend: plain Enter sends; Shift+Enter newlines", () => {
   assert.strictEqual(AN.shouldSend({ key: "Enter" }), true);
   assert.strictEqual(AN.shouldSend({ key: "Enter", shiftKey: true }), false);
