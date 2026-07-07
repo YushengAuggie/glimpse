@@ -40,8 +40,9 @@ These checks are **blocking** — a failure blocks the PR:
 | Bash smoke tests | `bash tests/test_*.sh` | any failing test |
 | Secret scan | `gitleaks git` (full history) | any leaked secret |
 
-The `test` job runs on both `ubuntu-latest` and `macos-latest`; the `secrets`
-job runs once on Linux.
+The `test` job runs on both `ubuntu-latest` and `macos-latest`, except the
+shell-lint step, which runs once on Linux (shellcheck is OS-independent and the
+macOS runner doesn't preinstall it); the `secrets` job runs once on Linux too.
 
 **Run the whole gate locally** (Python 3, Node ≥ 22, and
 [shellcheck](https://www.shellcheck.net/) required):

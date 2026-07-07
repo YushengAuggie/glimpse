@@ -215,9 +215,11 @@ uid=s0 RootWebArea "Snapshot Demo"
 - **Live-Chrome / CDP tests are opt-in and never run in CI.**
   `test_explain_render_cdp.sh` and `test_node_roundtrip.sh` self-skip (exit 0)
   unless `GLIMPSE_RUNTIME_TESTS=1` and a debuggable Chrome + canvas are up.
-- **shellcheck** is gated at `-S warning` (the level the tree passes cleanly).
-  Remaining `SC2086` findings in `bin/glimpse` / `install.sh` are info-level;
-  a `-S style` tightening is a deliberate follow-up, not a regression.
+- **shellcheck** is gated at `-S warning` (the level the tree passes cleanly)
+  and runs once, on the `ubuntu-latest` leg only — it's OS-independent static
+  analysis and the macOS runner doesn't preinstall it. Remaining `SC2086`
+  findings in `bin/glimpse` / `install.sh` are info-level; a `-S style`
+  tightening is a deliberate follow-up, not a regression.
 - Running pytest locally after editing a test may hit a stale assertion-rewrite
   cache — `rm -rf tests/__pycache__ .pytest_cache` if results look wrong. CI is
   a fresh checkout so it's unaffected.
