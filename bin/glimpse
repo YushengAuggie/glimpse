@@ -921,21 +921,30 @@ cmd_menubar(){
 # `/bin/bash -lc 'source secrets; exec glimpse …'` under launchd's minimal PATH —
 # which misses the fnm/nvm setup that only zsh sources — so we re-run that same
 # login-shell + secrets sourcing here. For node we then apply glimpse's own
-# fallback probe (_node_candidates), because that is what `glimpse` itself does.
+# fallback probe INSIDE that same sourced subshell, so a GLIMPSE_NODE (or PATH)
+# pinned only in secrets.env is honored exactly as _ensure_node would — otherwise
+# doctor reports a false "launchd node" failure whose printed fix wouldn't clear
+# it. The shared _node_candidates list is fed in via env (never re-copied) so this
+# check can't drift from _ensure_node, and its GLIMPSE_NODE entry is re-evaluated
+# inside the subshell from the sourced secrets rather than the doctor's own env.
 # Always returns 0 so a `x=$(_launchd_resolve …)` assignment is safe under set -e.
 _launchd_resolve(){
-  local cmd="$1" secrets="$HOME/.config/secrets.env" found c
+  local cmd="$1" secrets="$HOME/.config/secrets.env" found
   found="$(env -i HOME="$HOME" PATH="/usr/bin:/bin:/usr/sbin:/sbin" \
-    /bin/bash -lc "source \"$secrets\" 2>/dev/null; command -v $cmd" 2>/dev/null || true)"
-  if [ -n "$found" ]; then echo "$found"; return 0; fi
-  if [ "$cmd" = node ]; then
-    while IFS= read -r c; do
-      [ -n "$c" ] && [ -x "$c" ] && { echo "$c (glimpse fallback)"; return 0; }
-    done <<EOF
-$(_node_candidates)
-EOF
-  fi
-  return 0
+    SECRETS="$secrets" CMD="$cmd" CANDS="$(_node_candidates)" \
+    /bin/bash -lc '
+      source "$SECRETS" 2>/dev/null || true
+      p="$(command -v "$CMD" 2>/dev/null || true)"
+      [ -n "$p" ] && { printf "%s" "$p"; exit 0; }
+      [ "$CMD" = node ] || exit 0
+      while IFS= read -r c; do
+        [ -n "$c" ] && [ -x "$c" ] && { printf "%s (glimpse fallback)" "$c"; exit 0; }
+      done <<CANDLIST
+${GLIMPSE_NODE:-}
+$CANDS
+CANDLIST
+    ' 2>/dev/null || true)"
+  echo "$found"; return 0
 }
 
 cmd_doctor(){
