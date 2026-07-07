@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en" data-theme="auto">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Comparison playbook — Queue choice</title>
+<style>
+  :root{
+    color-scheme: light dark;
+    --bg:#f6f7fb; --bg-elev:#ffffff; --bg-sunk:#f0f2f8;
+    --ink:#1a1b26; --ink-2:#565a6e; --ink-3:#8b90a3;
+    --line:#e5e7f0; --line-2:#eef0f7;
+    --accent:#4c5fd5; --accent-ink:#3245b8; --accent-soft:#eef1ff;
+    --good:#2f9e44; --good-soft:#eaf7ee; --warn:#e8590c; --warn-soft:#fdf0e6;
+    --danger:#e03131; --danger-soft:#fdeded;
+    --shadow:0 1px 2px rgba(20,20,40,.05), 0 8px 24px -18px rgba(20,20,40,.22);
+    --radius:14px; --radius-sm:9px;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,sans-serif;
+  }
+  @media (prefers-color-scheme: dark){ :root[data-theme="auto"]{
+    --bg:#0e0f16; --bg-elev:#171923; --bg-sunk:#12141d;
+    --ink:#e6e8f0; --ink-2:#a4a9bd; --ink-3:#6f7488;
+    --line:#262a38; --line-2:#1f2330;
+    --accent:#93a4ff; --accent-ink:#b7c2ff; --accent-soft:#1b2140;
+    --good:#51cf66; --good-soft:#12281a; --warn:#ff922b; --warn-soft:#2a1c10;
+    --danger:#ff6b6b; --danger-soft:#2a1414;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 30px -20px rgba(0,0,0,.7);
+  }}
+  :root[data-theme="dark"]{
+    --bg:#0e0f16; --bg-elev:#171923; --bg-sunk:#12141d;
+    --ink:#e6e8f0; --ink-2:#a4a9bd; --ink-3:#6f7488;
+    --line:#262a38; --line-2:#1f2330;
+    --accent:#93a4ff; --accent-ink:#b7c2ff; --accent-soft:#1b2140;
+    --good:#51cf66; --good-soft:#12281a; --warn:#ff922b; --warn-soft:#2a1c10;
+    --danger:#ff6b6b; --danger-soft:#2a1414;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 30px -20px rgba(0,0,0,.7);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.62 var(--sans);
+    -webkit-font-smoothing:antialiased;transition:background .2s,color .2s;}
+  .wrap{max-width:860px;margin:0 auto;padding:56px 24px 96px;}
+  h1{font-size:clamp(26px,4vw,32px);line-height:1.15;margin:0 0 8px;letter-spacing:-.02em;font-weight:750;}
+  h3{font-size:18px;margin:0;letter-spacing:-.01em;}
+  p{margin:8px 0;} b{font-weight:650;}
+  .eyebrow{font:600 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;
+    color:var(--accent);display:inline-flex;align-items:center;gap:8px;margin-bottom:14px;}
+  .eyebrow::before{content:"";width:22px;height:2px;background:var(--accent);border-radius:2px;}
+  .lede{font-size:18px;line-height:1.55;color:var(--ink-2);max-width:680px;}
+  .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));margin:22px 0 8px;}
+  .grid>*{min-width:0;}
+  .opt{position:relative;background:var(--bg-elev);border:1px solid var(--line);border-radius:var(--radius);
+    padding:20px 22px;box-shadow:var(--shadow);}
+  .opt.win{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent), var(--shadow);}
+  .chip{position:absolute;top:-11px;left:20px;font:600 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;
+    background:var(--accent);color:#fff;border-radius:999px;padding:5px 11px;}
+  :root[data-theme="dark"] .chip{color:#0e0f16;}
+  .opt dl{margin:14px 0 0;display:grid;grid-template-columns:auto 1fr;gap:8px 12px;font-size:14.5px;}
+  .opt dt{font:600 11px/1.5 var(--mono);letter-spacing:.06em;text-transform:uppercase;padding-top:2px;}
+  .opt dt.b{color:var(--good);} .opt dt.c{color:var(--danger);}
+  .opt dd{margin:0;color:var(--ink-2);}
+  .note{border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:13px 16px;margin:16px 0;}
+  .note b{color:var(--accent-ink);}
+  code{font:13px/1.5 var(--mono);background:var(--bg-sunk);color:var(--accent-ink);padding:.12em .4em;border-radius:5px;}
+  .foot{color:var(--ink-3);font-size:13px;margin-top:28px;padding-top:16px;border-top:1px solid var(--line-2);}
+  .theme-toggle{position:fixed;top:16px;right:16px;z-index:10;font:600 13px/1 var(--sans);
+    display:inline-flex;align-items:center;gap:7px;background:var(--bg-elev);color:var(--ink-2);
+    border:1px solid var(--line);border-radius:999px;padding:8px 13px;cursor:pointer;box-shadow:var(--shadow);}
+  .theme-toggle:hover{color:var(--ink);border-color:var(--accent);}
+  .theme-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  @media (max-width:640px){.wrap{padding:44px 18px 72px;}}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;}}
+</style>
+</head>
+<body>
+<button class="theme-toggle" id="themeToggle" aria-label="Toggle light/dark theme"><span id="themeIcon">🌙</span><span id="themeLabel">Dark</span></button>
+<div class="wrap">
+  <div class="eyebrow">Playbook · comparison</div>
+  <h1>Job queue: SQS or a Postgres-backed queue?</h1>
+  <p class="lede">Name the decision, show each option's real benefit <b>and</b>
+    cost, and recommend only when the evidence supports one.</p>
+
+  <div class="grid">
+    <div class="opt win">
+      <span class="chip">Recommended</span>
+      <h3>Amazon SQS</h3>
+      <dl>
+        <dt class="b">Benefit</dt><dd>Absorbs spikes; effectively zero ops; scales workers on queue depth.</dd>
+        <dt class="c">Cost</dt><dd>Another dependency; at-least-once delivery → workers must be idempotent.</dd>
+      </dl>
+    </div>
+    <div class="opt">
+      <h3>Postgres-backed queue</h3>
+      <dl>
+        <dt class="b">Benefit</dt><dd>One datastore; enqueue is transactional with the job row.</dd>
+        <dt class="c">Cost</dt><dd>Polling load on the primary; throughput caps well below SQS.</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="note"><b>Why SQS:</b> upload traffic is spiky and the resizer workers
+    are already idempotent, so at-least-once delivery costs us nothing.
+    <b>Flip to Postgres</b> only if sustained volume stays under ~50 jobs/s and we
+    want to drop the dependency.</div>
+  <div class="foot">Glimpse example · comparison playbook · the assumption that would flip the call is stated, not buried</div>
+</div>
+<script>
+  (function(){
+    var root=document.documentElement, btn=document.getElementById('themeToggle'),
+        icon=document.getElementById('themeIcon'), label=document.getElementById('themeLabel'), KEY='glimpse-theme';
+    function systemDark(){return matchMedia('(prefers-color-scheme: dark)').matches;}
+    function effective(){var t=root.getAttribute('data-theme');return t==='auto'?(systemDark()?'dark':'light'):t;}
+    function paint(){var d=effective()==='dark';icon.textContent=d?'☀️':'🌙';label.textContent=d?'Light':'Dark';}
+    try{var s=localStorage.getItem(KEY);if(s)root.setAttribute('data-theme',s);}catch(e){}
+    paint();
+    btn.addEventListener('click',function(){var n=effective()==='dark'?'light':'dark';
+      root.setAttribute('data-theme',n);try{localStorage.setItem(KEY,n);}catch(e){}paint();});
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(){
+      if(root.getAttribute('data-theme')==='auto')paint();});
+  })();
+</script>
+</body>
+</html>
