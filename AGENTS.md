@@ -322,3 +322,30 @@ uid=s0 RootWebArea "Snapshot Demo"
   two artifacts' audits coexist in `__glimpse_audit` and their threads stay isolated;
   `test_publish_audit_cdp.sh` is the end-to-end auto-audit warn/gate check against a
   real render.
+
+## Testing & CI
+
+- **GitHub CI** is `.github/workflows/ci.yml`. The `test` job (ubuntu + macOS)
+  is the blocking gate: `bash -n`, `shellcheck -S warning` (no `|| true`),
+  `pytest tests/`, `node --test tests/test_*.cjs tests/test_*.mjs`, and a loop
+  over `bash tests/test_*.sh`. The `secrets` job runs gitleaks over full history.
+  See CONTRIBUTING.md for the local-run recipe.
+- **Test taxonomy** under `tests/`:
+  - `test_*.py` — pytest, stdlib-only (imports `lib/glimpse_explain.py`). Dev
+    deps pinned in `requirements-dev.txt` (just `pytest`).
+  - `test_*.cjs` / `test_bridge_origin.mjs` — pure-logic `node:test` files using
+    `dom-shim.cjs`; no browser.
+  - `test_*.sh` — CLI smoke tests against an isolated `GLIMPSE_DIR`.
+  - `cdp_assert_*.mjs` — **not** test files; CDP helpers invoked by the CDP shell
+    tests. Never sweep them with `node --test` (the `test_*` glob excludes them).
+- **Live-Chrome / CDP tests are opt-in and never run in CI.**
+  `test_explain_render_cdp.sh` and `test_node_roundtrip.sh` self-skip (exit 0)
+  unless `GLIMPSE_RUNTIME_TESTS=1` and a debuggable Chrome + canvas are up.
+- **shellcheck** is gated at `-S warning` (the level the tree passes cleanly)
+  and runs once, on the `ubuntu-latest` leg only — it's OS-independent static
+  analysis and the macOS runner doesn't preinstall it. Remaining `SC2086`
+  findings in `bin/glimpse` / `install.sh` are info-level; a `-S style`
+  tightening is a deliberate follow-up, not a regression.
+- Running pytest locally after editing a test may hit a stale assertion-rewrite
+  cache — `rm -rf tests/__pycache__ .pytest_cache` if results look wrong. CI is
+  a fresh checkout so it's unaffected.

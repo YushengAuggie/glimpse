@@ -1,21 +1,92 @@
 name: ci
+
 on:
   push:
   pull_request:
 
+# Least privilege: CI only reads the repo.
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same ref so PRs stay fast.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  checks:
-    runs-on: ubuntu-latest
+  # Blocking reliability gate: shell lint + the full test suite (Python, Node,
+  # and bash smoke tests). Runs on Linux (primary) and macOS (catches BSD-vs-GNU
+  # tool differences in the CLI). Any failure fails CI.
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    # Live-Chrome / CDP tests self-skip unless this is set to 1, so they never
+    # run (and never flake) in headless CI. Kept explicit as documentation.
+    env:
+      GLIMPSE_RUNTIME_TESTS: "0"
     steps:
       - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
         with:
-          fetch-depth: 0   # full history so gitleaks can scan it
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dev deps
+        run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
 
       - name: Shell syntax (bash -n)
         run: bash -n bin/glimpse install.sh scripts/*.sh .githooks/*
 
-      - name: shellcheck (non-blocking)
-        run: shellcheck -S warning bin/glimpse install.sh scripts/*.sh .githooks/* || true
+      # Blocking gate (no `|| true`). -S warning is the severity the codebase
+      # passes cleanly today. Remaining SC2086 findings are info-level (below
+      # warning) and live in product code (bin/glimpse, install.sh) that is out
+      # of scope for CI changes — tighten to `-S style` in a follow-up once
+      # those are quoted. shellcheck is OS-independent static analysis, so it
+      # only needs to run once — on Linux, where the runner preinstalls it (the
+      # macOS runner does not, and installing it there would be redundant work).
+      - name: shellcheck (blocking, -S warning)
+        if: matrix.os == 'ubuntu-latest'
+        run: shellcheck -S warning bin/glimpse install.sh scripts/*.sh .githooks/*
+
+      - name: Python tests (pytest)
+        run: python -m pytest tests/ -v
+
+      # Pure-logic renderer/bridge tests via node's built-in runner (no deps, no
+      # browser). The test_*.{cjs,mjs} glob deliberately excludes the
+      # cdp_assert_*.mjs helpers, which are driven by the CDP shell tests.
+      - name: Renderer unit tests (node --test)
+        run: node --test tests/test_*.cjs tests/test_*.mjs
+
+      # Every bash smoke test. The two CDP-driven scripts self-skip (exit 0)
+      # because GLIMPSE_RUNTIME_TESTS != 1, so this stays green in CI while still
+      # exercising the CLI publish/validate/thread logic end-to-end.
+      - name: Bash smoke tests
+        run: |
+          for t in tests/test_*.sh; do
+            echo "::group::$t"
+            bash "$t"
+            echo "::endgroup::"
+          done
+
+  # Full-history secret scan. Separate job because it needs the whole history
+  # (fetch-depth: 0) and is OS-independent, so it runs once on Linux.
+  secrets:
+    name: secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # full history so gitleaks can scan it
 
       - name: Secret scan (gitleaks, full history)
         run: |

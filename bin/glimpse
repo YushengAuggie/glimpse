@@ -447,7 +447,7 @@ _write_artifact(){
 # to stdout. Inliner warnings go to stderr; the module confines reads to the
 # artifact's directory and secret-scrubs the bundle (see lib/glimpse_export.py).
 _inline_artifact(){
-  local slug="$1" src="$ARTIFACTS/${slug}.html"
+  local slug="$1"; local src="$ARTIFACTS/${slug}.html"
   [ -f "$src" ] || die "no artifact '$slug' — publish it first (glimpse publish $slug …). try: glimpse list"
   local mod; mod="$(_lib_file glimpse_export.py)" || die "export engine not found (lib/glimpse_export.py) — reinstall glimpse"
   have python3 || die "python3 is required to export/share"
