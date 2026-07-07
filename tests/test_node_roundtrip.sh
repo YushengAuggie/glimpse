@@ -36,7 +36,9 @@ sleep 2  # let the canvas poll the feed + mount the call-stack view
 # Ask a node-anchored question the way the bridge does (internal writer), capturing
 # the turn id, then answer it with `glimpse reply --to <id>`.
 ANSWER="Because the entry hands off to go() right away."
-uid="$(SLUG="$SLUG" \
+# `env …` (not a bare assignment prefix) so the SLUG env var reaches the forked
+# process cleanly and shellcheck doesn't flag SC2097/SC2098 on the positional arg.
+uid="$(env SLUG="$SLUG" \
   ANCHOR='{"kind":"node","id":"n1","label":"entry()","file":"a.py","lines":"1-3"}' \
   QUOTE='def entry():' TEXT='what does this call?' \
   CLIENT_TURN_ID="rt-$(date +%s)" ARTIFACT_TS="$(date +%s)" \

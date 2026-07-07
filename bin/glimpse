@@ -648,18 +648,23 @@ cmd_read(){
 cmd_shot(){
   local out="${1:?usage: glimpse shot <out.png> [url]}" url="${2:-}"
   cmd_chrome >/dev/null
-  # With a URL, navigate the app's OWN tab (cdpConnectApp), never the canvas. With
-  # none, screenshot the current app tab (non-canvas page preferred).
-  [ -n "$url" ] && { URL="$url" run_cdp '
-    const url=process.env.URL;
+  # Navigate + bringToFront + capture over ONE cdpConnectApp(url) session, so the
+  # screenshot is ALWAYS the tab we selected — re-selecting a tab for the capture
+  # independently of the navigate is BUG-1 (grabs a stale/other tab, e.g. a
+  # background about:blank or a de-preferred canvas). Mirrors cmd_ask, which drives
+  # navigate+poll in one session for the same reason. With a URL, act on the tab
+  # whose host matches it (the app's own tab, or the canvas for a canvas URL); with
+  # none, capture the current app tab (non-canvas page preferred). Page.bringToFront
+  # before capture guards against a backgrounded tab yielding a blank frame.
+  OUT="$out" URL="$url" run_cdp '
+    const url=process.env.URL||"";
     const {send,waitEvent,close}=await cdpConnectApp(url);
     await send("Page.enable");
-    const loaded=waitEvent("Page.loadEventFired",12000).catch(()=>{});
-    await send("Page.navigate",{url}); await loaded; await new Promise(r=>setTimeout(r,400)); close();
-  '; }
-  OUT="$out" run_cdp '
-    const {send,close}=await cdpConnectApp("");
-    await send("Page.enable");
+    if(url){
+      const loaded=waitEvent("Page.loadEventFired",12000).catch(()=>{});
+      await send("Page.navigate",{url}); await loaded; await new Promise(r=>setTimeout(r,400));
+    }
+    try{ await send("Page.bringToFront"); }catch(_){}
     const {data}=await send("Page.captureScreenshot",{format:"png"});
     const fs=await import("fs"); fs.writeFileSync(process.env.OUT, Buffer.from(data,"base64"));
     console.log("saved", process.env.OUT); close();

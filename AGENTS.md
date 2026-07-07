@@ -370,6 +370,13 @@ inspect and interact against that tab.
   recent 50 (300 chars each). The text/console sibling of `shot` (pixels) and
   `snapshot` (a11y tree). Body: `lib/glimpse-read.mjs`.
 - **`glimpse shot <out.png> [url]`** — screenshot the current (or given) page.
+  **Sharp edge (BUG-1, fixed):** a verb that both navigates AND captures must do so
+  over ONE `cdpConnectApp(url)` session (navigate → `Page.bringToFront` → capture),
+  exactly like `cmd_ask` — never re-select the tab in a second session for the
+  capture. A second `cdpConnectApp("")` de-prefers canvas / picks by `/json` order,
+  so it can grab a different tab (a background `about:blank`, or the de-preferred
+  canvas for a canvas-origin URL) and silently screenshot the WRONG page. The
+  regression guard is the canvas-vs-decoy assertion in `tests/test_liveapp_cdp.sh`.
 - **`glimpse snapshot [#slug|url]`** — a11y-tree outline (see above).
 
 **Interact (the ONLY intentionally state-changing browser verbs — each a deliberate
