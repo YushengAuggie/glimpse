@@ -5,9 +5,10 @@
 <h1 align="center">Glimpse</h1>
 
 <p align="center">
-  <b>A live, two-way visual canvas for AI coding agents.</b><br>
-  Your agent shows its work as rendered HTML in a real browser — and you can
-  highlight any passage and talk back. No walls of terminal text.
+  <b>Your AI coding agent gets a real browser.</b><br>
+  Glimpse gives your agent a real Chrome it drives over CDP — it renders its work
+  as live HTML, drives and inspects your running app, and you highlight anything
+  to talk back. A live, two-way visual canvas, all on your machine.
 </p>
 
 <p align="center">
@@ -17,9 +18,16 @@
 </p>
 
 <p align="center">
-  <img src="assets/glimpse-hero.png"
-       alt="The Glimpse canvas: a rendered document with an inline highlight-to-chat thread anchored in the margin"
-       width="900">
+  <sub>Runs entirely on your machine · real Chrome + Node · no account, no server, no telemetry · MIT.</sub>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/glimpse-hero-dark.png">
+    <img src="assets/glimpse-hero-light.png"
+         alt="Glimpse: an AI agent driving and inspecting a real app in Chrome over CDP, with a live glimpse open/read/click/wait session"
+         width="900">
+  </picture>
 </p>
 
 ---

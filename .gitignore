@@ -7,7 +7,8 @@ feed.json
 # brand assets (menu-bar icon) — tracked despite *.png
 !assets/menubar-on.png
 !assets/menubar-off.png
-!assets/glimpse-hero.png
+!assets/glimpse-hero-light.png
+!assets/glimpse-hero-dark.png
 # playbook example screenshots — tracked despite *.png (reference for reviewers)
 !examples/screenshots/
 !examples/screenshots/*.png
