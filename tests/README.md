@@ -7,6 +7,7 @@ Python unit tests (no project config needed):
 Bash CLI smoke tests:
 
     bash tests/test_explain_cli.sh
+    bash tests/test_doctor.sh        # `glimpse doctor` formatting + non-zero exit on a broken runtime
 
 Renderer unit tests (Node, no deps):
 
