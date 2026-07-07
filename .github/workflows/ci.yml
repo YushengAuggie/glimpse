@@ -51,8 +51,11 @@ jobs:
       # passes cleanly today. Remaining SC2086 findings are info-level (below
       # warning) and live in product code (bin/glimpse, install.sh) that is out
       # of scope for CI changes — tighten to `-S style` in a follow-up once
-      # those are quoted.
+      # those are quoted. shellcheck is OS-independent static analysis, so it
+      # only needs to run once — on Linux, where the runner preinstalls it (the
+      # macOS runner does not, and installing it there would be redundant work).
       - name: shellcheck (blocking, -S warning)
+        if: matrix.os == 'ubuntu-latest'
         run: shellcheck -S warning bin/glimpse install.sh scripts/*.sh .githooks/*
 
       - name: Python tests (pytest)
