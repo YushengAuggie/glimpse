@@ -105,7 +105,31 @@ Where `ask` is agent-initiated and one-shot, highlight-chat is **user-initiated 
 conversational**: you select text in an artifact and the agent answers in the margin,
 anchored to your highlight, with the thread saved per document.
 
-The agent runs the bridge once (under its Monitor) and answers each question:
+The agent's loop is **one blocking call it parks on** — `glimpse poll` waits until
+there's a new highlight/question, prints it, and returns:
+
+```bash
+glimpse poll                        # blocks; on delivery prints a compact record and exits 0:
+#   #glimpse-poll v1 fields=kind,thread,id,ts,anchor,quote,text
+#   question<TAB>arch<TAB>1718553600-3-6865<TAB>1718553600<TAB>text:0<TAB>write-through cache<TAB>why not write-back?
+glimpse reply arch "Write-through keeps cache and store consistent on every write." --to 1718553600-3-6865
+glimpse poll                        # park again for the next question
+```
+
+The record is TAB-separated in the order the header declares; `anchor` is a compact
+token (`text:<occurrence>` for a highlight, `node:<id>` for an explainer node, `-`
+for none). The `id` (3rd field) is the turn id — shape `<epoch>-<n>-<hex>` (e.g.
+`1718553600-3-6865`) — pass it verbatim to `--to`. Prefer `--json` if you'd rather
+parse plain JSON (`{"type":"poll","count":N,"items":[…]}`, with the full anchor
+object per item). On timeout `poll` prints `#glimpse-poll v1 timeout=Ns` and exits
+**3** (nothing was waiting — just poll again); tune the wait with `--timeout N`
+(seconds; `0` = wait indefinitely) and `--interval S`.
+
+Nothing is dropped: questions are durable on disk the instant they're asked, so a
+question raised before you started polling is delivered on your next `poll`, and each
+`poll` hands you the next undelivered item. This supersedes the older pattern of
+running `glimpse bridge` (a long-lived JSON-line stream) under an agent Monitor — the
+bridge is still available and is what the always-on **daemon** builds on:
 
 ```bash
 glimpse bridge                      # long-lived; one JSON line per question:
@@ -114,11 +138,12 @@ glimpse bridge                      # long-lived; one JSON line per question:
 #     "anchor":{"exact":"write-through cache","prefix":"uses a ","suffix":" to keep","occurrence":0}}
 #   {"type":"closed","reason":"chrome_died"}   # self-heals → wait for the next "ready" (bridge_stopped = clean stop)
 #   {"type":"error","code":"chrome_unavailable","message":"…"}  # exited (1) → re-run, or use --wait
-glimpse reply arch "Write-through keeps cache and store consistent on every write." --to 1718553600-3-6865
 ```
 
-The `id` is the turn id from the `question` line — it has the shape
-`<epoch>-<n>-<hex>` (e.g. `1718553600-3-6865`); pass it verbatim to `--to`.
+Don't run `poll` and `bridge`/`daemon` against the same canvas at once — both would
+deliver the same question (the on-disk store stays correct because writes are
+idempotent, but you'd have two answerers). Use `poll` for an in-the-loop agent and
+the daemon for always-on auto-answer.
 
 You (the human) just highlight + type in the page; the answer streams back in ~1s
 with no reload. Each answer gets a reply box so you can **follow up** — the thread

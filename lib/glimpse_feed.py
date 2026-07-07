@@ -125,6 +125,11 @@ def cmd_list():
     except Exception:
         arts = []
     arts = sorted(arts, key=lambda a: (not a.get("pinned"), -a.get("ts", 0)))
+    # Machine-readable escape hatch for agents (mirrors `glimpse poll --json`): one
+    # compact JSON object, valid whether or not there are artifacts.
+    if os.environ.get("LIST_JSON") == "1":
+        print(json.dumps({"artifacts": arts}))
+        raise SystemExit
     if not arts:
         print("(no artifacts)")
         raise SystemExit
