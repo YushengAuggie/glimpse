@@ -35,21 +35,25 @@ Chrome via the **Chrome DevTools Protocol** wins because:
 
 ```mermaid
 flowchart LR
-  A[AI agent] -->|glimpse publish| F[(feed.json + artifacts/*.html)]
-  S[static server :4321] --- F
-  D[Glimpse dashboard\nindex.html] -->|polls feed every 1.2s| S
+  A[AI agent] -->|glimpse publish| F[(feed.json + threads/*.json + artifacts/*.html)]
+  S[static server :4321\nNode, loopback] --- F
+  S -->|SSE: event feed / thread| D[Glimpse dashboard\nindex.html]
+  D -->|fetch on signal| S
   D -->|iframe| ART[artifact HTML]
   A -->|glimpse open / CDP| C[Chrome :9222]
   C --> D
 ```
 
 - **`glimpse publish`** writes `artifacts/<slug>.html` and upserts `feed.json`.
-- A tiny **static server** (`python3 -m http.server`, loopback-bound) serves the
-  canvas dir.
-- **`index.html`** polls `feed.json` and renders the newest artifact in a
-  **sandboxed** `<iframe>` (`allow-scripts` only → opaque origin), live-reloading
-  on change. Alongside the feed it polls `threads/<slug>.json` and pushes any
-  highlight-chat turns into the iframe with no teardown.
+- A tiny **static server** (`lib/glimpse-server.mjs` — Node stdlib, loopback-bound)
+  serves the canvas dir and exposes `GET /__glimpse/events`, a Server-Sent Events
+  stream. One watcher `stat()`s `feed.json` and `threads/*.json` and emits a bare
+  `event: feed` / `event: thread` signal the instant either changes.
+- **`index.html`** subscribes to that stream: a `feed` event triggers a `fetch` of
+  `feed.json` (render the newest artifact in a **sandboxed** `<iframe>`,
+  `allow-scripts` only → opaque origin), a `thread` event triggers a `fetch` of the
+  affected `threads/<slug>.json` (push highlight-chat turns into the iframe with no
+  teardown). The socket says *when*; the browser still fetches the actual content.
 - **Chrome** is launched with `--remote-debugging-port` so the agent can open the
   canvas — and read/drive any other page — over CDP.
 
@@ -59,16 +63,27 @@ No framework, no build step, no database.
 
 - **Upsert-by-slug feed, not a protocol.** Publishing is just "write a file +
   upsert an entry in `feed.json`" (same slug replaces in place). The dashboard
-  polls. This is trivially debuggable (it's files on disk) and resilient (a
-  crashed agent leaves a valid canvas).
+  re-reads on a pushed signal. This is trivially debuggable (it's files on disk)
+  and resilient (a crashed agent leaves a valid canvas).
+- **Per-artifact keying.** Every feedback / response / thread stream is keyed by
+  slug end to end (`threads/<slug>.json` is the source of truth; the canvas keys its
+  browser→agent buffers off the sending iframe's own slug, not a mutable "current").
+  So several artifacts — and several agents — can be live at once with no cross-talk,
+  even though the dashboard shows one at a time.
 - **Artifacts run in a sandboxed `<iframe>`.** Each artifact is loaded with
   `sandbox="allow-scripts"` (no `allow-same-origin`), giving it an opaque
   origin: its JS runs (mermaid, chart libs from a CDN work) but it can't reach
   the parent shell or fetch sibling artifacts. Slugs are validated to
   `[A-Za-z0-9._-]` so they can't escape the artifacts directory.
-- **Polling over websockets/live-reload servers.** A 1.2s poll of a static JSON
-  file needs no server logic, no socket lifecycle, no reconnect handling. The
-  static server is literally `python3 -m http.server`.
+- **Push freshness over Server-Sent Events (was: polling).** The canvas used to
+  busy-poll `feed.json` and `threads/*.json` on 1–1.2s timers; that grew the server
+  log and cost N browser HTTP+JSON round-trips per second. Now one server-side
+  watcher `stat()`s those files and pushes a bare `feed`/`thread` **signal** (never
+  file content) over `GET /__glimpse/events`; the canvas fetches the content only
+  when signalled. `EventSource` auto-reconnects on the server's `retry:` hint, a
+  15s heartbeat keeps the socket alive, and a slow 20s fallback re-sync covers a
+  silently-wedged stream — the only steady-state network timer left. Still stdlib
+  only, no framework.
 - **Cache-busting by timestamp.** Re-publishing the same slug bumps its `ts`,
   which changes the iframe `src`, which forces a reload — so "update in place"
   works without any diffing.
@@ -85,6 +100,28 @@ No framework, no build step, no database.
 - Artifacts are local HTML opened from `localhost`; they can call out to the
   network (e.g. CDN scripts). If you care, audit artifacts or run offline.
 - Glimpse never touches your real/default Chrome profile.
+
+### What leaves the machine (two explicit opt-ins)
+Everything above is local. Only two paths egress, and each is a deliberate command:
+- **`glimpse share`** uploads a portable copy to a third-party host (ht-ml.app). It
+  is **private by default** (password-protected; `--public` opts out), the endpoint
+  host is anchored (a `GLIMPSE_HTML_APP_BASE` override can't redirect it elsewhere),
+  and the bundle is secret-scrubbed and confined to the artifact's own directory
+  before upload. A concise egress notice prints before every upload. There is no
+  delete endpoint — a shared page persists.
+- **The always-on daemon** sends the highlighted passage, the question, and up to
+  ~8 KB of the artifact's text to whatever `GLIMPSE_PROXY_URL` / `ANTHROPIC_BASE_URL`
+  points at, which may be a remote provider. It is Q&A only: no tools, writes nothing
+  but the answer, and treats the passage as untrusted. Point it at a local proxy to
+  keep everything on-device.
+
+### Live-app review boundaries
+`glimpse read`/`snapshot`/`shot`/`click`/`scroll`/`wait` act on a tab in the same
+CDP Chrome. Inspect verbs never mutate the page; the three interaction verbs are the
+only intentionally state-changing browser commands, each an explicit call rather than
+a side effect of reading. Live-app verbs pick the *app's* tab (host match, or the
+non-canvas page) so they never clobber the canvas, and all surfaced
+names/text/console output are secret-scrubbed.
 
 ### Highlight-to-chat trust boundaries
 The two-way highlight-chat path adds bidirectional `postMessage` and a long-lived
@@ -104,16 +141,32 @@ reader, but **opens no new network surface**. The boundaries it relies on:
   (The future edit-in-place mode will gate any file write behind an explicit diff +
   approval and confine rewrites to the artifact's own source.)
 - **The thread store is local plaintext outside git.** `~/.glimpse/threads/*.json` is
-  `0600`, written atomically under `flock`, and each turn is scrubbed against the same
-  secret patterns as the commit guard before it is persisted — but it is *not* covered
-  by the git secret-scan, so don't highlight live secrets expecting them to be caught.
+  `0600`, written atomically under an exclusive lock (an `O_EXCL` lock file with
+  stale-pid takeover, in `lib/glimpse-store.mjs`), and each turn is scrubbed against the
+  same secret patterns as the commit guard before it is persisted — but it is *not*
+  covered by the git secret-scan, so don't highlight live secrets expecting them to be
+  caught.
 
 ## Non-goals
 - Not a notebook, not a BI tool, not a replacement for your editor.
 - Not multi-user or hosted. It's a personal, local agent↔human screen.
 
+## Shipped since the first cut
+- **Portable export + share.** `glimpse export` writes a standalone HTML file;
+  `glimpse share` uploads a private-by-default copy to a remote host.
+- **Push updates.** Server-Sent Events replaced the dashboard's poll timers (see
+  "Push freshness" above).
+- **Pinning.** `glimpse pin`/`unpin` plus a 📌 Pinned section keep chosen artifacts
+  at the top and out of the "N older" collapse.
+- **Live-app review.** `read`/`snapshot`/`shot`/`click`/`scroll`/`wait` inspect and
+  drive a real running app over the same CDP channel.
+- **Layout audit on publish.** `glimpse publish` auto-audits the render and can gate
+  on error-severity findings (`--gate`).
+- **Declarative `ask --form`.** A JSON spec renders native, accessible decision
+  controls with no hand-written HTML.
+
 ## Possible extensions
 - A `glimpse watch` that re-publishes an artifact when a source file changes.
-- Export an artifact to a standalone HTML/PDF for sharing.
-- A "pin" UI in the shell to stop auto-jumping to the newest artifact.
-- Optional websocket push for sub-second updates on dashboards.
+- An edit-in-place mode where a highlighted request produces a gated diff against
+  the artifact's own source (see the highlight-chat trust note).
+- PDF export alongside the standalone HTML.
