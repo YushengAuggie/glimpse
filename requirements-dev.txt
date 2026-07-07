@@ -1,4 +1,0 @@
-# Dev/test dependencies for CI and local runs.
-# The test suite imports only the stdlib + pytest (see tests/), so this stays
-# intentionally tiny. Pinned for deterministic CI; bump deliberately.
-pytest==9.1.1

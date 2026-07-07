@@ -83,7 +83,7 @@ die(){ echo "glimpse: $*" >&2; exit 1; }
 have(){ command -v "$1" >/dev/null 2>&1; }
 
 # Resolve a bundled lib file (the Python/JS the dispatcher shells out to, e.g.
-# glimpse_feed.py, glimpse-cdp.mjs). Mirrors _seed_asset's search: this checkout's
+# glimpse-feed.mjs, glimpse-cdp.mjs). Mirrors _seed_asset's search: this checkout's
 # lib/, then the copy seeded into $GLIMPSE_DIR (by install.sh / dev-link.sh), then
 # a custom ~/.glimpse. Prints the resolved path; returns 1 if not found anywhere.
 _lib_file(){
@@ -144,9 +144,9 @@ EOF
 
 require_node(){
   _ensure_node || true
-  have node || die "node is required to drive Chrome over CDP (need v22+ for global WebSocket); set GLIMPSE_NODE=/path/to/node if it's installed somewhere unusual"
+  have node || die "node is required (glimpse runs on Node + Chrome; need v22+ for global WebSocket over CDP); set GLIMPSE_NODE=/path/to/node if it's installed somewhere unusual"
   node -e 'process.exit(parseInt(process.version.slice(1),10)>=22?0:1)' 2>/dev/null \
-    || die "node $(node --version) is too old — CDP needs node 22+ (global WebSocket). Please upgrade node."
+    || die "node $(node --version) is too old — glimpse needs node 22+ (global WebSocket). Please upgrade node."
 }
 
 detect_chrome(){
@@ -177,7 +177,7 @@ seed_root(){
   }
   _seed_asset index.html required
   _seed_asset glimpse-annotate.js
-  _seed_asset glimpse_explain.py
+  _seed_asset glimpse-explain.mjs
   _seed_asset glimpse-explain.js
   _seed_asset glimpse-audit.js
   _seed_asset favicon.svg
@@ -187,16 +187,18 @@ seed_root(){
 # read-modify-write so concurrent publishes can't drop each other's entry).
 # args: slug title ts pending(0|1) noannotate(0|1)
 feed_upsert(){
-  local f; f="$(_lib_file glimpse_feed.py)" || die "glimpse_feed.py not found — reinstall glimpse"
-  SLUG="$1" TITLE="$2" TS="$3" PENDING="${4:-0}" NOANNOTATE="${5:-0}" KIND="${6:-}" python3 "$f" upsert
+  require_node
+  local f; f="$(_lib_file glimpse-feed.mjs)" || die "glimpse-feed.mjs not found — reinstall glimpse"
+  SLUG="$1" TITLE="$2" TS="$3" PENDING="${4:-0}" NOANNOTATE="${5:-0}" KIND="${6:-}" node "$f" upsert
 }
 
 # Mutate feed.json under an exclusive lock. ACTION (env) ∈ remove|removeall|keep|pin|unpin.
 # For remove/removeall/keep it prints the removed slugs (one per line) so the
 # caller can delete the matching artifact files.
 _feed_op(){
-  local f; f="$(_lib_file glimpse_feed.py)" || die "glimpse_feed.py not found — reinstall glimpse"
-  python3 "$f" op
+  require_node
+  local f; f="$(_lib_file glimpse-feed.mjs)" || die "glimpse-feed.mjs not found — reinstall glimpse"
+  node "$f" op
 }
 
 # Per-document conversation store: threads/<slug>.json, one exclusive-locked,
@@ -210,8 +212,9 @@ _feed_op(){
 #   print_json SLUG            (raw file)
 # Turn text/quote are capped and secret-scrubbed; files are chmod 0600.
 _thread_op(){
-  local f; f="$(_lib_file glimpse_threads.py)" || die "glimpse_threads.py not found — reinstall glimpse"
-  python3 "$f" op
+  require_node
+  local f; f="$(_lib_file glimpse-threads.mjs)" || die "glimpse-threads.mjs not found — reinstall glimpse"
+  node "$f" op
 }
 
 # The shared Chrome DevTools Protocol client (cdpConnect + fail) and the
@@ -232,10 +235,11 @@ cmd_serve(){
   if curl -fsS "http://127.0.0.1:${PORT}/feed.json" >/dev/null 2>&1; then
     echo "canvas already serving at http://127.0.0.1:${PORT}/"; return
   fi
-  have python3 || die "python3 is required for the static server"
-  # Loopback-bound, quiet, threaded static server (see lib/glimpse_server.py).
-  local server; server="$(_lib_file glimpse_server.py)" || die "glimpse_server.py not found — reinstall glimpse"
-  nohup python3 "$server" "$PORT" "$GLIMPSE_DIR" >"$GLIMPSE_DIR/.server.log" 2>&1 &
+  require_node
+  # Loopback-bound, quiet static server with the SSE freshness endpoint (see
+  # lib/glimpse-server.mjs).
+  local server; server="$(_lib_file glimpse-server.mjs)" || die "glimpse-server.mjs not found — reinstall glimpse"
+  nohup node "$server" "$PORT" "$GLIMPSE_DIR" >"$GLIMPSE_DIR/.server.log" 2>&1 &
   echo $! > "$GLIMPSE_DIR/.server.pid"
   for _ in $(seq 1 20); do
     curl -fsS "http://127.0.0.1:${PORT}/feed.json" >/dev/null 2>&1 && { echo "canvas serving at http://127.0.0.1:${PORT}/  (root: $GLIMPSE_DIR)"; return; }
@@ -265,10 +269,11 @@ cmd_chrome(){
   # account name/photo. Chrome shows the name from Local State's info_cache (the
   # authoritative display name), so patch that as well as per-profile Preferences.
   # Patch (never overwrite) so existing settings survive; picked up on next launch
-  # (see lib/glimpse_chrome_profile.py). Best-effort: never block a launch.
-  local profile_py; profile_py="$(_lib_file glimpse_chrome_profile.py)" || profile_py=""
-  [ -n "$profile_py" ] && GLIMPSE_PROFILE_LABEL="${GLIMPSE_PROFILE_LABEL:-🤖 Glimpse (automation)}" \
-    python3 "$profile_py" "$PROFILE" 2>/dev/null || true
+  # (see lib/glimpse-chrome-profile.mjs). Best-effort: never block a launch.
+  _ensure_node || true
+  local profile_mod; profile_mod="$(_lib_file glimpse-chrome-profile.mjs)" || profile_mod=""
+  [ -n "$profile_mod" ] && have node && GLIMPSE_PROFILE_LABEL="${GLIMPSE_PROFILE_LABEL:-🤖 Glimpse (automation)}" \
+    node "$profile_mod" "$PROFILE" 2>/dev/null || true
   echo "launching Chrome (CDP 127.0.0.1:$CDP_PORT, profile: $PROFILE)"
   # Bind the debug socket to loopback explicitly — never expose CDP on the LAN.
   "$chrome" --remote-debugging-port="$CDP_PORT" --remote-debugging-address=127.0.0.1 \
@@ -354,14 +359,14 @@ _audit_capture(){
 cmd_audit(){
   local slug="${1:?usage: glimpse audit <slug>}"
   _validate_slug "$slug"
-  local report; report="$(_lib_file glimpse_audit_report.py)" || die "glimpse_audit_report.py not found — reinstall glimpse"
+  local report; report="$(_lib_file glimpse-audit-report.mjs)" || die "glimpse-audit-report.mjs not found — reinstall glimpse"
   local json; json="$(_audit_capture "$slug")"
   if [ -z "$json" ]; then
     echo "glimpse: no layout audit for $slug — is it published, and is annotate enabled? (the auditor ships with highlight-chat injection)"
     exit 0
   fi
   local rc=0
-  MODE=full SLUG="$slug" python3 "$report" <<<"$json" || rc=$?
+  MODE=full SLUG="$slug" node "$report" <<<"$json" || rc=$?
   exit "$rc"
 }
 
@@ -377,7 +382,7 @@ _publish_autoaudit(){
   # scripted/headless publish stays a fast file write and never launches Chrome.
   # The gate is an explicit request to enforce, so it brings the canvas up.
   if [ "$gate" != "1" ] && ! _canvas_live; then return 0; fi
-  local report; report="$(_lib_file glimpse_audit_report.py)" || return 0
+  local report; report="$(_lib_file glimpse-audit-report.mjs)" || return 0
   local json; json="$(_audit_capture "$slug" 2>/dev/null)" || json=""
   if [ -z "$json" ]; then
     # The auditor never reported: annotate disabled, or the render couldn't be
@@ -387,7 +392,7 @@ _publish_autoaudit(){
     return 0
   fi
   local out rc=0
-  out="$(MODE=brief SLUG="$slug" python3 "$report" <<<"$json")" || rc=$?
+  out="$(MODE=brief SLUG="$slug" node "$report" <<<"$json")" || rc=$?
   [ -n "$out" ] && printf '%s\n' "$out" >&2
   if [ "$gate" = "1" ] && [ "$rc" -ne 0 ]; then
     echo "glimpse: ✗ layout gate — publish flagged (rendered artifact left in place); fix the issues above, then re-publish" >&2
@@ -449,13 +454,13 @@ _write_artifact(){
 
 # Print the self-contained (all LOCAL assets inlined) HTML for a published artifact
 # to stdout. Inliner warnings go to stderr; the module confines reads to the
-# artifact's directory and secret-scrubs the bundle (see lib/glimpse_export.py).
+# artifact's directory and secret-scrubs the bundle (see lib/glimpse-export.mjs).
 _inline_artifact(){
   local slug="$1"; local src="$ARTIFACTS/${slug}.html"
   [ -f "$src" ] || die "no artifact '$slug' — publish it first (glimpse publish $slug …). try: glimpse list"
-  local mod; mod="$(_lib_file glimpse_export.py)" || die "export engine not found (lib/glimpse_export.py) — reinstall glimpse"
-  have python3 || die "python3 is required to export/share"
-  python3 "$mod" "$src"
+  local mod; mod="$(_lib_file glimpse-export.mjs)" || die "export engine not found (lib/glimpse-export.mjs) — reinstall glimpse"
+  require_node
+  node "$mod" "$src"
 }
 
 cmd_export(){
@@ -496,8 +501,8 @@ cmd_share(){
   [ -n "$slug" ] || die "usage: glimpse share <slug> [--public] [--password <pw>]"
   _validate_slug "$slug"
   [ -f "$ARTIFACTS/${slug}.html" ] || die "no artifact '$slug' — publish it first. try: glimpse list"
-  have python3 || die "python3 is required to share"
-  local share; share="$(_lib_file glimpse_share.py)" || die "share engine not found (lib/glimpse_share.py) — reinstall glimpse"
+  require_node
+  local share; share="$(_lib_file glimpse-share.mjs)" || die "share engine not found (lib/glimpse-share.mjs) — reinstall glimpse"
   [ "$public" = 1 ] && [ "$pw_set" = 1 ] && die "--public and --password are mutually exclusive"
 
   # PRIVATE by default — a firm product decision that deliberately diverges from
@@ -510,7 +515,7 @@ cmd_share(){
   elif [ "$pw_set" = 1 ]; then
     [ -n "$password" ] || die "--password needs a non-empty value (or use --public for an open page)"
   else
-    password="$(python3 -c 'import secrets; print(secrets.token_urlsafe(18))')"
+    password="$(node -e 'process.stdout.write(require("crypto").randomBytes(18).toString("base64url"))')"
     gen=1
   fi
 
@@ -529,12 +534,12 @@ cmd_share(){
 
   # Build the self-contained bundle offline, then hand it to the uploader on stdin.
   local result
-  result="$(_inline_artifact "$slug" | GLIMPSE_PASSWORD="$password" python3 "$share")" \
+  result="$(_inline_artifact "$slug" | GLIMPSE_PASSWORD="$password" node "$share")" \
     || die "share failed (see the error above)"
 
   local url key
-  url="$(printf '%s' "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin)["url"])')"
-  key="$(printf '%s' "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("update_key",""))')"
+  url="$(printf '%s' "$result" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{process.stdout.write(JSON.parse(s).url)})')"
+  key="$(printf '%s' "$result" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{process.stdout.write(JSON.parse(s).update_key||"")})')"
 
   echo "shared → $url"
   if [ "$public" = 1 ]; then
@@ -548,7 +553,7 @@ cmd_share(){
 
 # Resolve the explain engine (validator + wrapper). Mirrors _seed_asset's search:
 # repo checkout, then the seeded copy in GLIMPSE_DIR.
-_explain_module(){ _lib_file glimpse_explain.py; }
+_explain_module(){ _lib_file glimpse-explain.mjs; }
 
 cmd_explain(){
   local -a pos=("$@")
@@ -557,11 +562,12 @@ cmd_explain(){
   _validate_slug "$slug"
   [ "$src" = /dev/stdin ] || [ -f "$src" ] || die "spec file not found: $src"
   local mod; mod="$(_explain_module)" || die "explain engine not found; searched \$SELF_DIR/../lib/, \$GLIMPSE_DIR/, \$HOME/.glimpse/ — reinstall glimpse"
+  require_node
   seed_root
   # validate + wrap in one read of the spec; abort (and publish nothing) on error.
   # Exit codes: the module returns 2 for spec-content errors (we propagate it);
   # 1 is reserved for the verb's own usage/infra failures (die).
-  local html; html="$(python3 "$mod" wrap "$title" < "$src")" || exit $?
+  local html; html="$(node "$mod" wrap "$title" < "$src")" || exit $?
   printf '%s' "$html" | _write_artifact "$slug" /dev/stdin
   feed_upsert "$slug" "$title" "$(date +%s)" 0 0 explain     # pending=0 noannotate=0 kind=explain
   echo "published → http://127.0.0.1:${PORT}/#${slug}  (file: $ARTIFACTS/${slug}.html)"
@@ -586,10 +592,11 @@ cmd_ask(){
     # checkbox / select / text / textarea) into an artifact that returns the
     # structured choice through the SAME glimpseRespond channel below.
     [ "$src" = /dev/stdin ] || [ -f "$src" ] || die "form spec file not found: $src"
-    local mod; mod="$(_lib_file glimpse_ask.py)" || die "ask form engine not found; searched \$SELF_DIR/../lib/, \$GLIMPSE_DIR/, \$HOME/.glimpse/ — reinstall glimpse"
+    local mod; mod="$(_lib_file glimpse-ask.mjs)" || die "ask form engine not found; searched \$SELF_DIR/../lib/, \$GLIMPSE_DIR/, \$HOME/.glimpse/ — reinstall glimpse"
+    require_node
     # validate + wrap in one read of the spec; publish nothing on error (module
     # returns 2 for spec-content errors, which we propagate; 1 is our own).
-    local html; html="$(python3 "$mod" wrap "$title" < "$src")" || exit $?
+    local html; html="$(node "$mod" wrap "$title" < "$src")" || exit $?
     printf '%s' "$html" | _write_artifact "$slug" /dev/stdin
   else
     _write_artifact "$slug" "$src"
@@ -726,12 +733,12 @@ cmd_poll(){
     esac
   done
   case "$timeout" in *[!0-9]*|"") die "--timeout must be a whole number of seconds (0 = wait indefinitely)";; esac
+  require_node
   local interval_ms=500
   if [ -n "$interval" ]; then
-    interval_ms="$(python3 -c 'import sys;print(max(100,int(float(sys.argv[1])*1000)))' "$interval" 2>/dev/null)" \
+    interval_ms="$(node -e 'const v=parseFloat(process.argv[1]); if(!isFinite(v)){process.exit(1)} process.stdout.write(String(Math.max(100,Math.trunc(v*1000))))' "$interval" 2>/dev/null)" \
       || die "--interval must be seconds, e.g. 0.5"
   fi
-  require_node
   seed_root
   # One poll per canvas cursor: a second concurrent poll would race the .poll.state
   # delivered set and could double-deliver. Stale-pid detection mirrors cmd_bridge.
@@ -897,10 +904,6 @@ cmd_doctor(){
   if [ -n "${BASH_VERSION:-}" ]; then _dok bash "$BASH_VERSION"
   else _dbad bash "not running under bash"; _dfix "run glimpse with bash (its shebang is /usr/bin/env bash)"; fi
 
-  if have python3; then _dok python3 "$(python3 --version 2>&1)"
-  else _dbad python3 "MISSING — needed to serve the canvas"
-       _dfix "$([ "$(uname -s)" = Darwin ] && echo 'xcode-select --install   # or brew install python3' || echo 'install Python 3 (e.g. apt install python3)')"; fi
-
   if have node && node -e 'process.exit(parseInt(process.version.slice(1),10)>=22?0:1)' 2>/dev/null; then
     _dok node "$(node --version)"
   elif have node; then _dbad node "$(node --version) too old — CDP needs node 22+ (global WebSocket)"
@@ -933,9 +936,11 @@ cmd_doctor(){
     if [ -n "$dnode" ]; then _dok "launchd node" "$dnode"
     else _dbad "launchd node" "the daemon's login shell can't find node → CDP dies silently"
          _dfix "echo 'export GLIMPSE_NODE=\"'\"\$(command -v node)\"'\"' >> ~/.config/secrets.env   then re-toggle 'Start at login'"; fi
+    # python3 is optional (only the macOS menu-bar app uses it, via rumps); a
+    # missing one degrades that GUI but never fails core glimpse (Node + Chrome).
     local dpy; dpy="$(_launchd_resolve python3)"
-    if [ -n "$dpy" ]; then _dok "launchd python3" "$dpy"
-    else _dbad "launchd python3" "the daemon's login shell can't find python3"
+    if [ -n "$dpy" ]; then _dok "launchd python3" "$dpy (menu-bar app)"
+    else _dwarn "launchd python3" "the daemon's login shell can't find python3 — the menu-bar app (rumps) won't start"
          _dfix "echo 'export PATH=\"'\"\$(dirname \"\$(command -v python3)\")\"':\$PATH\"' >> ~/.config/secrets.env   then re-toggle 'Start at login'"; fi
   elif [ "$(uname -s)" = Darwin ]; then
     _dnote launchd "always-on daemon not configured — enable via the menu-bar 'Start at login' (glimpse menubar)"
@@ -946,11 +951,11 @@ cmd_doctor(){
   elif [ "$ANNOTATE" = "0" ]; then _dnote annotate "installed (disabled via GLIMPSE_ANNOTATE=0)"
   else _dok annotate "installed"; fi
 
-  if [ -f "$GLIMPSE_DIR/glimpse_explain.py" ] || [ -f "$SELF_DIR/../lib/glimpse_explain.py" ]; then _dok explain "engine installed"
-  else _dwarn explain "engine missing"; _dfix "re-run install.sh to restore lib/glimpse_explain.py"; fi
+  if [ -f "$GLIMPSE_DIR/glimpse-explain.mjs" ] || [ -f "$SELF_DIR/../lib/glimpse-explain.mjs" ]; then _dok explain "engine installed"
+  else _dwarn explain "engine missing"; _dfix "re-run install.sh to restore lib/glimpse-explain.mjs"; fi
 
-  if [ -f "$GLIMPSE_DIR/glimpse_ask.py" ] || [ -f "$SELF_DIR/../lib/glimpse_ask.py" ]; then _dok "ask form" "engine installed"
-  else _dwarn "ask form" "engine missing"; _dfix "re-run install.sh to restore lib/glimpse_ask.py  (plain ask still works)"; fi
+  if [ -f "$GLIMPSE_DIR/glimpse-ask.mjs" ] || [ -f "$SELF_DIR/../lib/glimpse-ask.mjs" ]; then _dok "ask form" "engine installed"
+  else _dwarn "ask form" "engine missing"; _dfix "re-run install.sh to restore lib/glimpse-ask.mjs  (plain ask still works)"; fi
 
   local bp; bp="$(cat "$GLIMPSE_DIR/.bridge.lock" 2>/dev/null || true)"
   if [ -n "$bp" ] && kill -0 "$bp" 2>/dev/null; then _dok bridge "running (pid $bp)"
@@ -973,8 +978,9 @@ cmd_doctor(){
 cmd_list(){
   local as_json=0
   case "${1:-}" in --json) as_json=1;; "") ;; *) die "usage: glimpse list [--json]";; esac
-  local f; f="$(_lib_file glimpse_feed.py)" || die "glimpse_feed.py not found — reinstall glimpse"
-  GLIMPSE_DIR="$GLIMPSE_DIR" LIST_JSON="$as_json" python3 "$f" list
+  require_node
+  local f; f="$(_lib_file glimpse-feed.mjs)" || die "glimpse-feed.mjs not found — reinstall glimpse"
+  GLIMPSE_DIR="$GLIMPSE_DIR" LIST_JSON="$as_json" node "$f" list
 }
 
 cmd_rm(){
@@ -1037,21 +1043,23 @@ cmd_thread(){
 }
 
 cmd_threads(){
-  local f; f="$(_lib_file glimpse_threads.py)" || die "glimpse_threads.py not found — reinstall glimpse"
-  GLIMPSE_DIR="$GLIMPSE_DIR" python3 "$f" list
+  require_node
+  local f; f="$(_lib_file glimpse-threads.mjs)" || die "glimpse-threads.mjs not found — reinstall glimpse"
+  GLIMPSE_DIR="$GLIMPSE_DIR" node "$f" list
 }
 
 # Internal plumbing for `glimpse bridge` (not user-facing). The bridge runs in
 # Node (CDP); it shells back to these so all thread writes share one flocked
-# Python writer instead of a second, drifting implementation.
+# Node writer instead of a second, drifting implementation.
 cmd__thread_add_user(){
   [ -n "${SLUG:-}" ] || die "SLUG required"
   _validate_slug "$SLUG"                       # slug originates in the page → re-validate
   ACTION=add_user _thread_op
 }
 cmd__pending(){
-  local f; f="$(_lib_file glimpse_threads.py)" || die "glimpse_threads.py not found — reinstall glimpse"
-  GLIMPSE_DIR="$GLIMPSE_DIR" python3 "$f" pending
+  require_node
+  local f; f="$(_lib_file glimpse-threads.mjs)" || die "glimpse-threads.mjs not found — reinstall glimpse"
+  GLIMPSE_DIR="$GLIMPSE_DIR" node "$f" pending
 }
 
 usage(){ awk 'NR==1{next} /^#/{sub(/^# ?/,"");print;next} {exit}' "$SOURCE"; }

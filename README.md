@@ -43,10 +43,12 @@ same setup also lets your agent *read and control* real web pages.
 ## Quickstart
 
 ### Requirements
-- **Node.js 22+** — uses the built-in global `WebSocket` to drive Chrome
-  (available unflagged from Node 22; earlier versions won't work without a shim).
-- **Python 3** — the static server.
+- **Node.js 22+** — the whole runtime: the static server, the file-store ops, and
+  driving Chrome via the built-in global `WebSocket` (available unflagged from Node
+  22; earlier versions won't work without a shim).
 - **Google Chrome** (or Chromium) — the canvas window + CDP.
+- _(optional)_ **Python 3** — only the macOS menu-bar app (rumps) uses it; core
+  glimpse runs on Node + Chrome alone.
 - **OS:** macOS and Linux are first-class. On Windows use **WSL** or **Git Bash**
   (the CLI is bash). `glimpse doctor` tells you what's missing.
 
@@ -57,10 +59,10 @@ cd glimpse
 ./install.sh            # CLI → ~/.local/bin, canvas → ~/.glimpse, agent skills → ~/.claude/skills
 ```
 
-The installer runs a preflight first: it verifies node ≥22, python3, and Chrome
-and prints a copy-pasteable fix for anything missing. It always installs the CLI
-(so `glimpse doctor` can re-diagnose) but exits non-zero if a required dep
-(node/python3) is absent; a missing Chrome is only a warning. Re-running is safe.
+The installer runs a preflight first: it verifies node ≥22 and Chrome and prints a
+copy-pasteable fix for anything missing. It always installs the CLI (so `glimpse
+doctor` can re-diagnose) but exits non-zero if the required dep (node ≥22) is
+absent; a missing Chrome is only a warning. Re-running is safe.
 
 If your shell then says `command not found: glimpse`, add `~/.local/bin` to your
 `PATH` (the installer prints the exact line) and restart your shell.
@@ -71,7 +73,7 @@ so MCP-capable agents get first-class browser tools.
 
 ### See it work
 ```bash
-glimpse doctor                                 # confirm node / python3 / chrome are found
+glimpse doctor                                 # confirm node / chrome are found
 glimpse open                                   # serve + launch Chrome + open the canvas
 glimpse publish guide "How to use Glimpse" ~/.glimpse/examples/glimpse-guide.html
 glimpse publish demo  "Architecture"       ~/.glimpse/examples/architecture-overview.html

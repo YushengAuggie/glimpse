@@ -37,35 +37,37 @@ echo "ok: blocked, then delivered item1 as a compact record"
 seed demo c2 "second question"
 out2="$GLIMPSE_DIR/out2"
 "$GLIMPSE" poll --json --timeout 5 --interval 0.2 >"$out2" 2>/dev/null || fail "poll #2 nonzero"
-python3 - "$out2" <<'PY'
-import json, sys
-d = json.load(open(sys.argv[1]))
-assert d["type"] == "poll" and d["count"] == 1, d
-assert d["items"][0]["text"] == "second question", d
-assert "timeout" not in d, d
-raw = open(sys.argv[1]).read()
-assert "first question" not in raw, "item1 was re-delivered (dedup broken)"
-print("ok: --json valid; only item2 delivered (item1 not dropped, not re-sent)")
-PY
+GLIMPSE_OUT2="$out2" node <<'JS'
+const fs = require("fs");
+const raw = fs.readFileSync(process.env.GLIMPSE_OUT2, "utf-8");
+const d = JSON.parse(raw);
+const need = (c, m) => { if (!c) { console.error(m + ": " + raw); process.exit(1); } };
+need(d.type === "poll" && d.count === 1, "type/count");
+need(d.items[0].text === "second question", "item2 text");
+need(!("timeout" in d), "unexpected timeout field");
+need(!raw.includes("first question"), "item1 was re-delivered (dedup broken)");
+console.log("ok: --json valid; only item2 delivered (item1 not dropped, not re-sent)");
+JS
 
 # item1 is still durable in the store (delivered != dropped) and still pending until replied.
-"$GLIMPSE" thread demo --json | python3 -c '
-import json,sys
-turns=json.load(sys.stdin)["turns"]
-q1=[t for t in turns if t.get("text")=="first question"][0]
-assert q1["status"]=="pending", q1
-print("ok: item1 preserved in the store, still pending until reply")
-'
+"$GLIMPSE" thread demo --json | node -e '
+let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{
+  const turns=JSON.parse(d).turns;
+  const q1=turns.filter(t=>t.text==="first question")[0];
+  if(!q1||q1.status!=="pending"){console.error("q1 not pending: "+JSON.stringify(q1));process.exit(1);}
+  console.log("ok: item1 preserved in the store, still pending until reply");
+})'
 
 # 3) nothing new pending → poll times out with the marker and exit code 3.
 out3="$GLIMPSE_DIR/out3"; rc=0
 "$GLIMPSE" poll --timeout 1 --interval 0.2 >"$out3" 2>/dev/null || rc=$?
 [ "$rc" = 3 ] || fail "timeout exit=$rc (want 3)"
 grep -q '^#glimpse-poll v1 timeout=' "$out3" || fail "missing compact timeout marker"
-"$GLIMPSE" poll --json --timeout 1 --interval 0.2 2>/dev/null | python3 -c '
-import json,sys
-d=json.load(sys.stdin); assert d["count"]==0 and d.get("timeout") is not None, d
-print("ok: timeout → exit 3 + marker (compact) / timeout payload (--json)")
-' || true
+"$GLIMPSE" poll --json --timeout 1 --interval 0.2 2>/dev/null | node -e '
+let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{
+  const o=JSON.parse(d);
+  if(!(o.count===0 && o.timeout!=null)){console.error("bad timeout payload: "+d);process.exit(1);}
+  console.log("ok: timeout → exit 3 + marker (compact) / timeout payload (--json)");
+})' || true
 
 echo "ALL OK"

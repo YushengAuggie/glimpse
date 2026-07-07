@@ -13,43 +13,39 @@ trap 'rm -rf "$GLIMPSE_DIR"' EXIT
 [ -f "$SKILL" ] || { echo "FAIL: $SKILL not found"; exit 1; }
 
 # Extract the example spec: the ```json fence immediately after the
-# <!-- SPEC_EXAMPLE --> marker line. (json.loads also rejects a stray marker.)
-SPEC="$(SKILL="$SKILL" python3 - <<'PY'
-import os, sys
-# Build the code-fence literal from chr(96) so no backtick appears in this
-# heredoc body: macOS's bash 3.2 misparses backticks inside $(...) command
-# substitution as nested command substitution, even in a quoted heredoc.
-fence = chr(96) * 3
-lines = open(os.environ["SKILL"], encoding="utf-8").read().splitlines()
-marker = "<!-- SPEC_EXAMPLE -->"
-try:
-    mi = next(i for i, l in enumerate(lines) if l.strip() == marker)
-except StopIteration:
-    sys.stderr.write("FAIL: %s marker not found in SKILL.md\n" % marker)
-    sys.exit(1)
-# the fence must open on the very next line
-if mi + 1 >= len(lines) or lines[mi + 1].strip() != fence + "json":
-    sys.stderr.write("FAIL: marker is not immediately followed by a json fence\n")
-    sys.exit(1)
-body = []
-for l in lines[mi + 2:]:
-    if l.strip() == fence:
-        break
-    body.append(l)
-else:
-    sys.stderr.write("FAIL: unterminated json fence after marker\n")
-    sys.exit(1)
-sys.stdout.write("\n".join(body))
-PY
+# <!-- SPEC_EXAMPLE --> marker line.
+SPEC="$(SKILL="$SKILL" node <<'JS'
+const fs = require("fs");
+// Build the code-fence literal from charCode 96 so no backtick appears in this
+// heredoc body: macOS's bash 3.2 misparses backticks inside $(...) command
+// substitution as nested command substitution, even in a quoted heredoc.
+const fence = String.fromCharCode(96).repeat(3);
+const lines = fs.readFileSync(process.env.SKILL, "utf-8").split(/\r?\n/);
+const marker = "<!-- SPEC_EXAMPLE -->";
+const mi = lines.findIndex((l) => l.trim() === marker);
+if (mi < 0) { process.stderr.write("FAIL: " + marker + " marker not found in SKILL.md\n"); process.exit(1); }
+// the fence must open on the very next line
+if (mi + 1 >= lines.length || lines[mi + 1].trim() !== fence + "json") {
+  process.stderr.write("FAIL: marker is not immediately followed by a json fence\n"); process.exit(1);
+}
+const body = [];
+let closed = false;
+for (const l of lines.slice(mi + 2)) {
+  if (l.trim() === fence) { closed = true; break; }
+  body.push(l);
+}
+if (!closed) { process.stderr.write("FAIL: unterminated json fence after marker\n"); process.exit(1); }
+process.stdout.write(body.join("\n"));
+JS
 )"
 
 # The extracted block must be valid JSON.
-printf '%s' "$SPEC" | python3 -c 'import json,sys; json.load(sys.stdin)' \
+printf '%s' "$SPEC" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{JSON.parse(d)})' \
   || { echo "FAIL: example spec is not valid JSON"; exit 1; }
 
 # It must pass the validator directly (the engine the verb shells out to).
-MOD="$REPO/lib/glimpse_explain.py"
-printf '%s' "$SPEC" | python3 "$MOD" validate \
+MOD="$REPO/lib/glimpse-explain.mjs"
+printf '%s' "$SPEC" | node "$MOD" validate \
   || { echo "FAIL: example spec rejected by validator"; exit 1; }
 echo "skill-spec-ok"
 
@@ -59,14 +55,14 @@ printf '%s' "$SPEC" | "$REPO/bin/glimpse" explain skill-example "Skill example" 
   || { echo "FAIL: glimpse explain rejected the example spec"; cat "$GLIMPSE_DIR/out.txt"; exit 1; }
 grep -q "published →" "$GLIMPSE_DIR/out.txt" || { echo "FAIL: no publish line"; exit 1; }
 
-python3 - <<'PY'
-import json, os
-root = os.environ["GLIMPSE_DIR"]
-feed = json.load(open(os.path.join(root, "feed.json")))
-a = next(x for x in feed["artifacts"] if x["slug"] == "skill-example")
-assert a.get("kind") == "explain", "feed entry not kind=explain: %r" % a
-assert os.path.isfile(os.path.join(root, "artifacts", "skill-example.html")), "artifact not written"
-print("feed-entry-ok")
-PY
+node <<'JS'
+const fs = require("fs"), path = require("path");
+const root = process.env.GLIMPSE_DIR;
+const feed = JSON.parse(fs.readFileSync(path.join(root, "feed.json"), "utf-8"));
+const a = feed.artifacts.find((x) => x.slug === "skill-example");
+if (!a || a.kind !== "explain") { console.error("feed entry not kind=explain: " + JSON.stringify(a)); process.exit(1); }
+if (!fs.existsSync(path.join(root, "artifacts", "skill-example.html"))) { console.error("artifact not written"); process.exit(1); }
+console.log("feed-entry-ok");
+JS
 
 echo "ALL OK"
