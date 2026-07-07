@@ -25,6 +25,12 @@ ASSETS=(
   "canvas/glimpse-audit.js|glimpse-audit.js"
   "canvas/favicon.svg|favicon.svg"
   "lib/glimpse_explain.py|glimpse_explain.py"
+  "lib/glimpse_feed.py|glimpse_feed.py"
+  "lib/glimpse_threads.py|glimpse_threads.py"
+  "lib/glimpse_server.py|glimpse_server.py"
+  "lib/glimpse_chrome_profile.py|glimpse_chrome_profile.py"
+  "lib/glimpse-cdp.mjs|glimpse-cdp.mjs"
+  "lib/glimpse-bridge.mjs|glimpse-bridge.mjs"
 )
 
 mkdir -p "$GLIMPSE_DIR"
