@@ -6,8 +6,10 @@
 #   glimpse open [url|#slug]      bring everything up + navigate Chrome to the canvas
 #   glimpse publish <slug> <title> [file] [--no-annotate]   publish an HTML artifact (stdin if no file)
 #   glimpse explain <slug> <title> [spec.json]   publish an interactive code-explainer (spec on stdin if omitted)
-#   glimpse ask <slug> <title> [file] [--timeout N]   publish an interactive artifact,
-#                                block until the user responds, print {"slug","value"} JSON
+#   glimpse ask <slug> <title> [file] [--form] [--timeout N]   publish an interactive artifact,
+#                                block until the user responds, print {"slug","value"} JSON.
+#                                --form: `file` is a declarative form spec (JSON, stdin if
+#                                omitted) rendered to native radio/checkbox/select/text controls.
 #   glimpse list                 list artifacts (pinned first)
 #   glimpse rm <slug>...         delete artifacts (from the feed + disk)
 #   glimpse clear --all | --keep N   prune artifacts (pinned are always kept)
@@ -380,19 +382,32 @@ cmd_explain(){
 }
 
 cmd_ask(){
-  local timeout=300; local -a pos=()
+  local timeout=300 form=0; local -a pos=()
   while [ $# -gt 0 ]; do
     case "$1" in
-      --timeout) timeout="${2:-}"; shift 2 || die "usage: glimpse ask <slug> <title> [file.html] [--timeout N]";;
+      --timeout) timeout="${2:-}"; shift 2 || die "usage: glimpse ask <slug> <title> [file] [--form] [--timeout N]";;
+      --form) form=1; shift;;   # source is a declarative form spec (JSON), not raw HTML
       *) pos+=("$1"); shift;;
     esac
   done
   local slug="${pos[0]:-}" title="${pos[1]:-}" src="${pos[2]:-/dev/stdin}"
-  [ -n "$slug" ] && [ -n "$title" ] || die "usage: glimpse ask <slug> <title> [file.html] [--timeout N]"
+  [ -n "$slug" ] && [ -n "$title" ] || die "usage: glimpse ask <slug> <title> [file] [--form] [--timeout N]"
   case "$timeout" in *[!0-9]*|"") die "--timeout must be a number of seconds";; esac
   _validate_slug "$slug"
   seed_root
-  _write_artifact "$slug" "$src"
+  if [ "$form" = 1 ]; then
+    # Declarative path: validate + render native accessible controls (radio /
+    # checkbox / select / text / textarea) into an artifact that returns the
+    # structured choice through the SAME glimpseRespond channel below.
+    [ "$src" = /dev/stdin ] || [ -f "$src" ] || die "form spec file not found: $src"
+    local mod; mod="$(_lib_file glimpse_ask.py)" || die "ask form engine not found; searched \$SELF_DIR/../lib/, \$GLIMPSE_DIR/, \$HOME/.glimpse/ — reinstall glimpse"
+    # validate + wrap in one read of the spec; publish nothing on error (module
+    # returns 2 for spec-content errors, which we propagate; 1 is our own).
+    local html; html="$(python3 "$mod" wrap "$title" < "$src")" || exit $?
+    printf '%s' "$html" | _write_artifact "$slug" /dev/stdin
+  else
+    _write_artifact "$slug" "$src"
+  fi
   feed_upsert "$slug" "$title" "$(date +%s)" 1 1   # pending=1 → "awaiting you"; noannotate=1 (ask owns glimpseRespond)
   cmd_serve >/dev/null
   cmd_chrome >/dev/null
@@ -625,6 +640,9 @@ cmd_doctor(){
 
   if [ -f "$GLIMPSE_DIR/glimpse_explain.py" ] || [ -f "$SELF_DIR/../lib/glimpse_explain.py" ]; then _dok explain "engine installed"
   else _dwarn explain "engine missing"; _dfix "re-run install.sh to restore lib/glimpse_explain.py"; fi
+
+  if [ -f "$GLIMPSE_DIR/glimpse_ask.py" ] || [ -f "$SELF_DIR/../lib/glimpse_ask.py" ]; then _dok "ask form" "engine installed"
+  else _dwarn "ask form" "engine missing"; _dfix "re-run install.sh to restore lib/glimpse_ask.py  (plain ask still works)"; fi
 
   local bp; bp="$(cat "$GLIMPSE_DIR/.bridge.lock" 2>/dev/null || true)"
   if [ -n "$bp" ] && kill -0 "$bp" 2>/dev/null; then _dok bridge "running (pid $bp)"

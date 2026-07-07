@@ -28,6 +28,7 @@ the per-verb JS bodies passed to `run_cdp`) are fine.
 | `glimpse_server.py` | `cmd_serve` | `python3 … <port> <root>` (argv) — loopback-bound quiet static server |
 | `glimpse_chrome_profile.py` | `cmd_chrome` | `python3 … <profile-dir>` (argv) + env `GLIMPSE_PROFILE_LABEL`; best-effort |
 | `glimpse_explain.py` | `cmd_explain` | `python3 … wrap <title>` (pre-existing) |
+| `glimpse_ask.py` | `cmd_ask` (`--form` only) | `python3 … {validate\|wrap <title>}` — reads a decision-form spec on stdin, renders native accessible controls (see "`glimpse ask --form`" below) |
 | `glimpse-cdp.mjs` | `run_cdp`, `cmd_bridge` | shared CDP client (`cdpConnect`, `fail`) — **spliced** ahead of the body via `node --input-type=module -e "$(cat …)"` |
 | `glimpse-bridge.mjs` | `cmd_bridge` | the highlight-chat bridge loop — spliced after `glimpse-cdp.mjs`; env `GLIMPSE_BIN WAIT PORT GLIMPSE_DIR` (+ daemon `GLIMPSE_ANSWER …`) |
 
@@ -49,6 +50,65 @@ call in `bin/glimpse`, or an installed `glimpse` won't find it.
 
 Env/arg passing into the extracted scripts is unchanged: inline `VAR=… python3
 "$f" …` exports to the (external) `python3` exactly as the old inline heredoc did.
+
+## `glimpse ask --form` — declarative decision forms
+
+`glimpse ask <slug> <title> [spec.json] --form` renders a small JSON spec into
+an artifact of **native, accessible controls** (radio group / checkbox group /
+select / text / textarea), blocks until the human submits, and prints the
+structured choice as `{"slug","value"}` — the author writes no HTML and wires no
+return plumbing. Without `--form`, `ask` is unchanged (the file is raw HTML).
+
+The spec is validated + rendered by `lib/glimpse_ask.py` (mirrors
+`glimpse_explain.py`: exit `2` on any spec-content error, publishing nothing;
+`1` stays reserved for the verb's own failures). Shape:
+
+```jsonc
+{
+  "prompt": "Approve the migration?",     // optional; in-page <h1> (defaults to <title>)
+  "intro":  "One line of context.",       // optional supporting paragraph
+  "submitLabel": "Send decision",         // optional; button text (default "Submit")
+  "fields": [                             // required, non-empty (≤50)
+    { "type": "radio",    "name": "decision", "label": "Decision", "required": true,
+      "options": [ {"value":"approve","label":"Approve","selected":true},
+                   {"value":"reject","label":"Reject"} ] },   // → value string (null if none)
+    { "type": "checkbox", "name": "flags", "label": "Options", "help": "pick any",
+      "options": [ {"value":"backup","label":"Snapshot first"} ] },  // → array of values
+    { "type": "select",   "name": "batch", "required": true,
+      "options": [ {"value":"500"}, {"value":"1000","label":"1,000"} ] },  // → value string
+    { "type": "text",     "name": "note", "placeholder": "e.g. after 6pm" }, // → string
+    { "type": "textarea", "name": "details" }                               // → string
+  ]
+}
+```
+
+`name` (per field) is the key in the returned `value` object and must match
+`[A-Za-z0-9_-]{1,64}`, unique across fields. `options` is required (and
+forbidden on text/textarea) for the three choice types; option `value`s must be
+unique non-empty strings. See `examples/ask-form.json`.
+
+**Sharp edges baked into the renderer — do not regress:**
+
+- **The canvas iframe is `sandbox="allow-scripts"` with NO `allow-forms`,** so a
+  real `<form>` submission (and the `submit` event) is *blocked by the sandbox*.
+  The renderer therefore drives off the submit **button's `click`** (a
+  `type="button"`, never a real submit) → `glimpseSubmit()` → the existing
+  `glimpseRespond()` postMessage. Never switch it back to a form-`submit`
+  listener or `<button type="submit">` — it will silently never fire in-canvas.
+- **Custom radios/checkboxes** use `appearance:none` + CSS-drawn indicators so
+  they read as **hollow when unselected / filled when selected in BOTH light and
+  dark mode** (native radios render as filled black dots in light mode — the
+  input-playbook design-review pitfall this exists to avoid). Both themes are
+  driven by `prefers-color-scheme` CSS vars.
+- **Validation:** native `required` (radio / select / text / textarea) is
+  enforced via `form.reportValidity()` inside the click handler (works
+  in-sandbox — it doesn't submit); "pick at least one" for a *required checkbox
+  group* can't be expressed natively, so it uses a `data-min="1"` attribute on
+  the `<fieldset>` checked in JS.
+- **No spec data reaches JS/CSS** — the collector reads live DOM state and the
+  script is an injection-free constant; every spec string is HTML-escaped into
+  markup. Return rides the SAME `glimpse:response` channel `cmd_ask` already
+  polls; no second channel.
 
 ## Tests
 
