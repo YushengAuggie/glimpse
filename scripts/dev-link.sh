@@ -25,6 +25,7 @@ ASSETS=(
   "canvas/glimpse-audit.js|glimpse-audit.js"
   "canvas/favicon.svg|favicon.svg"
   "lib/glimpse_explain.py|glimpse_explain.py"
+  "lib/glimpse_ask.py|glimpse_ask.py"
   "lib/glimpse_feed.py|glimpse_feed.py"
   "lib/glimpse_threads.py|glimpse_threads.py"
   "lib/glimpse_server.py|glimpse_server.py"
