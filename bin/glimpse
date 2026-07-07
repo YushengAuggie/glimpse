@@ -4,7 +4,8 @@
 # local dashboard that you watch update in a real Chrome window.
 #
 #   glimpse open [url|#slug]      bring everything up + navigate Chrome to the canvas
-#   glimpse publish <slug> <title> [file] [--no-annotate]   publish an HTML artifact (stdin if no file)
+#   glimpse publish <slug> <title> [file] [--no-annotate] [--gate] [--no-audit]   publish an HTML artifact (stdin if no file)
+#                                auto-audits the render and warns; --gate fails on layout errors; --no-audit skips
 #   glimpse explain <slug> <title> [spec.json]   publish an interactive code-explainer (spec on stdin if omitted)
 #   glimpse ask <slug> <title> [file] [--timeout N]   publish an interactive artifact,
 #                                block until the user responds, print {"slug","value"} JSON
@@ -38,6 +39,8 @@
 #   GLIMPSE_PROFILE    chrome profile dir    (default: $GLIMPSE_DIR/chrome-profile)
 #   GLIMPSE_CHROME     path to chrome binary (default: auto-detect)
 #   GLIMPSE_ANNOTATE   0 to disable highlight-chat injection globally (default: 1)
+#   GLIMPSE_AUDIT      0 to disable auto-audit-on-publish (default: 1)
+#   GLIMPSE_AUDIT_GATE 1 to make a bad-layout publish fail hard (default: 0; per-publish: --gate)
 #   GLIMPSE_API_KEY    daemon auto-answer key (falls back to POE_API_KEY / ANTHROPIC_API_KEY)
 #   GLIMPSE_PROXY_URL  daemon answer endpoint (default: $ANTHROPIC_BASE_URL/v1/messages, else http://127.0.0.1:8787/v1/messages)
 #   GLIMPSE_MODEL      daemon answer model    (default: claude-haiku-4-5)
@@ -50,6 +53,8 @@ PROFILE="${GLIMPSE_PROFILE:-$GLIMPSE_DIR/chrome-profile}"
 ARTIFACTS="$GLIMPSE_DIR/artifacts"
 THREADS="$GLIMPSE_DIR/threads"
 ANNOTATE="${GLIMPSE_ANNOTATE:-1}"      # 0 disables highlight-chat injection (per-publish: --no-annotate)
+AUDIT="${GLIMPSE_AUDIT:-1}"            # 0 disables auto-audit-on-publish (per-publish: --no-audit)
+AUDIT_GATE="${GLIMPSE_AUDIT_GATE:-0}"  # 1 makes a bad-layout publish fail hard (per-publish: --gate)
 export GLIMPSE_DIR PORT CDP_PORT
 
 # High-signal secret regex, kept in sync with scripts/check-secrets.sh (PATTERN).
@@ -279,12 +284,22 @@ cmd_open(){
   echo "canvas open in Chrome → $target"
 }
 
-# Render-correctness check: show the artifact, let the injected auditor measure the
-# REAL layout (overflow / clipped / overlapping text), and print what's wrong so an
-# agent can fix it before a human reviews. Exit 2 if any error-severity finding.
-cmd_audit(){
-  local slug="${1:?usage: glimpse audit <slug>}"
-  _validate_slug "$slug"
+# Is the canvas already live (static server AND a debuggable Chrome both up)? The
+# auditor only produces findings from a REAL render, so this gates whether an
+# auto-audit can run without launching anything. Quick loopback curls, no side
+# effects. Returns 0 when live.
+_canvas_live(){
+  curl -fsS "http://127.0.0.1:${PORT}/feed.json"      >/dev/null 2>&1 \
+    && curl -fsS "http://127.0.0.1:${CDP_PORT}/json/version" >/dev/null 2>&1
+}
+
+# Drive the injected auditor against one slug and print the raw audit JSON object
+# (the same shape as window.__glimpse_audit: {slug,viewportWidth,errors,warnings,
+# findings,ts}) on stdout, or an empty line if the auditor never reported. Brings
+# the canvas up (idempotent) and reflects the CURRENT render. Shared by the
+# standalone `audit` verb and auto-audit-on-publish so there is one capture path.
+_audit_capture(){
+  local slug="$1"
   cmd_serve >/dev/null
   cmd_chrome >/dev/null
   SLUG="$slug" URL="http://127.0.0.1:${PORT}/#${slug}" run_cdp '
@@ -312,32 +327,79 @@ cmd_audit(){
       }
     }
     close();
-    if(!audit){ console.log("glimpse: no layout audit for "+slug+" — is it published, and is annotate enabled? (the auditor ships with highlight-chat injection)"); process.exit(0); }
-    const f=audit.findings||[];
-    const err=f.filter(x=>x.severity==="error"), warn=f.filter(x=>x.severity!=="error");
-    console.log("glimpse audit "+slug+" @ "+audit.viewportWidth+"px viewport — "+err.length+" error, "+warn.length+" warning");
-    for(const x of f) console.log("  ["+x.severity+"] "+x.kind+"  "+x.selector+(x.overflowPx?"  (+"+x.overflowPx+"px)":""));
-    console.log(JSON.stringify({slug:audit.slug,viewportWidth:audit.viewportWidth,errors:err.length,warnings:warn.length,findings:f}));
-    process.exit(err.length?2:0);
+    console.log(audit ? JSON.stringify(audit) : "");
   '
 }
 
+# Render-correctness check: show the artifact, let the injected auditor measure the
+# REAL layout (overflow / clipped / overlapping text), and print what's wrong so an
+# agent can fix it before a human reviews. Exit 2 if any error-severity finding.
+cmd_audit(){
+  local slug="${1:?usage: glimpse audit <slug>}"
+  _validate_slug "$slug"
+  local report; report="$(_lib_file glimpse_audit_report.py)" || die "glimpse_audit_report.py not found — reinstall glimpse"
+  local json; json="$(_audit_capture "$slug")"
+  if [ -z "$json" ]; then
+    echo "glimpse: no layout audit for $slug — is it published, and is annotate enabled? (the auditor ships with highlight-chat injection)"
+    exit 0
+  fi
+  local rc=0
+  MODE=full SLUG="$slug" python3 "$report" <<<"$json" || rc=$?
+  exit "$rc"
+}
+
+# Auto-audit a freshly-published artifact and surface a concise, actionable
+# warning (on stderr, so stdout stays the published URL). Warn-only by default;
+# with the gate (--gate / GLIMPSE_AUDIT_GATE=1) an error-severity finding makes
+# publish exit non-zero so an agent or CI can enforce layout quality. A clean
+# artifact prints nothing. Returns the report's exit code only when gating.
+_publish_autoaudit(){
+  local slug="$1" gate="$2" audit="${3:-1}"
+  [ "$audit" = "0" ] && return 0                 # auto-audit disabled
+  # Without the gate, only audit when you're already watching (canvas live) — a
+  # scripted/headless publish stays a fast file write and never launches Chrome.
+  # The gate is an explicit request to enforce, so it brings the canvas up.
+  if [ "$gate" != "1" ] && ! _canvas_live; then return 0; fi
+  local report; report="$(_lib_file glimpse_audit_report.py)" || return 0
+  local json; json="$(_audit_capture "$slug" 2>/dev/null)" || json=""
+  if [ -z "$json" ]; then
+    # The auditor never reported: annotate disabled, or the render couldn't be
+    # reached. Not a layout finding, so it never fails the gate — but say so under
+    # --gate rather than pass silently, so CI logs aren't misleading.
+    [ "$gate" = "1" ] && echo "glimpse: ⚠ layout gate — no audit for $slug (annotate off or render unreachable); not enforced" >&2
+    return 0
+  fi
+  local out rc=0
+  out="$(MODE=brief SLUG="$slug" python3 "$report" <<<"$json")" || rc=$?
+  [ -n "$out" ] && printf '%s\n' "$out" >&2
+  if [ "$gate" = "1" ] && [ "$rc" -ne 0 ]; then
+    echo "glimpse: ✗ layout gate — publish flagged (rendered artifact left in place); fix the issues above, then re-publish" >&2
+    return "$rc"
+  fi
+  return 0
+}
+
 cmd_publish(){
-  local noann=0; local -a pos=()
+  local noann=0 gate="$AUDIT_GATE" audit="$AUDIT"; local -a pos=()
   while [ $# -gt 0 ]; do
     case "$1" in
       --no-annotate) noann=1; shift;;
+      --gate)        gate=1; shift;;           # turn layout findings into a hard failure
+      --no-audit)    audit=0; shift;;          # skip the auto-audit entirely
       *) pos+=("$1"); shift;;
     esac
   done
   local slug="${pos[0]:-}" title="${pos[1]:-}" src="${pos[2]:-/dev/stdin}"
-  [ -n "$slug" ] && [ -n "$title" ] || die "usage: glimpse publish <slug> <title> [file.html] [--no-annotate]"
+  [ -n "$slug" ] && [ -n "$title" ] || die "usage: glimpse publish <slug> <title> [file.html] [--no-annotate] [--gate] [--no-audit]"
   [ "$ANNOTATE" = "0" ] && noann=1            # global GLIMPSE_ANNOTATE=0 disables injection
   _validate_slug "$slug"
   seed_root
   _write_artifact "$slug" "$src"
   feed_upsert "$slug" "$title" "$(date +%s)" 0 "$noann"
   echo "published → http://127.0.0.1:${PORT}/#${slug}  (file: $ARTIFACTS/${slug}.html)"
+  # Auto-audit the real render and warn (or, with the gate, fail). Its rc is the
+  # verb's rc so a tripped gate propagates a non-zero exit for CI/agents.
+  _publish_autoaudit "$slug" "$gate" "$audit"
 }
 
 _validate_slug(){

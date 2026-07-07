@@ -11,6 +11,12 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 - **The classic silent failure is launchd's minimal PATH.** The always-on menu-bar daemon runs `/bin/bash -lc 'source ~/.config/secrets.env; exec glimpse menubar'`; launchd's login shell misses the fnm/nvm setup that only zsh sources, so `node` (and sometimes `python3`) can't be found and CDP calls die quietly. `_ensure_node` prepends `_node_candidates` (stable install dirs) as a workaround; `cmd_doctor`'s `_launchd_resolve` reproduces that exact env to report whether the daemon would find them, and reuses the same `_node_candidates` list so the check never drifts. Pin with `GLIMPSE_NODE` in `~/.config/secrets.env`.
 - **Scope discipline:** only `install.sh` and `cmd_doctor` (plus shared helpers `_node_candidates` / `_launchd_resolve`) own this behavior. Don't add network calls beyond the dependency version probes already present, and keep loopback/secret-scrub posture intact.
 
+## Auto-audit on publish + the layout gate
+
+- **`glimpse publish` auto-audits the real render and warns by default.** After the artifact is written + fed, `_publish_autoaudit` drives the existing in-browser auditor (`canvas/glimpse-audit.js`) via the shared `_audit_capture` and surfaces a one-line summary like `⚠ glimpse: 2 layout issues in <slug> — content overflow in div.foo (+40px); … — run: glimpse audit <slug>`. The warning goes to **stderr** so stdout stays the published URL; a **clean artifact prints nothing** (quiet-by-default). It never reimplements audit rules — severity/finding vocabulary stays in `glimpse-audit.js`.
+- **Warn-only stays fast; the gate is opt-in.** Without a gate, the auto-audit only runs when the canvas is already live (`_canvas_live`: both the static server and a debuggable Chrome answer on the loopback ports) — a scripted/headless publish stays a pure file write and never launches Chrome. `--gate` (or `GLIMPSE_AUDIT_GATE=1`) turns an **error-severity** finding into a non-zero exit so an agent/CI can enforce layout quality; because the audit needs a real render, the gate brings the canvas up itself. The publish is **flagged, not rolled back** — the rendered artifact is left in place (the auditor needs it on disk) and the message says so. `--no-audit` (or `GLIMPSE_AUDIT=0`) skips the whole step.
+- **One capture, one renderer — no drift.** `_audit_capture <slug>` is the single CDP navigate+reload+poll path; both the standalone `audit` verb and auto-audit consume its raw `window.__glimpse_audit` JSON. `lib/glimpse_audit_report.py` is the single output renderer (`MODE=full` reproduces `glimpse audit`'s detailed report + compact machine JSON; `MODE=brief` is the publish one-liner) and the single source of the gate exit code (2 iff any error-severity finding). Keep formatting/counting there; keep detection in `glimpse-audit.js`.
+
 ## `bin/glimpse` is a pure bash dispatcher — no polyglot heredocs
 
 The CLI verbs live in `bin/glimpse`, but the Python and JavaScript they used to
@@ -30,6 +36,7 @@ the per-verb JS bodies passed to `run_cdp`) are fine.
 | `glimpse_explain.py` | `cmd_explain` | `python3 … wrap <title>` (pre-existing) |
 | `glimpse_export.py` | `_inline_artifact` (→ `cmd_export`, `cmd_share`) | `python3 … <src.html>` (argv) + env `SECRET_PATTERN` — offline inliner; HTML→stdout, warnings→stderr |
 | `glimpse_share.py` | `cmd_share` | `python3 …`; HTML on **stdin**; env `GLIMPSE_PASSWORD GLIMPSE_HTML_APP_BASE GLIMPSE_HTML_APP_TOKEN` — POSTs to ht-ml.app, prints `{url,site_id,update_key,private}` JSON |
+| `glimpse_audit_report.py` | `cmd_audit`, `_publish_autoaudit` | `python3 …` reads audit JSON on stdin; env `MODE`(full\|brief) `SLUG`; exits 2 iff an error-severity finding |
 | `glimpse-cdp.mjs` | `run_cdp`, `cmd_bridge` | shared CDP client (`cdpConnect`, `fail`) — **spliced** ahead of the body via `node --input-type=module -e "$(cat …)"` |
 | `glimpse-bridge.mjs` | `cmd_bridge` | the highlight-chat bridge loop — spliced after `glimpse-cdp.mjs`; env `GLIMPSE_BIN WAIT PORT GLIMPSE_DIR` (+ daemon `GLIMPSE_ANSWER …`) |
 | `glimpse-snapshot.mjs` | `cmd_snapshot` | accessibility-tree text snapshot body — read by `cmd_snapshot` and passed to `run_cdp` (not spliced standalone); env `URL SECRET_PATTERN` |
@@ -180,7 +187,12 @@ uid=s0 RootWebArea "Snapshot Demo"
   `test_snapshot_render.mjs`, which drives the real `lib/glimpse-snapshot.mjs` body
   with a stubbed CDP channel (no browser) to cover tree-building, node collapsing,
   iframe grafting, and secret scrubbing
-- `bash tests/test_explain_cli.sh`, `bash tests/test_node_anchor.sh`, `bash tests/test_export_cli.sh` — CLI smoke (the export test is offline; it never uploads)
+- `bash tests/test_explain_cli.sh`, `bash tests/test_node_anchor.sh`,
+  `bash tests/test_export_cli.sh`, `bash tests/test_publish_audit.sh` — CLI smoke
+  (the export test is offline; it never uploads. the publish-audit test covers the
+  auto-audit flag/env parsing + the "not watching → skip" path, no browser)
 - `GLIMPSE_RUNTIME_TESTS=1 bash tests/test_*_cdp.sh` / `test_node_roundtrip.sh` —
   live-CDP, opt-in (need a running `glimpse open`). `test_multi_artifact_cdp.sh` proves
-  two artifacts' audits coexist in `__glimpse_audit` and their threads stay isolated.
+  two artifacts' audits coexist in `__glimpse_audit` and their threads stay isolated;
+  `test_publish_audit_cdp.sh` is the end-to-end auto-audit warn/gate check against a
+  real render.
