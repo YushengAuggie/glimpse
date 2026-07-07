@@ -8,6 +8,9 @@ feed.json
 !assets/menubar-on.png
 !assets/menubar-off.png
 !assets/glimpse-hero.png
+# playbook example screenshots — tracked despite *.png (reference for reviewers)
+!examples/screenshots/
+!examples/screenshots/*.png
 .DS_Store
 __pycache__/
 *.pyc

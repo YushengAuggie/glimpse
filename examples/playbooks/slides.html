@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en" data-theme="auto">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Slides playbook — Ship the backfill</title>
+<style>
+  :root{
+    color-scheme: light dark;
+    --bg:#f6f7fb; --bg-elev:#ffffff; --bg-sunk:#f0f2f8;
+    --ink:#1a1b26; --ink-2:#565a6e; --ink-3:#8b90a3;
+    --line:#e5e7f0; --line-2:#eef0f7;
+    --accent:#4c5fd5; --accent-ink:#3245b8; --accent-soft:#eef1ff;
+    --good:#2f9e44; --danger:#e03131;
+    --shadow:0 1px 2px rgba(20,20,40,.05), 0 18px 48px -24px rgba(20,20,40,.35);
+    --radius:18px;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,sans-serif;
+  }
+  @media (prefers-color-scheme: dark){ :root[data-theme="auto"]{
+    --bg:#0b0c12; --bg-elev:#161822; --bg-sunk:#12141d;
+    --ink:#e6e8f0; --ink-2:#a4a9bd; --ink-3:#6f7488;
+    --line:#262a38; --line-2:#1f2330;
+    --accent:#93a4ff; --accent-ink:#b7c2ff; --accent-soft:#1b2140; --good:#51cf66; --danger:#ff6b6b;
+    --shadow:0 1px 2px rgba(0,0,0,.5), 0 24px 60px -28px rgba(0,0,0,.85);
+  }}
+  :root[data-theme="dark"]{
+    --bg:#0b0c12; --bg-elev:#161822; --bg-sunk:#12141d;
+    --ink:#e6e8f0; --ink-2:#a4a9bd; --ink-3:#6f7488;
+    --line:#262a38; --line-2:#1f2330;
+    --accent:#93a4ff; --accent-ink:#b7c2ff; --accent-soft:#1b2140; --good:#51cf66; --danger:#ff6b6b;
+    --shadow:0 1px 2px rgba(0,0,0,.5), 0 24px 60px -28px rgba(0,0,0,.85);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 var(--sans);
+    -webkit-font-smoothing:antialiased;transition:background .2s,color .2s;
+    min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:32px 24px;}
+  .deck{max-width:900px;width:100%;margin:0 auto;}
+  .eyebrow{font:600 12px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--accent);}
+  /* Three deliberate bands: kicker top, content centered, meta bottom. */
+  .slide{display:none;aspect-ratio:16/9;background:var(--bg-elev);border:1px solid var(--line);
+    border-radius:var(--radius);box-shadow:var(--shadow);
+    padding:clamp(30px,4.5vw,56px);flex-direction:column;justify-content:space-between;overflow:hidden;}
+  .slide.on{display:flex;}
+  .slide .mid{margin:auto 0;}
+  .slide .smeta{font:600 11px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);
+    border-top:1px solid var(--line-2);padding-top:12px;display:flex;justify-content:space-between;gap:12px;}
+  .slide h2{font-size:clamp(26px,4.6vw,46px);line-height:1.08;letter-spacing:-.025em;margin:16px 0 0;font-weight:760;}
+  .slide p{font-size:clamp(15px,1.9vw,19px);color:var(--ink-2);margin:16px 0 0;max-width:40ch;}
+  .big{font-size:clamp(56px,11vw,112px);font-weight:780;letter-spacing:-.04em;line-height:1;
+    background:linear-gradient(120deg,var(--accent),var(--accent-ink));-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:20px;}
+  .cols>div{min-width:0;} .cols h3{font-size:15px;margin:0 0 6px;}
+  .cols .k{font:600 11px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);}
+  .kv{font-size:clamp(15px,2vw,18px);color:var(--ink-2);}
+  .nav{display:flex;gap:16px;align-items:center;justify-content:center;margin-top:22px;color:var(--ink-2);}
+  .nav button{font:inherit;padding:9px 18px;border-radius:999px;border:1px solid var(--line);
+    background:var(--bg-elev);color:var(--ink);cursor:pointer;transition:.12s;box-shadow:var(--shadow);}
+  .nav button:hover:not(:disabled){border-color:var(--accent);}
+  .nav button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  .nav button:disabled{opacity:.35;cursor:default;box-shadow:none;}
+  .dots{display:flex;gap:9px;align-items:center;}
+  .dots i{width:8px;height:8px;border-radius:50%;background:var(--line);transition:background .15s,transform .15s;}
+  :root[data-theme="dark"] .dots i{background:#39415a;}
+  @media (prefers-color-scheme: dark){:root[data-theme="auto"] .dots i{background:#39415a;}}
+  .dots i.on{background:var(--accent);transform:scale(1.35);}
+  .theme-toggle{position:fixed;top:16px;right:16px;z-index:10;font:600 13px/1 var(--sans);
+    display:inline-flex;align-items:center;gap:7px;background:var(--bg-elev);color:var(--ink-2);
+    border:1px solid var(--line);border-radius:999px;padding:8px 13px;cursor:pointer;box-shadow:var(--shadow);}
+  .theme-toggle:hover{color:var(--ink);border-color:var(--accent);}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;}}
+</style>
+</head>
+<body>
+<button class="theme-toggle" id="themeToggle" aria-label="Toggle light/dark theme"><span id="themeIcon">🌙</span><span id="themeLabel">Dark</span></button>
+<div class="deck">
+  <section class="slide on">
+    <span class="eyebrow">01 · thesis</span>
+    <div class="mid">
+      <h2>Ship the thumbnail backfill this week</h2>
+      <p>One decision, three slides of context, one ask. Arrow keys or click to advance.</p>
+    </div>
+    <div class="smeta"><span>Backfill review</span><span>Glimpse · slides playbook</span></div>
+  </section>
+  <section class="slide">
+    <span class="eyebrow">02 · why now</span>
+    <div class="mid">
+      <div class="big">2.1M</div>
+      <p>images predate on-upload thumbnails and have none — every read is an
+        on-the-fly resize, burning worker CPU on the hot path.</p>
+    </div>
+    <div class="smeta"><span>The problem</span><span>2 / 4</span></div>
+  </section>
+  <section class="slide">
+    <span class="eyebrow">03 · the plan</span>
+    <div class="mid">
+      <h2>Add a column, backfill in batches, cut reads over</h2>
+      <div class="cols">
+        <div><div class="k">Migration</div><p class="kv">Nullable <span style="font-family:var(--mono)">thumb_key</span> — online, non-blocking.</p></div>
+        <div><div class="k">Safety</div><p class="kv">Idempotent by id; originals kept; resize fallback stays.</p></div>
+      </div>
+    </div>
+    <div class="smeta"><span>The approach</span><span>3 / 4</span></div>
+  </section>
+  <section class="slide">
+    <span class="eyebrow">04 · the ask</span>
+    <div class="mid">
+      <h2>Approve a batch size and I start today</h2>
+      <p>Default 1,000 per batch → full coverage in ~6 hours, throttled on queue depth so live uploads keep priority.</p>
+    </div>
+    <div class="smeta"><span>The decision</span><span>Your call</span></div>
+  </section>
+  <div class="nav">
+    <button id="prev" onclick="go(-1)" aria-label="Previous slide">←</button>
+    <div class="dots" id="dots"></div>
+    <button id="next" onclick="go(1)" aria-label="Next slide">→</button>
+  </div>
+</div>
+<script>
+  var i=0, s=[].slice.call(document.querySelectorAll('.slide'));
+  var prev=document.getElementById('prev'), next=document.getElementById('next'), dots=document.getElementById('dots');
+  s.forEach(function(_,n){ var d=document.createElement('i'); if(n===0)d.className='on';
+    d.addEventListener('click',function(){go(n-i);}); dots.appendChild(d); });
+  function sync(){ [].forEach.call(dots.children,function(d,n){ d.className=(n===i)?'on':''; });
+    prev.disabled=(i===0); next.disabled=(i===s.length-1); }
+  function go(d){ var n=Math.min(s.length-1,Math.max(0,i+d)); if(n===i)return;
+    s[i].classList.remove('on'); i=n; s[i].classList.add('on'); sync(); }
+  sync();
+  addEventListener('keydown',function(e){ if(e.key==='ArrowRight')go(1); if(e.key==='ArrowLeft')go(-1); });
+
+  (function(){
+    var root=document.documentElement, btn=document.getElementById('themeToggle'),
+        icon=document.getElementById('themeIcon'), label=document.getElementById('themeLabel'), KEY='glimpse-theme';
+    function systemDark(){return matchMedia('(prefers-color-scheme: dark)').matches;}
+    function effective(){var t=root.getAttribute('data-theme');return (t==='dark'||t==='light')?t:(systemDark()?'dark':'light');}
+    function paint(){var d=effective()==='dark';icon.textContent=d?'☀️':'🌙';label.textContent=d?'Light':'Dark';
+      btn.setAttribute('aria-label', d?'Switch to light theme':'Switch to dark theme');}
+    window.__applyTheme=function(mode){root.setAttribute('data-theme',mode);
+      try{localStorage.setItem(KEY,mode);}catch(e){}paint();};
+    try{var v=localStorage.getItem(KEY);if(v==='dark'||v==='light')root.setAttribute('data-theme',v);}catch(e){}
+    paint();
+    btn.addEventListener('click',function(){window.__applyTheme(effective()==='dark'?'light':'dark');});
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(){
+      var t=root.getAttribute('data-theme'); if(t!=='dark'&&t!=='light')paint();});
+  })();
+</script>
+</body>
+</html>
