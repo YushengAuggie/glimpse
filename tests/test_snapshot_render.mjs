@@ -45,10 +45,12 @@ async function runSnapshot({ frames, frameTree, owners = {} }) {
     if (method === "DOM.getFrameOwner") return { backendNodeId: owners[params.frameId] };
     return {};
   };
-  const cdpConnect = async () => ({ send, waitEvent: async () => ({}), close: () => {} });
+  const chan = { send, waitEvent: async () => ({}), on: () => () => {}, close: () => {} };
+  const cdpConnect = async () => chan;
+  const cdpConnectApp = async () => chan;   // read/shot/snapshot use the app-tab picker
   const fail = (e) => { throw e; };
-  const run = new Function("cdpConnect", "fail", "console", `return (async () => {\n${BODY}\n})();`);
-  await run(cdpConnect, fail, stubConsole);
+  const run = new Function("cdpConnect", "cdpConnectApp", "fail", "console", `return (async () => {\n${BODY}\n})();`);
+  await run(cdpConnect, cdpConnectApp, fail, stubConsole);
   return lines.join("\n");
 }
 

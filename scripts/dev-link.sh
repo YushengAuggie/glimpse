@@ -34,6 +34,8 @@ ASSETS=(
   "lib/glimpse-cdp.mjs|glimpse-cdp.mjs"
   "lib/glimpse-bridge.mjs|glimpse-bridge.mjs"
   "lib/glimpse-snapshot.mjs|glimpse-snapshot.mjs"
+  "lib/glimpse-read.mjs|glimpse-read.mjs"
+  "lib/glimpse-interact.mjs|glimpse-interact.mjs"
 )
 
 mkdir -p "$GLIMPSE_DIR"

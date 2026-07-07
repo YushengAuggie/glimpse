@@ -103,7 +103,8 @@ mkdir -p "$GLIMPSE_DIR"
 # doesn't exist) resolves them via _lib_file. Keep in sync with lib/ and bin/glimpse.
 for f in glimpse_explain.py glimpse_feed.py glimpse_threads.py glimpse_server.py \
          glimpse_chrome_profile.py glimpse_export.py glimpse_share.py \
-         glimpse-cdp.mjs glimpse-bridge.mjs glimpse-snapshot.mjs; do
+         glimpse-cdp.mjs glimpse-bridge.mjs glimpse-snapshot.mjs \
+         glimpse-read.mjs glimpse-interact.mjs; do
   cp "$REPO/lib/$f" "$GLIMPSE_DIR/$f"
 done
 cp "$REPO/canvas/favicon.svg" "$GLIMPSE_DIR/favicon.svg"                   # tab icon
