@@ -11,18 +11,19 @@ SPEC='{"scope":"change","title":"T","callstack":{"entry":"n1","steps":[
 # 1. valid spec publishes and is marked kind=explain
 printf '%s' "$SPEC" | "$REPO/bin/glimpse" explain demo "Demo" >"$GLIMPSE_DIR/out.txt"
 grep -q "published →" "$GLIMPSE_DIR/out.txt" || { echo "FAIL: no publish line"; exit 1; }
-python3 - <<PY
-import json, os
-f=json.load(open(os.environ["GLIMPSE_DIR"]+"/feed.json"))
-a=next(x for x in f["artifacts"] if x["slug"]=="demo")
-assert a.get("kind")=="explain", a
-html=open(os.environ["GLIMPSE_DIR"]+"/artifacts/demo.html").read()
-assert 'id="glimpse-spec"' in html
-region = html.split('id="glimpse-spec">')[1].split("</script>", 1)[0]
-assert "</script>" not in region, "embedded </script> must be escaped, not literal"
-assert "\\u003c/script>" in html, "embedded </script> must be escaped"
-print("ok-publish")
-PY
+node <<'JS'
+const fs = require("fs");
+const root = process.env.GLIMPSE_DIR;
+const feed = JSON.parse(fs.readFileSync(root + "/feed.json", "utf-8"));
+const a = feed.artifacts.find((x) => x.slug === "demo");
+if (!a || a.kind !== "explain") { console.error("feed entry not kind=explain: " + JSON.stringify(a)); process.exit(1); }
+const html = fs.readFileSync(root + "/artifacts/demo.html", "utf-8");
+if (!html.includes('id="glimpse-spec"')) { console.error("no glimpse-spec block"); process.exit(1); }
+const region = html.split('id="glimpse-spec">')[1].split("</script>")[0];
+if (region.includes("</script>")) { console.error("embedded </script> must be escaped, not literal"); process.exit(1); }
+if (!html.includes("\\u003c/script>")) { console.error("embedded </script> must be escaped"); process.exit(1); }
+console.log("ok-publish");
+JS
 
 # 2. invalid spec exits 2 (spec-content error) with a message, publishes nothing
 set +e

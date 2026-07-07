@@ -47,7 +47,7 @@ grep -q -- "--no-audit" "$GLIMPSE_DIR/err.txt" || { echo "FAIL: usage missing --
 
 # 5. the shared report renderer resolves from this checkout and gates on errors.
 BAD='{"slug":"x","viewportWidth":1000,"findings":[{"selector":"div.foo","kind":"element-overflow","overflowPx":40,"severity":"error"}]}'
-run bash -c "printf '%s' '$BAD' | MODE=brief SLUG=x python3 '$REPO/lib/glimpse_audit_report.py'"
+run bash -c "printf '%s' '$BAD' | MODE=brief SLUG=x node '$REPO/lib/glimpse-audit-report.mjs'"
 [ "$RC" -eq 2 ] || { echo "FAIL: brief report should exit 2 on an error finding, got $RC"; exit 1; }
 grep -qi "run: glimpse audit x" "$GLIMPSE_DIR/out.txt" || { echo "FAIL: brief report not actionable"; exit 1; }
 

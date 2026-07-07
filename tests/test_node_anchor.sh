@@ -10,16 +10,17 @@ ANCHOR='{"kind":"node","id":"n1","label":"cmd()","file":"bin/glimpse","lines":"1
 QUOTE='snippet' TEXT='why?' CLIENT_TURN_ID='c1' ARTIFACT_TS=1 \
   "$REPO/bin/glimpse" __thread-add-user demo >/dev/null
 
-python3 - <<PY
-import json, os
-t = json.load(open(os.environ["GLIMPSE_DIR"]+"/threads/demo.json"))["turns"][0]
-a = t["anchor"]
-assert a["kind"] == "node", a
-assert a["id"] == "n1", a
-assert "occurrence" not in a, "node anchors must not carry occurrence: %r" % a
-assert a["label"] == "cmd()" and a["file"] == "bin/glimpse" and a["lines"] == "1-9", a
-print("scrub-ok")
-PY
+node <<'JS'
+const fs = require("fs");
+const t = JSON.parse(fs.readFileSync(process.env.GLIMPSE_DIR + "/threads/demo.json", "utf-8")).turns[0];
+const a = t.anchor;
+const need = (c, m) => { if (!c) { console.error(m + ": " + JSON.stringify(a)); process.exit(1); } };
+need(a.kind === "node", "kind must be node");
+need(a.id === "n1", "id must be n1");
+need(!("occurrence" in a), "node anchors must not carry occurrence");
+need(a.label === "cmd()" && a.file === "bin/glimpse" && a.lines === "1-9", "node anchor fields");
+console.log("scrub-ok");
+JS
 
 # a second question on the SAME node id, then assert _akey groups them (same key).
 SLUG=demo ANCHOR='{"kind":"node","id":"n1","label":"cmd()","file":"f","lines":"1"}' \

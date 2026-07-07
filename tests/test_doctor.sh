@@ -8,9 +8,11 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$GLIMPSE_DIR" "$TMP"' EXIT
 
 # 1. Every core check prints its own labelled line (exit code ignored here — it
-#    depends on what's installed on this host).
+#    depends on what's installed on this host). python3 is no longer a core check
+#    (glimpse runs on Node + Chrome; python3 is optional, only the macOS menu-bar
+#    app uses it) so it is not asserted here.
 out="$("$REPO/bin/glimpse" doctor 2>&1 || true)"
-for label in bash python3 node chrome "cdp port" server; do
+for label in bash node chrome "cdp port" server; do
   echo "$out" | grep -q " ${label} " || { echo "FAIL: no check line for '$label'"; echo "$out"; exit 1; }
 done
 echo "ok-format"

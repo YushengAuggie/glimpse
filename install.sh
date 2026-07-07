@@ -70,14 +70,13 @@ else
   esac
 fi
 
-if have python3; then echo "  ✓ $(python3 --version 2>&1)"
-else
-  MISSING_REQUIRED=1
-  echo "  ✗ python3 not found — glimpse serves the canvas with Python's http.server"
-  case "$OS" in
-    Darwin) echo "      fix:  xcode-select --install     # or: brew install python3";;
-    *)      echo "      fix:  install Python 3 (e.g. apt install python3)";;
-  esac
+# python3 is OPTIONAL — only the macOS menu-bar app (rumps) uses it. Core glimpse
+# runs on Node + Chrome, so a missing python3 never blocks the install and is only
+# surfaced (as a hint, not an error) on macOS where the menu-bar app can run.
+if have python3; then echo "  ✓ $(python3 --version 2>&1)  (optional — macOS menu-bar app only)"
+elif [ "$OS" = Darwin ]; then
+  echo "  ⚠ python3 not found — only the optional menu-bar app (glimpse menubar) needs it; core glimpse runs without it"
+  echo "      fix:  xcode-select --install     # or: brew install python3"
 fi
 
 if CHROME_PATH="$(find_chrome)"; then echo "  ✓ chrome $CHROME_PATH"
@@ -100,13 +99,13 @@ cp "$REPO/canvas/index.html" "$GLIMPSE_DIR/index.html"
 cp "$REPO/canvas/glimpse-annotate.js" "$GLIMPSE_DIR/glimpse-annotate.js"   # highlight-chat helper (injected at render time)
 cp "$REPO/canvas/glimpse-audit.js" "$GLIMPSE_DIR/glimpse-audit.js"         # render-correctness auditor (injected at render time)
 mkdir -p "$GLIMPSE_DIR"
-# CLI lib code the dispatcher shells out to (Python ops + the CDP client/bridge).
+# CLI lib code the dispatcher shells out to (Node ops + the CDP client/bridge).
 # Seeded flat into $GLIMPSE_DIR so an installed `glimpse` (whose $SELF_DIR/../lib
-# doesn't exist) resolves them via _lib_file. Keep in sync with lib/ and bin/glimpse.
-for f in glimpse_explain.py glimpse_ask.py glimpse_feed.py glimpse_threads.py glimpse_server.py \
-         glimpse_chrome_profile.py glimpse_export.py glimpse_share.py glimpse_audit_report.py \
-         glimpse-cdp.mjs glimpse-bridge.mjs glimpse-poll.mjs glimpse-snapshot.mjs; do
-  cp "$REPO/lib/$f" "$GLIMPSE_DIR/$f"
+# doesn't exist) resolves them via _lib_file. Every lib/*.mjs is copied — including
+# glimpse-store.mjs, which feed/threads import relatively and so must sit alongside
+# them. Node + Chrome only; no Python in the runtime path. Keep in sync with lib/.
+for f in "$REPO"/lib/*.mjs; do
+  cp "$f" "$GLIMPSE_DIR/$(basename "$f")"
 done
 cp "$REPO/canvas/favicon.svg" "$GLIMPSE_DIR/favicon.svg"                   # tab icon
 [ -f "$REPO/app/glimpse_menubar.py" ] && cp "$REPO/app/glimpse_menubar.py" "$GLIMPSE_DIR/glimpse_menubar.py"  # macOS menu-bar app

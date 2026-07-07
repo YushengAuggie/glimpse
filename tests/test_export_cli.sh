@@ -10,29 +10,30 @@ mkdir -p "$GLIMPSE_DIR/artifacts"
 echo '{"artifacts":[]}' > "$GLIMPSE_DIR/feed.json"
 
 # a published artifact with a LOCAL image + CSS url + a remote CDN script
-python3 - "$GLIMPSE_DIR/artifacts" <<'PY'
-import base64, os, sys
-d = sys.argv[1]
-png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
-open(os.path.join(d, "logo.png"), "wb").write(png)
-open(os.path.join(d, "demo.html"), "w").write(
-    '<!doctype html><html><head><script src="https://cdn.tailwindcss.com"></script>'
-    '<style>body{background:url(logo.png)}</style></head>'
-    '<body><h1>Hi</h1><img src="logo.png"></body></html>')
-PY
+GLIMPSE_ARTIFACTS="$GLIMPSE_DIR/artifacts" node <<'JS'
+const fs = require("fs"), path = require("path");
+const d = process.env.GLIMPSE_ARTIFACTS;
+const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+fs.writeFileSync(path.join(d, "logo.png"), png);
+fs.writeFileSync(path.join(d, "demo.html"),
+  '<!doctype html><html><head><script src="https://cdn.tailwindcss.com"></script>' +
+  '<style>body{background:url(logo.png)}</style></head>' +
+  '<body><h1>Hi</h1><img src="logo.png"></body></html>');
+JS
 
 OUT="$OUTDIR/demo.export.html"
 "$REPO/bin/glimpse" export demo --out "$OUT" >/dev/null
 
-python3 - "$OUT" <<'PY'
-import sys
-h = open(sys.argv[1], encoding="utf-8").read()
-assert "data:image/png;base64," in h, "local <img> not inlined"
-assert 'src="logo.png"' not in h, "local <img> ref left un-inlined"
-assert "url(logo.png)" not in h, "css url() not inlined"
-assert "https://cdn.tailwindcss.com" in h, "remote CDN ref must be preserved"
-print("export-ok")
-PY
+GLIMPSE_OUT="$OUT" node <<'JS'
+const fs = require("fs");
+const h = fs.readFileSync(process.env.GLIMPSE_OUT, "utf-8");
+const need = (cond, msg) => { if (!cond) { console.error(msg); process.exit(1); } };
+need(h.includes("data:image/png;base64,"), "local <img> not inlined");
+need(!h.includes('src="logo.png"'), "local <img> ref left un-inlined");
+need(!h.includes("url(logo.png)"), "css url() not inlined");
+need(h.includes("https://cdn.tailwindcss.com"), "remote CDN ref must be preserved");
+console.log("export-ok");
+JS
 
 # unknown slug fails clearly
 if "$REPO/bin/glimpse" export nope 2>/dev/null; then echo "FAIL: export of missing slug should error"; exit 1; fi
