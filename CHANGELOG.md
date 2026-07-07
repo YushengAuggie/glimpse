@@ -57,6 +57,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 - `glimpse stop` (+ server PID file).
 
 ### Changed
+- **One-command install + loud, actionable `glimpse doctor`.** `install.sh` now
+  runs a preflight (node ≥22, python3, Chrome) with an OS-aware, copy-pasteable
+  fix per missing dep, then installs the CLI + assets regardless; a missing
+  *required* dep (node/python3) still installs the CLI but exits non-zero, while
+  a missing Chrome is a warning only. `glimpse doctor` is reformatted to one
+  `✓`/`✗`/`⚠`/`–` line per check, each `✗`/`⚠` followed by a `→ <fix>`, exiting
+  non-zero when a required check fails. On macOS it also verifies the launchd
+  menu-bar daemon and whether its minimal login-shell PATH can resolve
+  `node`/`python3` — the classic silent failure — with a `GLIMPSE_NODE` fix.
 - **Friendlier message boxes (annotate rail + code-explainer composer).**
   **Enter** now sends and **Shift+Enter** inserts a newline (⌘/Ctrl+Enter still
   sends); an IME-composition Enter — e.g. picking a Chinese/Japanese candidate —

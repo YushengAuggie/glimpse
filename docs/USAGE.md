@@ -245,6 +245,7 @@ chrome-devtools MCP server (`./install.sh --mcp claude`) and use its tools.
 | `GLIMPSE_CDP_PORT` | `9222` | Chrome remote-debugging port |
 | `GLIMPSE_PROFILE` | `$GLIMPSE_DIR/chrome-profile` | dedicated Chrome profile |
 | `GLIMPSE_CHROME` | auto-detect | path to the Chrome/Chromium binary |
+| `GLIMPSE_NODE` | auto-detect | path to `node` when it isn't on `PATH` (e.g. for the launchd menu-bar daemon; set in `~/.config/secrets.env`) |
 | `GLIMPSE_ANNOTATE` | `1` | set `0` to disable highlight-chat injection globally |
 | `GLIMPSE_API_KEY` | — | daemon auto-answer key (falls back to `POE_API_KEY` / `ANTHROPIC_API_KEY`) |
 | `GLIMPSE_PROXY_URL` | `$ANTHROPIC_BASE_URL/v1/messages`, else `http://127.0.0.1:8787/v1/messages` | daemon answer endpoint |
@@ -252,10 +253,20 @@ chrome-devtools MCP server (`./install.sh --mcp claude`) and use its tools.
 
 ## Troubleshooting
 
-- **"chrome cdp: down"** in `glimpse doctor` → run `glimpse chrome`; if Chrome
-  isn't found set `GLIMPSE_CHROME=/path/to/chrome`.
+`glimpse doctor` prints one line per check — `✓` good, `✗` broken (fails the
+run, non-zero exit), `⚠` optional/degraded, `–` informational state — with a
+copy-pasteable `→ <fix>` under every `✗`/`⚠`. A "down" service (`server`,
+`cdp port`, `bridge`) is normal before `glimpse open` and never fails the run.
+
+- **`cdp port … no debuggable Chrome`** in `glimpse doctor` → run `glimpse chrome`;
+  if Chrome isn't found set `GLIMPSE_CHROME=/path/to/chrome`.
 - **Nothing appears after publish** → confirm the server is up
   (`glimpse doctor`), and that you published a `.html` file.
+- **Menu-bar daemon stops answering (macOS)** → `glimpse doctor` re-checks the
+  launchd job under its minimal login-shell PATH. If `launchd node` (or
+  `launchd python3`) shows `✗`, the always-on daemon can't find the runtime and
+  CDP calls die silently; pin it with `GLIMPSE_NODE` in `~/.config/secrets.env`
+  (the printed fix has the exact line), then re-toggle "Start at login".
 - **Port already in use** → set `GLIMPSE_PORT` / `GLIMPSE_CDP_PORT`.
 - **A site won't load logged-in** → log into it once in the Glimpse Chrome
   window; the dedicated profile persists across runs.
