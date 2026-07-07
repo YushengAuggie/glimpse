@@ -67,9 +67,6 @@
   .opt .muted{color:var(--ink-2);font-size:14px;}
   .opt b{font-family:var(--mono);}
   .opt > span{flex:1 1 auto;min-width:0;}
-  /* Checkmark appears on the chosen row. */
-  .opt .tick{flex:0 0 auto;color:var(--accent);font-weight:800;opacity:0;transition:opacity .12s;}
-  .opt:has(input:checked) .tick{opacity:1;}
   .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px;}
   .btn{font:600 15px/1 var(--sans);border-radius:var(--radius-sm);padding:12px 20px;
     border:1px solid var(--line);background:var(--bg-elev);color:var(--ink);cursor:pointer;transition:.12s;}
@@ -108,9 +105,9 @@
   <form class="card" onsubmit="return approve(event)">
     <fieldset>
       <legend>Batch size</legend>
-      <label class="opt"><input type="radio" name="batch" value="500"><span><b>500</b> <span class="muted">— slower, gentlest on live traffic</span></span><span class="tick" aria-hidden="true">✓</span></label>
-      <label class="opt"><input type="radio" name="batch" value="1000" checked><span><b>1,000</b> <span class="muted">— default, ~6h to full coverage</span></span><span class="tick" aria-hidden="true">✓</span></label>
-      <label class="opt"><input type="radio" name="batch" value="5000"><span><b>5,000</b> <span class="muted">— faster, heavier worker load</span></span><span class="tick" aria-hidden="true">✓</span></label>
+      <label class="opt"><input type="radio" name="batch" value="500"><span><b>500</b> <span class="muted">— slower, gentlest on live traffic</span></span></label>
+      <label class="opt"><input type="radio" name="batch" value="1000" checked><span><b>1,000</b> <span class="muted">— default, ~6h to full coverage</span></span></label>
+      <label class="opt"><input type="radio" name="batch" value="5000"><span><b>5,000</b> <span class="muted">— faster, heavier worker load</span></span></label>
     </fieldset>
     <div class="row">
       <button type="submit" class="btn primary">Approve &amp; start</button>

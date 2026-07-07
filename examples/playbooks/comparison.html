@@ -46,10 +46,11 @@
     color:var(--accent);display:inline-flex;align-items:center;gap:8px;margin-bottom:14px;}
   .eyebrow::before{content:"";width:22px;height:2px;background:var(--accent);border-radius:2px;}
   .lede{font-size:18px;line-height:1.55;color:var(--ink-2);max-width:680px;}
-  .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));margin:22px 0 8px;}
+  .grid{display:grid;column-gap:16px;row-gap:8px;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));
+    grid-template-rows:auto auto auto;align-items:stretch;margin:22px 0 8px;}
   .grid>*{min-width:0;}
   .opt{position:relative;background:var(--bg-elev);border:1px solid var(--line);border-radius:var(--radius);
-    padding:20px 22px;box-shadow:var(--shadow);}
+    padding:20px 22px;box-shadow:var(--shadow);display:grid;grid-row:span 3;grid-template-rows:subgrid;}
   /* Raise the non-recommended card's edge so both cards read as distinct in dark. */
   :root[data-theme="dark"] .opt:not(.win){border-color:#3a4258;background:#1a1d29;}
   @media (prefers-color-scheme: dark){:root[data-theme="auto"] .opt:not(.win){border-color:#3a4258;background:#1a1d29;}}
@@ -57,7 +58,7 @@
   .chip{position:absolute;top:-11px;left:20px;font:600 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;
     background:var(--accent);color:#fff;border-radius:999px;padding:5px 11px;}
   :root[data-theme="dark"] .chip{color:#0e0f16;}
-  .opt dl{margin:14px 0 0;display:grid;grid-template-columns:auto 1fr;gap:8px 12px;font-size:14.5px;}
+  .opt dl{margin:0;display:grid;grid-row:2 / span 2;grid-template-columns:auto 1fr;grid-template-rows:subgrid;column-gap:12px;font-size:14.5px;}
   .opt dt{font:600 11px/1.5 var(--mono);letter-spacing:.06em;text-transform:uppercase;padding-top:2px;}
   .opt dt.b{color:var(--good);} .opt dt.c{color:var(--danger);}
   .opt dd{margin:0;color:var(--ink-2);}

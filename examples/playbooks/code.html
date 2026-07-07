@@ -64,6 +64,7 @@
   .kw{color:#c792ea;} .str{color:#c3e88d;} .fn{color:#82aaff;} .cm{color:var(--code-dim);}
   .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr));}
   .grid>*{min-width:0;}
+  .grid.stack{grid-template-columns:1fr;}
   .note{border-left:3px solid var(--good);background:var(--good-soft);border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:12px 16px;margin:16px 0;}
   .note b{color:var(--good);}
   .foot{color:var(--ink-3);font-size:13px;margin-top:32px;padding-top:16px;border-top:1px solid var(--line-2);}
@@ -95,7 +96,7 @@
     constant time, so an attacker can't learn the hash prefix from response latency.</div>
 
   <h2>Before / after in context</h2>
-  <div class="grid">
+  <div class="grid stack">
     <div>
       <div class="codehdr"><span>before</span><span class="lang">python</span></div>
       <pre><code><span class="kw">def</span> <span class="fn">verify</span>(self, email, pw):

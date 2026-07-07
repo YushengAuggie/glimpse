@@ -60,7 +60,19 @@
   .diagram .edgeLabel,.diagram .edgeLabel p,.diagram .edgeLabel span,
   .diagram .edgeLabel foreignObject div{background:var(--bg-elev)!important;color:var(--ink-2)!important;}
   .diagram .edgeLabel rect{fill:var(--bg-elev)!important;}
-  .grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));}
+  /* Dark edge labels: CSS pins --ink-2 on labels in both themes, so lift the dark
+     text explicitly (themeVariables alone can't override this). */
+  :root[data-theme="dark"] .diagram .edgeLabel,
+  :root[data-theme="dark"] .diagram .edgeLabel p,
+  :root[data-theme="dark"] .diagram .edgeLabel span,
+  :root[data-theme="dark"] .diagram .edgeLabel foreignObject div{color:#c8cde0!important;}
+  @media (prefers-color-scheme: dark){
+    :root[data-theme="auto"] .diagram .edgeLabel,
+    :root[data-theme="auto"] .diagram .edgeLabel p,
+    :root[data-theme="auto"] .diagram .edgeLabel span,
+    :root[data-theme="auto"] .diagram .edgeLabel foreignObject div{color:#c8cde0!important;}
+  }
+  .grid{display:grid;gap:14px;grid-template-columns:repeat(3,minmax(0,1fr));}
   .grid>*{min-width:0;}
   .mini{background:var(--bg-sunk);border:1px solid var(--line-2);border-radius:var(--radius-sm);padding:13px 15px;}
   .mini p{margin:2px 0 0;font-size:14px;color:var(--ink-2);}
@@ -72,7 +84,7 @@
     border:1px solid var(--line);border-radius:999px;padding:8px 13px;cursor:pointer;box-shadow:var(--shadow);}
   .theme-toggle:hover{color:var(--ink);border-color:var(--accent);}
   .theme-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
-  @media (max-width:640px){.wrap{padding:44px 18px 72px;}}
+  @media (max-width:640px){.wrap{padding:44px 18px 72px;}.grid{grid-template-columns:1fr;}}
   @media (prefers-reduced-motion:reduce){*{transition:none!important;}}
 </style>
 </head>
@@ -104,8 +116,10 @@ flowchart LR
       <div class="mini"><h3>Queue + worker</h3><p>Workers pull jobs, generate each size, retry with backoff, flip status.</p></div>
       <div class="mini"><h3>Storage + CDN</h3><p>One bucket, predictable keys (<code>img/{id}/{size}.webp</code>); CDN caches by key.</p></div>
     </div>
-    <div class="note">Mermaid bakes its theme at <code>initialize()</code> — this
-      page re-renders the graph on every light/dark flip. Try the toggle.</div>
+    <div class="note">The original lands in object storage <b>before</b> the resize
+      job is enqueued, so an upload survives a worker crash — a failed job just
+      retries from the stored original, and the CDN serves the finished sizes
+      straight from their keys.</div>
   </div>
   <div class="foot">Glimpse example · diagram playbook · portable, light + dark</div>
 </div>
