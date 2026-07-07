@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en" data-theme="auto">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Input playbook — Approve the backfill</title>
+<style>
+  :root{
+    color-scheme: light dark;
+    --bg:#f6f7fb; --bg-elev:#ffffff; --bg-sunk:#f0f2f8;
+    --ink:#1a1b26; --ink-2:#565a6e; --ink-3:#8b90a3;
+    --line:#e5e7f0; --line-2:#eef0f7;
+    --accent:#4c5fd5; --accent-ink:#3245b8; --accent-soft:#eef1ff;
+    --good:#2f9e44; --good-soft:#eaf7ee; --warn:#e8590c; --warn-soft:#fdf0e6;
+    --danger:#e03131; --danger-soft:#fdeded;
+    --shadow:0 1px 2px rgba(20,20,40,.05), 0 8px 24px -18px rgba(20,20,40,.22);
+    --radius:14px; --radius-sm:9px;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,sans-serif;
+  }
+  @media (prefers-color-scheme: dark){ :root[data-theme="auto"]{
+    --bg:#0e0f16; --bg-elev:#171923; --bg-sunk:#12141d;
+    --ink:#e6e8f0; --ink-2:#a4a9bd; --ink-3:#6f7488;
+    --line:#262a38; --line-2:#1f2330;
+    --accent:#93a4ff; --accent-ink:#b7c2ff; --accent-soft:#1b2140;
+    --good:#51cf66; --good-soft:#12281a; --warn:#ff922b; --warn-soft:#2a1c10;
+    --danger:#ff6b6b; --danger-soft:#2a1414;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 30px -20px rgba(0,0,0,.7);
+  }}
+  :root[data-theme="dark"]{
+    --bg:#0e0f16; --bg-elev:#171923; --bg-sunk:#12141d;
+    --ink:#e6e8f0; --ink-2:#a4a9bd; --ink-3:#6f7488;
+    --line:#262a38; --line-2:#1f2330;
+    --accent:#93a4ff; --accent-ink:#b7c2ff; --accent-soft:#1b2140;
+    --good:#51cf66; --good-soft:#12281a; --warn:#ff922b; --warn-soft:#2a1c10;
+    --danger:#ff6b6b; --danger-soft:#2a1414;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 30px -20px rgba(0,0,0,.7);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.62 var(--sans);
+    -webkit-font-smoothing:antialiased;transition:background .2s,color .2s;}
+  .wrap{max-width:680px;margin:0 auto;padding:56px 24px 96px;}
+  h1{font-size:clamp(24px,4vw,30px);line-height:1.15;margin:0 0 8px;letter-spacing:-.02em;font-weight:750;}
+  p{margin:10px 0;} b{font-weight:650;}
+  .eyebrow{font:600 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;
+    color:var(--accent);display:inline-flex;align-items:center;gap:8px;margin-bottom:14px;}
+  .eyebrow::before{content:"";width:22px;height:2px;background:var(--accent);border-radius:2px;}
+  .lede{font-size:17px;line-height:1.55;color:var(--ink-2);}
+  .card{background:var(--bg-elev);border:1px solid var(--line);border-radius:var(--radius);
+    padding:22px 24px;margin:18px 0;box-shadow:var(--shadow);}
+  .card>:first-child{margin-top:0;}
+  fieldset{border:none;padding:0;margin:0 0 6px;} legend{font:600 11.5px/1 var(--mono);
+    letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2);margin-bottom:10px;}
+  .opt{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--line);
+    border-radius:var(--radius-sm);margin:8px 0;cursor:pointer;transition:border-color .12s,background .12s;}
+  .opt:hover{background:var(--bg-sunk);border-color:var(--ink-3);}
+  .opt:has(input:checked){border-color:var(--accent);background:var(--accent-soft);}
+  /* Custom radio: clearly hollow when off, accent-filled ring when on — identical in both themes. */
+  .opt input{appearance:none;-webkit-appearance:none;margin:0;flex:0 0 auto;
+    width:20px;height:20px;border-radius:50%;border:2px solid var(--ink-3);
+    background:var(--bg-elev);cursor:pointer;display:grid;place-content:center;
+    transition:border-color .12s,background .12s;}
+  .opt input::before{content:"";width:8px;height:8px;border-radius:50%;
+    background:var(--bg-elev);transform:scale(0);transition:transform .12s;}
+  .opt input:checked{border-color:var(--accent);background:var(--accent);}
+  .opt input:checked::before{transform:scale(1);}
+  .opt input:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  .opt .muted{color:var(--ink-2);font-size:14px;}
+  .opt b{font-family:var(--mono);}
+  .opt > span{flex:1 1 auto;min-width:0;}
+  /* Checkmark appears on the chosen row. */
+  .opt .tick{flex:0 0 auto;color:var(--accent);font-weight:800;opacity:0;transition:opacity .12s;}
+  .opt:has(input:checked) .tick{opacity:1;}
+  .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px;}
+  .btn{font:600 15px/1 var(--sans);border-radius:var(--radius-sm);padding:12px 20px;
+    border:1px solid var(--line);background:var(--bg-elev);color:var(--ink);cursor:pointer;transition:.12s;}
+  .btn:hover{border-color:var(--accent);background:var(--bg-sunk);}
+  .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  /* Primary = indigo brand accent (not a status color). */
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+  :root[data-theme="dark"] .btn.primary{color:#0b1020;}
+  @media (prefers-color-scheme: dark){:root[data-theme="auto"] .btn.primary{color:#0b1020;}}
+  .btn.primary:hover{background:var(--accent-ink);border-color:var(--accent-ink);}
+  :root[data-theme="dark"] .btn.primary:hover{filter:brightness(1.08);background:var(--accent);border-color:var(--accent);}
+  /* Danger reserved strictly for the destructive Reject; readable outline, fills on hover. */
+  .btn.danger{color:var(--danger);border-color:var(--danger);background:transparent;}
+  .btn.danger:hover{background:var(--danger-soft);border-color:var(--danger);}
+  .sent{margin-top:18px;padding:11px 14px;border-radius:var(--radius-sm);background:var(--good-soft);
+    color:var(--good);font-weight:650;font-size:14.5px;}
+  code{font:13px/1.5 var(--mono);background:var(--bg-sunk);color:var(--accent-ink);padding:.12em .4em;border-radius:5px;}
+  .foot{color:var(--ink-3);font-size:13px;margin-top:28px;padding-top:16px;border-top:1px solid var(--line-2);}
+  .theme-toggle{position:fixed;top:16px;right:16px;z-index:10;font:600 13px/1 var(--sans);
+    display:inline-flex;align-items:center;gap:7px;background:var(--bg-elev);color:var(--ink-2);
+    border:1px solid var(--line);border-radius:999px;padding:8px 13px;cursor:pointer;box-shadow:var(--shadow);}
+  .theme-toggle:hover{color:var(--ink);border-color:var(--accent);}
+  .theme-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  @media (max-width:640px){.wrap{padding:44px 18px 72px;}}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;}}
+</style>
+</head>
+<body>
+<button class="theme-toggle" id="themeToggle" aria-label="Toggle light/dark theme"><span id="themeIcon">🌙</span><span id="themeLabel">Dark</span></button>
+<div class="wrap">
+  <div class="eyebrow">Playbook · input</div>
+  <h1>Approve the backfill plan?</h1>
+  <p class="lede">Approving starts the batched backfill <b>now</b>. Nothing is
+    deleted; originals are kept. Pick a batch size, then approve.</p>
+
+  <form class="card" onsubmit="return approve(event)">
+    <fieldset>
+      <legend>Batch size</legend>
+      <label class="opt"><input type="radio" name="batch" value="500"><span><b>500</b> <span class="muted">— slower, gentlest on live traffic</span></span><span class="tick" aria-hidden="true">✓</span></label>
+      <label class="opt"><input type="radio" name="batch" value="1000" checked><span><b>1,000</b> <span class="muted">— default, ~6h to full coverage</span></span><span class="tick" aria-hidden="true">✓</span></label>
+      <label class="opt"><input type="radio" name="batch" value="5000"><span><b>5,000</b> <span class="muted">— faster, heavier worker load</span></span><span class="tick" aria-hidden="true">✓</span></label>
+    </fieldset>
+    <div class="row">
+      <button type="submit" class="btn primary">Approve &amp; start</button>
+      <button type="button" class="btn danger" onclick="reject()">Reject</button>
+    </div>
+    <div class="sent" id="sent" hidden>✓ Sent to the agent — you can close this tab.</div>
+  </form>
+  <div class="foot">Glimpse example · input playbook · one explicit submit, self-describing value via <code>glimpseRespond()</code></div>
+</div>
+<script>
+  /* The one stable contract: send exactly one value on an explicit action.
+     Opened directly (no `glimpse ask`), postMessage simply no-ops. */
+  function glimpseRespond(value){
+    parent.postMessage({type:"glimpse:response", value:value}, "*");
+    document.getElementById('sent').hidden = false;
+  }
+  function approve(e){
+    e.preventDefault();
+    var batch = +document.querySelector('input[name=batch]:checked').value;
+    glimpseRespond({ decision:'approve', batch: batch });   // never fired on mere radio change
+    return false;
+  }
+  function reject(){ glimpseRespond({ decision:'reject' }); }
+
+  (function(){
+    var root=document.documentElement, btn=document.getElementById('themeToggle'),
+        icon=document.getElementById('themeIcon'), label=document.getElementById('themeLabel'), KEY='glimpse-theme';
+    function systemDark(){return matchMedia('(prefers-color-scheme: dark)').matches;}
+    function effective(){var t=root.getAttribute('data-theme');return (t==='dark'||t==='light')?t:(systemDark()?'dark':'light');}
+    function paint(){var d=effective()==='dark';icon.textContent=d?'☀️':'🌙';label.textContent=d?'Light':'Dark';
+      btn.setAttribute('aria-label', d?'Switch to light theme':'Switch to dark theme');
+      if(window.__onThemeChange)window.__onThemeChange(effective());}
+    window.__applyTheme=function(mode){root.setAttribute('data-theme',mode);
+      try{localStorage.setItem(KEY,mode);}catch(e){}paint();};
+    try{var s=localStorage.getItem(KEY);if(s==='dark'||s==='light')root.setAttribute('data-theme',s);}catch(e){}
+    paint();
+    btn.addEventListener('click',function(){window.__applyTheme(effective()==='dark'?'light':'dark');});
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(){
+      var t=root.getAttribute('data-theme'); if(t!=='dark'&&t!=='light')paint();});
+  })();
+</script>
+</body>
+</html>

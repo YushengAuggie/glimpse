@@ -4,17 +4,22 @@
 # local dashboard that you watch update in a real Chrome window.
 #
 #   glimpse open [url|#slug]      bring everything up + navigate Chrome to the canvas
-#   glimpse publish <slug> <title> [file] [--no-annotate]   publish an HTML artifact (stdin if no file)
+#   glimpse publish <slug> <title> [file] [--no-annotate] [--gate] [--no-audit]   publish an HTML artifact (stdin if no file)
+#                                auto-audits the render and warns; --gate fails on layout errors; --no-audit skips
 #   glimpse explain <slug> <title> [spec.json]   publish an interactive code-explainer (spec on stdin if omitted)
-#   glimpse ask <slug> <title> [file] [--timeout N]   publish an interactive artifact,
-#                                block until the user responds, print {"slug","value"} JSON
+#   glimpse ask <slug> <title> [file] [--form] [--timeout N]   publish an interactive artifact,
+#                                block until the user responds, print {"slug","value"} JSON.
+#                                --form: `file` is a declarative form spec (JSON, stdin if
+#                                omitted) rendered to native radio/checkbox/select/text controls.
 #   glimpse export <slug> [--out <path>]   write a single portable HTML file (local assets inlined; remote refs kept)
 #   glimpse share <slug> [--public] [--password <pw>]   upload a portable copy to ht-ml.app; PRIVATE (password) by default
-#   glimpse list                 list artifacts (pinned first)
+#   glimpse list [--json]        list artifacts (pinned first; --json for a compact machine record)
 #   glimpse rm <slug>...         delete artifacts (from the feed + disk)
 #   glimpse clear --all | --keep N   prune artifacts (pinned are always kept)
 #   glimpse pin <slug> | unpin <slug>   pin to the top of the sidebar (persists)
 #   --- highlight chat (the user selects text in an artifact and asks about it) ---
+#   glimpse poll [--json] [--timeout N] [--interval S]   block until there is human feedback,
+#                                print it as compact records (or JSON), then return — one call an agent parks on
 #   glimpse bridge [--wait]      stream highlight-questions as JSON lines (run under an agent Monitor)
 #   glimpse daemon [--wait]      always-on: bridge + auto-answer questions via the local API proxy
 #   glimpse menubar              macOS menu-bar app to toggle / keep the agent online (needs uv, or rumps installed)
@@ -42,6 +47,8 @@
 #   GLIMPSE_PROFILE    chrome profile dir    (default: $GLIMPSE_DIR/chrome-profile)
 #   GLIMPSE_CHROME     path to chrome binary (default: auto-detect)
 #   GLIMPSE_ANNOTATE   0 to disable highlight-chat injection globally (default: 1)
+#   GLIMPSE_AUDIT      0 to disable auto-audit-on-publish (default: 1)
+#   GLIMPSE_AUDIT_GATE 1 to make a bad-layout publish fail hard (default: 0; per-publish: --gate)
 #   GLIMPSE_API_KEY    daemon auto-answer key (falls back to POE_API_KEY / ANTHROPIC_API_KEY)
 #   GLIMPSE_PROXY_URL  daemon answer endpoint (default: $ANTHROPIC_BASE_URL/v1/messages, else http://127.0.0.1:8787/v1/messages)
 #   GLIMPSE_MODEL      daemon answer model    (default: claude-haiku-4-5)
@@ -54,6 +61,8 @@ PROFILE="${GLIMPSE_PROFILE:-$GLIMPSE_DIR/chrome-profile}"
 ARTIFACTS="$GLIMPSE_DIR/artifacts"
 THREADS="$GLIMPSE_DIR/threads"
 ANNOTATE="${GLIMPSE_ANNOTATE:-1}"      # 0 disables highlight-chat injection (per-publish: --no-annotate)
+AUDIT="${GLIMPSE_AUDIT:-1}"            # 0 disables auto-audit-on-publish (per-publish: --no-audit)
+AUDIT_GATE="${GLIMPSE_AUDIT_GATE:-0}"  # 1 makes a bad-layout publish fail hard (per-publish: --gate)
 export GLIMPSE_DIR PORT CDP_PORT
 
 # High-signal secret regex, kept in sync with scripts/check-secrets.sh (PATTERN).
@@ -93,6 +102,15 @@ _bridge_cleanup(){
   # before we remove the lock.
   [ -n "${_BRIDGE_NODE_PID:-}" ] && kill "${_BRIDGE_NODE_PID}" 2>/dev/null || true
   [ -n "${_BRIDGE_LOCK:-}" ] && rm -f "${_BRIDGE_LOCK}" || true
+  return 0
+}
+
+# Same at-scope cleanup for `glimpse poll` (see cmd_bridge for why this can't live
+# inside the function): kill the node child and drop the poll lock on exit/signal.
+_POLL_NODE_PID=""; _POLL_LOCK=""
+_poll_cleanup(){
+  [ -n "${_POLL_NODE_PID:-}" ] && kill "${_POLL_NODE_PID}" 2>/dev/null || true
+  [ -n "${_POLL_LOCK:-}" ] && rm -f "${_POLL_LOCK}" || true
   return 0
 }
 
@@ -283,12 +301,22 @@ cmd_open(){
   echo "canvas open in Chrome → $target"
 }
 
-# Render-correctness check: show the artifact, let the injected auditor measure the
-# REAL layout (overflow / clipped / overlapping text), and print what's wrong so an
-# agent can fix it before a human reviews. Exit 2 if any error-severity finding.
-cmd_audit(){
-  local slug="${1:?usage: glimpse audit <slug>}"
-  _validate_slug "$slug"
+# Is the canvas already live (static server AND a debuggable Chrome both up)? The
+# auditor only produces findings from a REAL render, so this gates whether an
+# auto-audit can run without launching anything. Quick loopback curls, no side
+# effects. Returns 0 when live.
+_canvas_live(){
+  curl -fsS "http://127.0.0.1:${PORT}/feed.json"      >/dev/null 2>&1 \
+    && curl -fsS "http://127.0.0.1:${CDP_PORT}/json/version" >/dev/null 2>&1
+}
+
+# Drive the injected auditor against one slug and print the raw audit JSON object
+# (the same shape as window.__glimpse_audit: {slug,viewportWidth,errors,warnings,
+# findings,ts}) on stdout, or an empty line if the auditor never reported. Brings
+# the canvas up (idempotent) and reflects the CURRENT render. Shared by the
+# standalone `audit` verb and auto-audit-on-publish so there is one capture path.
+_audit_capture(){
+  local slug="$1"
   cmd_serve >/dev/null
   cmd_chrome >/dev/null
   SLUG="$slug" URL="http://127.0.0.1:${PORT}/#${slug}" run_cdp '
@@ -306,7 +334,7 @@ cmd_audit(){
     let audit=null, stable=0, waited=0;
     for(let i=0;i<40;i++){                          // up to ~8s
       await new Promise(r=>setTimeout(r,200)); waited+=200;
-      let v; try{ v=(await send("Runtime.evaluate",{expression:"JSON.stringify(window.__glimpse_audit||null)",returnByValue:true})).result.value; }catch{ continue; }
+      let v; try{ v=(await send("Runtime.evaluate",{expression:"JSON.stringify((window.__glimpse_audit||{})["+JSON.stringify(slug)+"]||null)",returnByValue:true})).result.value; }catch{ continue; }
       if(!v) continue;
       let o; try{ o=JSON.parse(v); }catch{ continue; }
       if(o && o.slug===slug){
@@ -316,32 +344,79 @@ cmd_audit(){
       }
     }
     close();
-    if(!audit){ console.log("glimpse: no layout audit for "+slug+" — is it published, and is annotate enabled? (the auditor ships with highlight-chat injection)"); process.exit(0); }
-    const f=audit.findings||[];
-    const err=f.filter(x=>x.severity==="error"), warn=f.filter(x=>x.severity!=="error");
-    console.log("glimpse audit "+slug+" @ "+audit.viewportWidth+"px viewport — "+err.length+" error, "+warn.length+" warning");
-    for(const x of f) console.log("  ["+x.severity+"] "+x.kind+"  "+x.selector+(x.overflowPx?"  (+"+x.overflowPx+"px)":""));
-    console.log(JSON.stringify({slug:audit.slug,viewportWidth:audit.viewportWidth,errors:err.length,warnings:warn.length,findings:f}));
-    process.exit(err.length?2:0);
+    console.log(audit ? JSON.stringify(audit) : "");
   '
 }
 
+# Render-correctness check: show the artifact, let the injected auditor measure the
+# REAL layout (overflow / clipped / overlapping text), and print what's wrong so an
+# agent can fix it before a human reviews. Exit 2 if any error-severity finding.
+cmd_audit(){
+  local slug="${1:?usage: glimpse audit <slug>}"
+  _validate_slug "$slug"
+  local report; report="$(_lib_file glimpse_audit_report.py)" || die "glimpse_audit_report.py not found — reinstall glimpse"
+  local json; json="$(_audit_capture "$slug")"
+  if [ -z "$json" ]; then
+    echo "glimpse: no layout audit for $slug — is it published, and is annotate enabled? (the auditor ships with highlight-chat injection)"
+    exit 0
+  fi
+  local rc=0
+  MODE=full SLUG="$slug" python3 "$report" <<<"$json" || rc=$?
+  exit "$rc"
+}
+
+# Auto-audit a freshly-published artifact and surface a concise, actionable
+# warning (on stderr, so stdout stays the published URL). Warn-only by default;
+# with the gate (--gate / GLIMPSE_AUDIT_GATE=1) an error-severity finding makes
+# publish exit non-zero so an agent or CI can enforce layout quality. A clean
+# artifact prints nothing. Returns the report's exit code only when gating.
+_publish_autoaudit(){
+  local slug="$1" gate="$2" audit="${3:-1}"
+  [ "$audit" = "0" ] && return 0                 # auto-audit disabled
+  # Without the gate, only audit when you're already watching (canvas live) — a
+  # scripted/headless publish stays a fast file write and never launches Chrome.
+  # The gate is an explicit request to enforce, so it brings the canvas up.
+  if [ "$gate" != "1" ] && ! _canvas_live; then return 0; fi
+  local report; report="$(_lib_file glimpse_audit_report.py)" || return 0
+  local json; json="$(_audit_capture "$slug" 2>/dev/null)" || json=""
+  if [ -z "$json" ]; then
+    # The auditor never reported: annotate disabled, or the render couldn't be
+    # reached. Not a layout finding, so it never fails the gate — but say so under
+    # --gate rather than pass silently, so CI logs aren't misleading.
+    [ "$gate" = "1" ] && echo "glimpse: ⚠ layout gate — no audit for $slug (annotate off or render unreachable); not enforced" >&2
+    return 0
+  fi
+  local out rc=0
+  out="$(MODE=brief SLUG="$slug" python3 "$report" <<<"$json")" || rc=$?
+  [ -n "$out" ] && printf '%s\n' "$out" >&2
+  if [ "$gate" = "1" ] && [ "$rc" -ne 0 ]; then
+    echo "glimpse: ✗ layout gate — publish flagged (rendered artifact left in place); fix the issues above, then re-publish" >&2
+    return "$rc"
+  fi
+  return 0
+}
+
 cmd_publish(){
-  local noann=0; local -a pos=()
+  local noann=0 gate="$AUDIT_GATE" audit="$AUDIT"; local -a pos=()
   while [ $# -gt 0 ]; do
     case "$1" in
       --no-annotate) noann=1; shift;;
+      --gate)        gate=1; shift;;           # turn layout findings into a hard failure
+      --no-audit)    audit=0; shift;;          # skip the auto-audit entirely
       *) pos+=("$1"); shift;;
     esac
   done
   local slug="${pos[0]:-}" title="${pos[1]:-}" src="${pos[2]:-/dev/stdin}"
-  [ -n "$slug" ] && [ -n "$title" ] || die "usage: glimpse publish <slug> <title> [file.html] [--no-annotate]"
+  [ -n "$slug" ] && [ -n "$title" ] || die "usage: glimpse publish <slug> <title> [file.html] [--no-annotate] [--gate] [--no-audit]"
   [ "$ANNOTATE" = "0" ] && noann=1            # global GLIMPSE_ANNOTATE=0 disables injection
   _validate_slug "$slug"
   seed_root
   _write_artifact "$slug" "$src"
   feed_upsert "$slug" "$title" "$(date +%s)" 0 "$noann"
   echo "published → http://127.0.0.1:${PORT}/#${slug}  (file: $ARTIFACTS/${slug}.html)"
+  # Auto-audit the real render and warn (or, with the gate, fail). Its rc is the
+  # verb's rc so a tripped gate propagates a non-zero exit for CI/agents.
+  _publish_autoaudit "$slug" "$gate" "$audit"
 }
 
 _validate_slug(){
@@ -376,7 +451,7 @@ _write_artifact(){
 # to stdout. Inliner warnings go to stderr; the module confines reads to the
 # artifact's directory and secret-scrubs the bundle (see lib/glimpse_export.py).
 _inline_artifact(){
-  local slug="$1" src="$ARTIFACTS/${slug}.html"
+  local slug="$1"; local src="$ARTIFACTS/${slug}.html"
   [ -f "$src" ] || die "no artifact '$slug' — publish it first (glimpse publish $slug …). try: glimpse list"
   local mod; mod="$(_lib_file glimpse_export.py)" || die "export engine not found (lib/glimpse_export.py) — reinstall glimpse"
   have python3 || die "python3 is required to export/share"
@@ -493,19 +568,32 @@ cmd_explain(){
 }
 
 cmd_ask(){
-  local timeout=300; local -a pos=()
+  local timeout=300 form=0; local -a pos=()
   while [ $# -gt 0 ]; do
     case "$1" in
-      --timeout) timeout="${2:-}"; shift 2 || die "usage: glimpse ask <slug> <title> [file.html] [--timeout N]";;
+      --timeout) timeout="${2:-}"; shift 2 || die "usage: glimpse ask <slug> <title> [file] [--form] [--timeout N]";;
+      --form) form=1; shift;;   # source is a declarative form spec (JSON), not raw HTML
       *) pos+=("$1"); shift;;
     esac
   done
   local slug="${pos[0]:-}" title="${pos[1]:-}" src="${pos[2]:-/dev/stdin}"
-  [ -n "$slug" ] && [ -n "$title" ] || die "usage: glimpse ask <slug> <title> [file.html] [--timeout N]"
+  [ -n "$slug" ] && [ -n "$title" ] || die "usage: glimpse ask <slug> <title> [file] [--form] [--timeout N]"
   case "$timeout" in *[!0-9]*|"") die "--timeout must be a number of seconds";; esac
   _validate_slug "$slug"
   seed_root
-  _write_artifact "$slug" "$src"
+  if [ "$form" = 1 ]; then
+    # Declarative path: validate + render native accessible controls (radio /
+    # checkbox / select / text / textarea) into an artifact that returns the
+    # structured choice through the SAME glimpseRespond channel below.
+    [ "$src" = /dev/stdin ] || [ -f "$src" ] || die "form spec file not found: $src"
+    local mod; mod="$(_lib_file glimpse_ask.py)" || die "ask form engine not found; searched \$SELF_DIR/../lib/, \$GLIMPSE_DIR/, \$HOME/.glimpse/ — reinstall glimpse"
+    # validate + wrap in one read of the spec; publish nothing on error (module
+    # returns 2 for spec-content errors, which we propagate; 1 is our own).
+    local html; html="$(python3 "$mod" wrap "$title" < "$src")" || exit $?
+    printf '%s' "$html" | _write_artifact "$slug" /dev/stdin
+  else
+    _write_artifact "$slug" "$src"
+  fi
   feed_upsert "$slug" "$title" "$(date +%s)" 1 1   # pending=1 → "awaiting you"; noannotate=1 (ask owns glimpseRespond)
   cmd_serve >/dev/null
   cmd_chrome >/dev/null
@@ -617,6 +705,54 @@ cmd_wait(){
   cmd_chrome >/dev/null
   local f; f="$(_lib_file glimpse-interact.mjs)" || die "glimpse-interact.mjs not found — reinstall glimpse"
   ACTION=wait SELECTOR="$selector" TEXT="$text" TIMEOUT_MS="$((timeout*1000))" run_cdp "$(cat "$f")"
+}
+
+# glimpse poll — ONE blocking call the agent parks on. It waits until there is
+# undelivered human feedback (a pending highlight/question), prints it as compact
+# structured records (or --json), then returns. Built on the same files-on-disk,
+# pull-only drain machinery as the bridge: each tick it drains the canvas outbox
+# into the durable thread store (idempotent, so it coexists with a bridge/daemon)
+# and blocks on the pending queue — so queued feedback survives if the agent wasn't
+# polling yet, and the next poll delivers the next item (nothing dropped). Degrades
+# to disk-only when Chrome is down. Exit: 0 delivered · 3 timed out with nothing.
+cmd_poll(){
+  local as_json=0 timeout=300 interval=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --json)     as_json=1; shift;;
+      --timeout)  timeout="${2:-}";  shift 2 || die "usage: glimpse poll [--json] [--timeout N] [--interval S]";;
+      --interval) interval="${2:-}"; shift 2 || die "usage: glimpse poll [--json] [--timeout N] [--interval S]";;
+      *) die "usage: glimpse poll [--json] [--timeout N] [--interval S]";;
+    esac
+  done
+  case "$timeout" in *[!0-9]*|"") die "--timeout must be a whole number of seconds (0 = wait indefinitely)";; esac
+  local interval_ms=500
+  if [ -n "$interval" ]; then
+    interval_ms="$(python3 -c 'import sys;print(max(100,int(float(sys.argv[1])*1000)))' "$interval" 2>/dev/null)" \
+      || die "--interval must be seconds, e.g. 0.5"
+  fi
+  require_node
+  seed_root
+  # One poll per canvas cursor: a second concurrent poll would race the .poll.state
+  # delivered set and could double-deliver. Stale-pid detection mirrors cmd_bridge.
+  local lock="$GLIMPSE_DIR/.poll.lock" opid
+  if [ -f "$lock" ]; then
+    opid="$(cat "$lock" 2>/dev/null || true)"
+    if [ -n "$opid" ] && kill -0 "$opid" 2>/dev/null; then die "poll already running (pid $opid) — one blocking poll at a time"; fi
+  fi
+  echo $$ > "$lock"; _POLL_LOCK="$lock"
+  trap _poll_cleanup EXIT INT TERM
+  # Splice the CDP helper ahead of the poll loop (cdpConnect in scope), exactly as
+  # cmd_bridge composes cdp + bridge.
+  local cdp poll
+  cdp="$(_lib_file glimpse-cdp.mjs)"   || die "glimpse-cdp.mjs not found — reinstall glimpse"
+  poll="$(_lib_file glimpse-poll.mjs)" || die "glimpse-poll.mjs not found — reinstall glimpse"
+  GLIMPSE_BIN="$SELF_DIR/$(basename "$SOURCE")" POLL_JSON="$as_json" \
+    POLL_TIMEOUT_MS="$((timeout*1000))" POLL_INTERVAL_MS="$interval_ms" \
+    node --input-type=module -e "$(cat "$cdp")"$'\n'"$(cat "$poll")" &
+  _POLL_NODE_PID=$!
+  local rc=0; wait "$_POLL_NODE_PID" || rc=$?    # capture child rc without tripping set -e (so cleanup runs)
+  exit "$rc"
 }
 
 # Accessibility-tree text snapshot of the current (or given) page — the readable,
@@ -813,6 +949,9 @@ cmd_doctor(){
   if [ -f "$GLIMPSE_DIR/glimpse_explain.py" ] || [ -f "$SELF_DIR/../lib/glimpse_explain.py" ]; then _dok explain "engine installed"
   else _dwarn explain "engine missing"; _dfix "re-run install.sh to restore lib/glimpse_explain.py"; fi
 
+  if [ -f "$GLIMPSE_DIR/glimpse_ask.py" ] || [ -f "$SELF_DIR/../lib/glimpse_ask.py" ]; then _dok "ask form" "engine installed"
+  else _dwarn "ask form" "engine missing"; _dfix "re-run install.sh to restore lib/glimpse_ask.py  (plain ask still works)"; fi
+
   local bp; bp="$(cat "$GLIMPSE_DIR/.bridge.lock" 2>/dev/null || true)"
   if [ -n "$bp" ] && kill -0 "$bp" 2>/dev/null; then _dok bridge "running (pid $bp)"
   else _dnote bridge "not running — start with: glimpse bridge  (or: glimpse daemon)"; fi
@@ -832,8 +971,10 @@ cmd_doctor(){
 }
 
 cmd_list(){
+  local as_json=0
+  case "${1:-}" in --json) as_json=1;; "") ;; *) die "usage: glimpse list [--json]";; esac
   local f; f="$(_lib_file glimpse_feed.py)" || die "glimpse_feed.py not found — reinstall glimpse"
-  GLIMPSE_DIR="$GLIMPSE_DIR" python3 "$f" list
+  GLIMPSE_DIR="$GLIMPSE_DIR" LIST_JSON="$as_json" python3 "$f" list
 }
 
 cmd_rm(){
@@ -930,6 +1071,7 @@ case "${1:-help}" in
   reply)   shift; cmd_reply "$@";;
   thread)  shift; cmd_thread "$@";;
   threads) shift; cmd_threads "$@";;
+  poll)    shift; cmd_poll "$@";;
   bridge)  shift; cmd_bridge "$@";;
   daemon)  shift; cmd_daemon "$@";;
   menubar) shift; cmd_menubar "$@";;

@@ -1,0 +1,46 @@
+{
+  "prompt": "Approve the thumbnail migration?",
+  "intro": "Add a thumbnails table and backfill in batches. Keep originals; no destructive deletes.",
+  "fields": [
+    {
+      "type": "radio",
+      "name": "decision",
+      "label": "Decision",
+      "required": true,
+      "options": [
+        { "value": "approve", "label": "Approve" },
+        { "value": "approve_offpeak", "label": "Approve, but only off-peak" },
+        { "value": "reject", "label": "Reject" }
+      ]
+    },
+    {
+      "type": "checkbox",
+      "name": "safeguards",
+      "label": "Safeguards (pick any)",
+      "help": "Extra caution the agent should apply during the run.",
+      "options": [
+        { "value": "snapshot", "label": "Snapshot the table first", "selected": true },
+        { "value": "dry_run", "label": "Dry-run one batch and pause" },
+        { "value": "alert", "label": "Page me on any error" }
+      ]
+    },
+    {
+      "type": "select",
+      "name": "batch",
+      "label": "Batch size",
+      "required": true,
+      "options": [
+        { "value": "500", "label": "500 (slower, safer)" },
+        { "value": "1000", "label": "1,000 (default)" },
+        { "value": "5000", "label": "5,000 (faster, heavier)" }
+      ]
+    },
+    {
+      "type": "text",
+      "name": "note",
+      "label": "Note for the agent",
+      "placeholder": "e.g. start after 6pm ET"
+    }
+  ],
+  "submitLabel": "Send decision"
+}

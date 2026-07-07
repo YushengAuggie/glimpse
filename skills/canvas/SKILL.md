@@ -45,10 +45,37 @@ glimpse open '#some-slug'    # jump straight to one artifact
    Re-publishing the same slug live-updates the open view (cache-busted by ts).
 
 ### Authoring tips
-- One `<title>`, inline everything, ~860px max width reads well in the iframe.
+- One `<title>`, inline everything, ~820px max width reads well in the iframe.
 - Building blocks: mermaid diagrams, `<details>` collapsibles, tab strips,
-  `<table>`, callout boxes. Light theme inside the artifact looks clean.
-- Verify rendering with `glimpse shot /tmp/out.png` then Read the PNG.
+  `<table>`, callout boxes.
+- Ship **first-class light *and* dark mode** and prevent horizontal overflow —
+  see the playbooks below (the `base.html` starter does both correctly).
+- Verify rendering with `glimpse shot /tmp/out.png` then Read the PNG. Check
+  **both themes**.
+
+## Playbooks — how to author a *good* artifact
+
+Before writing HTML, pick the matching playbook under
+[`playbooks/`](playbooks/) and author from it. Each gives a crisp **use-when**, a
+**recipe**, and a **copy-adaptable snippet**; `playbooks/README.md` is the router
+and holds the shared **design direction**, **light/dark theming**, and
+**portability/overflow** rules. Copy [`playbooks/base.html`](playbooks/base.html)
+as your starting point and replace its `<main>`.
+
+| Playbook | Use when |
+|---|---|
+| [diagram](playbooks/diagram.md) | Flows, architecture, state, relationships (Mermaid by default, as in `examples/`). |
+| [table](playbooks/table.md) | Dense, same-shaped records → scan-friendly. |
+| [plan](playbooks/plan.md) | Explain a technical/product plan before implementing. |
+| [code](playbooks/code.md) | Source, diffs, before/after (or use the `explain` skill). |
+| [input](playbooks/input.md) | Collect a structured decision — ties to `glimpse ask`. |
+| [comparison](playbooks/comparison.md) | Options, tradeoffs, current vs. target. |
+| [slides](playbooks/slides.md) | A paced deck — only when a deck is asked for. |
+
+One artifact often combines several (a plan with a diagram and a comparison) —
+read every playbook that applies. Worked examples live in
+[`examples/playbooks/`](../../examples/playbooks/) with light+dark screenshots in
+`examples/screenshots/`.
 
 ## Ask the user (two-way)
 

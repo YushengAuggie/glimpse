@@ -169,9 +169,10 @@ async function loadAuditSrc(){
   try { auditSrc = await (await fetch('glimpse-audit.js?v='+GL_EPOCH)).text(); return auditSrc; }
   catch(e){ return ""; }
 }
-// Latest layout audit pushed up from the on-screen artifact; `glimpse audit <slug>`
-// reads this over CDP. One artifact shows at a time, so a single latest-buffer is enough.
-window.__glimpse_audit = window.__glimpse_audit || null;
+// Layout audits pushed up from artifacts, keyed by slug: window.__glimpse_audit[slug].
+// `glimpse audit <slug>` reads its own entry over CDP. Keyed per artifact (not one
+// shared latest-buffer) so several active artifacts never mask each other's audit.
+window.__glimpse_audit = window.__glimpse_audit || {};
 
 function fmt(ts){ try { return new Date(ts*1000).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); } catch(e){ return ""; } }
 function answered(slug){ return !!window.__glimpse_responses[slug]; }
@@ -306,7 +307,7 @@ async function show(slug){
   // refresh restores THIS artifact — and its anchored comments — instead of the newest.
   try { const h='#'+encodeURIComponent(slug); if(location.hash!==h) history.replaceState(null,'',h); } catch(e){}
   threadSig = "";                       // force a fresh thread push into the new iframe
-  window.__glimpse_audit = null;        // drop the previous artifact's layout audit
+  if(window.__glimpse_audit) delete window.__glimpse_audit[slug];   // re-capture THIS artifact's audit fresh; other artifacts' audits stay keyed
   document.getElementById('title').textContent = a.title;
   document.getElementById('held').hidden = !held;
   // Sandboxed iframe: allow-scripts WITHOUT allow-same-origin → opaque origin.
@@ -370,6 +371,9 @@ async function show(slug){
   if(!injected) f.src = 'artifacts/' + encodeURIComponent(a.slug) + '.html?v=' + a.ts;
   if(currentChannel !== cid) return;    // a newer show() superseded us mid-await
   f.dataset.cid = cid;
+  f.dataset.slug = a.slug;              // the iframe carries its own slug: all browser→agent
+                                        // state (responses/outbox/audit) is keyed off THIS, not
+                                        // the mutable `current`, so nothing is misattributed.
   f.addEventListener('load', ()=>{ f.style.opacity='1'; threadSig=""; pollThread(); updateLiveness(); });
   stage.appendChild(f);
   render();
@@ -381,13 +385,16 @@ window.addEventListener('message', (e)=>{
   const f = document.querySelector('#stage iframe');
   if(!f || e.source !== f.contentWindow) return;  // must be the artifact on screen
   const d = e.data; if(!d) return;
+  // Key everything off the sending iframe's OWN slug (stamped in show()), not the
+  // mutable `current` — so a message can never be filed under a different artifact.
+  const slug = f.dataset.slug || current;
 
   // (a) glimpse ask — existing one-shot response channel (unchanged).
   if(d.type === "glimpse:response"){
     let value = d.value;
     try { if(JSON.stringify(value).length > 64*1024) return; } catch(_){ return; }   // size cap
-    if(!current) return;
-    window.__glimpse_responses[current] = { value: value, ts: Date.now() };
+    if(!slug) return;
+    window.__glimpse_responses[slug] = { value: value, ts: Date.now() };
     showNote('✓ response recorded');
     render();
     return;
@@ -396,16 +403,16 @@ window.addEventListener('message', (e)=>{
   // (b) highlight-chat — a question anchored to a selection.
   if(d.type === "glimpse:annotate"){
     if(d.channelId !== currentChannel) return;     // nonce: only the iframe we injected into
-    if(readingMode || !current) return;            // reading mode suppresses the relay
+    if(readingMode || !slug) return;               // reading mode suppresses the relay
     try { if(JSON.stringify(d).length > 64*1024) return; } catch(_){ return; }
     pushOutbox({
       id: GL_EPOCH + '-' + (++glSeq),
-      slug: current,
+      slug: slug,
       anchor: d.anchor || null,
       quote: String(d.quote || '').slice(0, 8192),
       text:  String(d.text  || '').slice(0, 16384),
       clientTurnId: d.clientTurnId || null,
-      artifactTs: (feed.find(x=>x.slug===current) || {}).ts || null,
+      artifactTs: (feed.find(x=>x.slug===slug) || {}).ts || null,
       ts: Date.now()
     });
     // ack so the artifact can move its bubble out of the "pending/unsent" state
@@ -416,11 +423,11 @@ window.addEventListener('message', (e)=>{
   // (c) layout audit — render-correctness findings from the injected auditor.
   if(d.type === "glimpse:layout"){
     if(d.channelId !== currentChannel) return;     // nonce: only the iframe we injected into
-    if(!current) return;
+    if(!slug) return;
     try { if(JSON.stringify(d).length > 256*1024) return; } catch(_){ return; }
     const findings = Array.isArray(d.findings) ? d.findings.slice(0, 100) : [];
-    window.__glimpse_audit = {
-      slug: current,
+    window.__glimpse_audit[slug] = {
+      slug: slug,
       viewportWidth: d.viewportWidth || null,
       errors: findings.filter(f=>f && f.severity==='error').length,
       warnings: findings.filter(f=>f && f.severity!=='error').length,
