@@ -3,6 +3,8 @@
 artifacts/
 feed.json
 .server.log
+# `glimpse export` defaults to ./<slug>.export.html; keep verification runs from dirtying the repo
+*.export.html
 *.png
 # brand assets (menu-bar icon) — tracked despite *.png
 !assets/menubar-on.png
