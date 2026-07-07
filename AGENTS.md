@@ -508,3 +508,35 @@ The canvas no longer busy-polls for new content. The static server
 - The unit runner (`node:test`) has no assertion-rewrite cache, so a local run
   after editing a test always reflects the current source. CI is a fresh checkout
   regardless.
+
+## GitHub Pages showcase site (`docs/index.html`)
+
+The public product page lives at `docs/index.html` + `docs/assets/`, served by
+**GitHub Pages from the default branch `/docs` folder** (the simplest Pages
+source — Pages must be enabled in repo settings: source = default branch, `/docs`).
+It is a single, static, self-contained page (inline CSS/JS, no build step) that
+renders identically opened directly from disk and via Pages.
+
+- **Design system parity is the bar.** It mirrors the playbook design tokens
+  (`skills/canvas/playbooks/base.html`) exactly — indigo accent, ink/neutral
+  surfaces, monospace eyebrow labels — with first-class light AND dark mode
+  (`prefers-color-scheme` + an explicit toggle that beats the OS, routed through
+  one `window.__applyTheme`). No horizontal overflow at any nesting level
+  (`min-width:0` grid children, `minmax(min(240px,100%),1fr)` tracks, code in
+  `overflow:auto` `<pre>`, the CLI table in `.table-wrap{overflow-x:auto}`).
+- **Assets are local + relative.** `docs/assets/` holds `glimpse-icon.svg`,
+  `glimpse-hero.png`, and `docs/assets/shots/*` — copies of the playbook example
+  screenshots (`examples/screenshots/<name>-{light,dark}.png`). Relative paths
+  (`assets/…`) are required so project Pages (base path `/glimpse/`) resolves them;
+  never use root-absolute `/assets`.
+- **Theme-aware gallery.** Each playbook card holds a `.light`+`.dark` `<img>`
+  pair; CSS shows the one matching the active theme (`prefers-color-scheme` +
+  `:root[data-theme]`). The gallery imgs are intentionally **not** `loading=lazy`
+  — a full-page screenshot (design review / social preview) must capture them, and
+  they are the centerpiece; a lazy gallery screenshots blank below the fold.
+- **Content is marketing but accurate** to shipped verbs (`publish/poll/reply/
+  ask --form/explain/audit/read/shot/snapshot/click/scroll/wait/daemon/export/
+  share/list/pin/doctor`). Keep it in sync when verbs change; it is public, so no
+  secrets or internal paths. Verify renders via `chrome-devtools-axi`: `open
+  file://…/docs/index.html`, `resize 1440 900`, `eval "() => window.__applyTheme('dark')"`,
+  `screenshot <abspath> --full-page` (force-load lazy imgs first if any are added back).
