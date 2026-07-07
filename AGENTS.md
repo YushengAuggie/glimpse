@@ -28,6 +28,8 @@ the per-verb JS bodies passed to `run_cdp`) are fine.
 | `glimpse_server.py` | `cmd_serve` | `python3 … <port> <root>` (argv) — loopback-bound quiet static server |
 | `glimpse_chrome_profile.py` | `cmd_chrome` | `python3 … <profile-dir>` (argv) + env `GLIMPSE_PROFILE_LABEL`; best-effort |
 | `glimpse_explain.py` | `cmd_explain` | `python3 … wrap <title>` (pre-existing) |
+| `glimpse_export.py` | `_inline_artifact` (→ `cmd_export`, `cmd_share`) | `python3 … <src.html>` (argv) + env `SECRET_PATTERN` — offline inliner; HTML→stdout, warnings→stderr |
+| `glimpse_share.py` | `cmd_share` | `python3 …`; HTML on **stdin**; env `GLIMPSE_PASSWORD GLIMPSE_HTML_APP_BASE GLIMPSE_HTML_APP_TOKEN` — POSTs to ht-ml.app, prints `{url,site_id,update_key,private}` JSON |
 | `glimpse-cdp.mjs` | `run_cdp`, `cmd_bridge` | shared CDP client (`cdpConnect`, `fail`) — **spliced** ahead of the body via `node --input-type=module -e "$(cat …)"` |
 | `glimpse-bridge.mjs` | `cmd_bridge` | the highlight-chat bridge loop — spliced after `glimpse-cdp.mjs`; env `GLIMPSE_BIN WAIT PORT GLIMPSE_DIR` (+ daemon `GLIMPSE_ANSWER …`) |
 
@@ -50,10 +52,55 @@ call in `bin/glimpse`, or an installed `glimpse` won't find it.
 Env/arg passing into the extracted scripts is unchanged: inline `VAR=… python3
 "$f" …` exports to the (external) `python3` exactly as the old inline heredoc did.
 
+## Portable output: `export` (offline) & `share` (remote)
+
+Two verbs turn a *published* artifact into a portable copy. Both reuse one
+offline inliner, `lib/glimpse_export.py`, via the `_inline_artifact` helper.
+
+- **`glimpse export <slug> [--out <path>]`** writes a single self-contained HTML
+  file. All **local** assets (relative `href`/`src` stylesheets, scripts, images,
+  fonts, and `url()`/`@import` inside CSS) are inlined as `<style>`/`<script>` or
+  `data:` URIs; **remote** refs (`https://`, `//cdn…`, `data:`, `#`) are left as
+  network links on purpose — a Mermaid/Tailwind CDN link keeps loading from the
+  net. Root-absolute (`/foo`) refs can't be resolved without a server root, so
+  they're left as-is with a warning. Fully offline; no network, no node.
+  - **Default output is the *current directory*** (`./<slug>.export.html`), not
+    "next to the source": glimpse's source lives in the hidden `$GLIMPSE_DIR/
+    artifacts/`, so "next to source" would bury the file. `--out` overrides. (This
+    is where it deliberately differs from `lavish-axi export`, whose source is a
+    user-visible `.lavish/` file.)
+- **`glimpse share <slug> [--public] [--password <pw>]`** builds the same inlined
+  bundle and uploads it to **ht-ml.app** (`lib/glimpse_share.py`, stdlib urllib),
+  printing the visitable URL + the secret `update_key`.
+  - **PRIVATE by default** — a firm product decision that deliberately **diverges
+    from lavish's public-by-default**. With no flag, the page is
+    password-protected: `--password <pw>` sets it, otherwise a strong random one
+    is minted (`secrets.token_urlsafe`) and printed. `--public` opts into a fully
+    open page. `--public` + `--password` is rejected.
+  - Prints a concise **"this leaves your machine to a third-party public host"
+    notice to stderr before every upload** (glimpse otherwise markets itself as
+    local & serverless, so the egress must be unmistakable).
+
+**Naming resolution (the collision):** glimpse already had `publish`/`cmd_publish`
+= publish to the *local* canvas. The remote share is a **separate verb, `share`**
+(never folded into `publish`), so the local verb is untouched and the name matches
+`lavish-axi share`. `publish` stays local-only.
+
+**Security posture (unchanged, enforced by the inliner):** file reads are
+**confined to the artifact's own directory** — a `../` or symlink escape is
+refused and left as a link (`outside-root` warning), so export never reaches into
+the wider filesystem. The final bundle is **secret-scrubbed against
+`SECRET_PATTERN`** (shared with the thread guard) before it is written or
+uploaded, so a secret that slipped into an artifact or a local asset is never
+baked into a portable file that leaves the machine. `share`'s only network egress
+is ht-ml.app, and its endpoint host is **anchored** (`host == "ht-ml.app" ||
+host.endswith(".ht-ml.app")`) — a `GLIMPSE_HTML_APP_BASE` override can't point it
+elsewhere. There is no delete endpoint on ht-ml.app; a shared page persists.
+
 ## Tests
 
-- `uv run --with pytest pytest tests/` — Python units
+- `uv run --with pytest pytest tests/` — Python units (incl. `test_glimpse_export.py`, the inliner)
 - `node --test tests/*.mjs tests/*.cjs` — renderer/bridge units (no deps)
-- `bash tests/test_explain_cli.sh`, `bash tests/test_node_anchor.sh` — CLI smoke
+- `bash tests/test_explain_cli.sh`, `bash tests/test_node_anchor.sh`, `bash tests/test_export_cli.sh` — CLI smoke (the export test is offline; it never uploads)
 - `GLIMPSE_RUNTIME_TESTS=1 bash tests/test_*_cdp.sh` / `test_node_roundtrip.sh` —
   live-CDP, opt-in (need a running `glimpse open`)
