@@ -3,14 +3,18 @@
 `thread` event when any threads/<slug>.json changes, replacing the canvas's old
 busy-poll timers. Offline, stdlib-only — starts the real server on a loopback
 ephemeral port and drives it end to end.
+
+Networking goes through http.client, not urllib: urllib honors HTTP(S)_PROXY
+env, which some CI runners set, and would route even a 127.0.0.1 request through
+a proxy that then can't reach it. http.client connects to the socket directly.
 """
 
 import contextlib
+import http.client
 import socket
 import subprocess
 import sys
 import time
-import urllib.request
 from pathlib import Path
 
 import pytest
@@ -26,27 +30,46 @@ def _free_port():
     return port
 
 
-def _wait_up(port, timeout=5.0):
+def _get(port, path, timeout=1.0):
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=timeout)
+    try:
+        conn.request("GET", path)
+        r = conn.getresponse()
+        return r.status, r.read()
+    finally:
+        conn.close()
+
+
+def _wait_up(port, timeout=15.0):
     end = time.time() + timeout
-    url = f"http://127.0.0.1:{port}/feed.json"
     while time.time() < end:
         try:
-            with urllib.request.urlopen(url, timeout=0.5) as r:
-                r.read()
-            return True
-        except Exception:
-            time.sleep(0.05)
+            if _get(port, "/feed.json")[0] == 200:
+                return True
+        except OSError:
+            pass
+        time.sleep(0.1)
     return False
 
 
-def _next_events(resp, want, timeout=6.0):
-    """Read SSE `event:` names off an open stream until `want` are collected or
-    the per-read socket timeout trips (returns what it has)."""
+def _open_sse(port, timeout=6.0):
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=timeout)
+    conn.request("GET", "/__glimpse/events")
+    resp = conn.getresponse()
+    assert resp.status == 200, resp.status
+    ctype = resp.getheader("Content-Type", "")
+    assert ctype.startswith("text/event-stream"), ctype
+    return conn, resp
+
+
+def _next_events(resp, want):
+    """Read SSE `event:` names off an open stream until `want` are collected or a
+    read times out / the stream ends (returns what it has)."""
     got = []
     while len(got) < want:
         try:
             line = resp.readline()
-        except Exception:
+        except OSError:
             break
         if not line:
             break
@@ -63,11 +86,18 @@ def server(tmp_path):
     port = _free_port()
     proc = subprocess.Popen(
         [sys.executable, str(SERVER), str(port), str(tmp_path)],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
     )
     try:
-        assert _wait_up(port), "server did not come up"
+        if not _wait_up(port):
+            proc.terminate()
+            out = b""
+            with contextlib.suppress(Exception):
+                out = proc.communicate(timeout=5)[0] or b""
+            raise AssertionError(
+                "server did not come up; output:\n" + out.decode("utf-8", "replace")
+            )
         yield port, tmp_path
     finally:
         proc.terminate()
@@ -77,9 +107,7 @@ def server(tmp_path):
 
 def test_sse_pushes_feed_and_thread_changes(server):
     port, root = server
-    resp = urllib.request.urlopen(
-        f"http://127.0.0.1:{port}/__glimpse/events", timeout=6
-    )
+    conn, resp = _open_sse(port)
     try:
         # A freshly-connected client is told to pull both streams once.
         assert _next_events(resp, 2) == ["feed", "thread"]
@@ -96,21 +124,16 @@ def test_sse_pushes_feed_and_thread_changes(server):
         (root / "threads" / "x.json").write_text('{"turns":[{"id":"1","role":"user"}]}')
         assert _next_events(resp, 1) == ["thread"]
     finally:
-        resp.close()
+        conn.close()
 
 
 def test_sse_is_loopback_and_carries_no_content(server):
     port, root = server
-    # The event body is a bare signal — never the file's contents.
+    # The event body is a bare signal — never the file's (secret-bearing) contents.
     (root / "feed.json").write_text('{"artifacts":[{"slug":"secret-sk-abc","ts":9}]}')
-    resp = urllib.request.urlopen(
-        f"http://127.0.0.1:{port}/__glimpse/events", timeout=6
-    )
+    conn, resp = _open_sse(port)
     try:
         blob = b""
-        # Trigger a change, then read a bounded slice covering the handshake +
-        # the change event. The stream must carry only `event:`/`data: 1` signal
-        # lines — never the changed file's (secret-bearing) contents.
         time.sleep(0.6)
         (root / "feed.json").write_text(
             '{"artifacts":[{"slug":"secret-sk-def","ts":10}]}'
@@ -118,7 +141,7 @@ def test_sse_is_loopback_and_carries_no_content(server):
         for _ in range(12):
             try:
                 chunk = resp.readline()
-            except Exception:
+            except OSError:
                 break
             if not chunk:
                 break
@@ -126,4 +149,4 @@ def test_sse_is_loopback_and_carries_no_content(server):
         assert b"secret-sk" not in blob
         assert b"data: 1" in blob
     finally:
-        resp.close()
+        conn.close()
