@@ -13,7 +13,8 @@ Subcommands (argv[1]):
              print_json SLUG            (raw file)
            Turn text/quote are capped and secret-scrubbed; files are chmod 0600.
   list     env: GLIMPSE_DIR — list conversation threads.
-  pending  env: GLIMPSE_DIR — print pending user turns as JSON lines.
+  pending  env: GLIMPSE_DIR — print pending user turns as JSON lines
+             ({type,id,slug,ts,quote,text,anchor}); consumed by the bridge + `glimpse poll`.
 """
 
 import json
@@ -266,6 +267,7 @@ def cmd_pending():
                             "type": "question",
                             "id": t["id"],
                             "slug": slug,
+                            "ts": t.get("ts"),
                             "quote": t.get("quote", ""),
                             "text": t.get("text", ""),
                             "anchor": t.get("anchor"),

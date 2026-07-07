@@ -5,6 +5,22 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 ### Added
+- **`glimpse poll` — one blocking call for human feedback.** Instead of running
+  `glimpse bridge` under an agent Monitor, an in-the-loop agent now parks on a
+  single `glimpse poll`: it blocks until there's undelivered feedback (a
+  highlight/question), prints it, and returns (analogue of `lavish-axi poll`). It
+  reuses the bridge's files-on-disk, pull-only machinery — draining the canvas
+  outbox into the durable per-document thread store and blocking on the pending
+  queue — so queued feedback survives if the agent wasn't polling yet and each
+  poll delivers the next item (nothing dropped). Dedup is a `.poll.state` cursor
+  that never mutates turn status, so the canvas keeps showing "awaiting answer"
+  until you `reply`. Degrades to disk-only when Chrome is down; `--timeout N`
+  (`0` = wait forever) with a heartbeat and exit code **3** on timeout means no
+  infinite hang. Default output is a compact, token-efficient TAB-separated record
+  format (self-describing header; `anchor` as `text:<occ>`/`node:<id>`/`-`); pass
+  `--json` for plain JSON. `glimpse list --json` and a `ts` field on
+  `glimpse __pending` round out the machine-readable output. Loopback-only and
+  secret-scrubbed like the bridge; `glimpse bridge`/`daemon` are unchanged.
 - **`glimpse audit <slug>` — render-correctness loop.** An auditor is injected
   into every artifact; after fonts load and layout settles it checks the *real*
   browser render for horizontal/element overflow, clipped text, and overlapping
