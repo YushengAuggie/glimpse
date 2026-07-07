@@ -30,8 +30,12 @@ ASSETS=(
   "lib/glimpse_threads.py|glimpse_threads.py"
   "lib/glimpse_server.py|glimpse_server.py"
   "lib/glimpse_chrome_profile.py|glimpse_chrome_profile.py"
+  "lib/glimpse_export.py|glimpse_export.py"
+  "lib/glimpse_share.py|glimpse_share.py"
+  "lib/glimpse_audit_report.py|glimpse_audit_report.py"
   "lib/glimpse-cdp.mjs|glimpse-cdp.mjs"
   "lib/glimpse-bridge.mjs|glimpse-bridge.mjs"
+  "lib/glimpse-snapshot.mjs|glimpse-snapshot.mjs"
 )
 
 mkdir -p "$GLIMPSE_DIR"
