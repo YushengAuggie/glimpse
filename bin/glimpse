@@ -82,7 +82,7 @@ SELF_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 die(){ echo "glimpse: $*" >&2; exit 1; }
 have(){ command -v "$1" >/dev/null 2>&1; }
 
-# Resolve a bundled lib file (the Python/JS the dispatcher shells out to, e.g.
+# Resolve a bundled lib file (the Node/JS the dispatcher shells out to, e.g.
 # glimpse-feed.mjs, glimpse-cdp.mjs). Mirrors _seed_asset's search: this checkout's
 # lib/, then the copy seeded into $GLIMPSE_DIR (by install.sh / dev-link.sh), then
 # a custom ~/.glimpse. Prints the resolved path; returns 1 if not found anywhere.

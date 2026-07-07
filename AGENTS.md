@@ -556,3 +556,34 @@ renders identically opened directly from disk and via Pages.
   secrets or internal paths. Verify renders via `chrome-devtools-axi`: `open
   file://…/docs/index.html`, `resize 1440 900`, `eval "() => window.__applyTheme('dark')"`,
   `screenshot <abspath> --full-page` (force-load lazy imgs first if any are added back).
+
+## Documentation conventions (README / docs / comments)
+
+User-facing docs and code comments must describe the **current** code — verify each
+command, flag, and default against the source before writing, and if docs disagree
+with code, the code wins.
+
+- **`bin/glimpse`'s header comment block is the source of truth for the CLI
+  surface.** `usage()` prints it verbatim (`awk` over the leading `#` lines), so the
+  README's CLI reference, `docs/USAGE.md`, and that header must agree. When a verb or
+  flag changes, update the header first, then mirror it outward.
+- **Runtime is Node 22+ and Chrome only.** Python 3 is optional and used *solely* by
+  the macOS menu-bar app (`app/glimpse_menubar.py`, rumps). Never describe python3 as
+  a core requirement or a required `doctor` check.
+- **Freshness is SSE push, not polling.** Don't reintroduce "the dashboard polls
+  `feed.json` every N seconds" language — the server pushes `feed`/`thread` signals
+  over `/__glimpse/events` and the canvas fetches on the signal.
+- **Local-&-private positioning, with two named egress opt-ins.** Keep the pitch
+  local/serverless. The *only* features that leave the machine are `glimpse share`
+  (remote upload, private by default) and the always-on **daemon** (LLM proxy call).
+  `publish` and everything else stay local — do not describe `publish` as leaving the
+  machine.
+- **Ported-from-Python provenance comments are fine to keep** (they explain
+  behavior-parity intent, e.g. "matches Python `errors='replace'`"), but never let a
+  comment claim a runtime path *is* Python or that writes go through a "flocked Python
+  writer" — the file-store is Node (`lib/glimpse-store.mjs`, `O_EXCL` lock). Likewise
+  don't describe `lib/*.mjs` as heredocs; they are real files spliced/spawned by the
+  dispatcher (see the "pure bash dispatcher" section).
+- **CI badge + playbooks pointer** belong in the README: badge →
+  `.github/workflows/ci.yml` (workflow name `ci`); authoring playbooks live in
+  `skills/canvas/playbooks/` with worked examples in `examples/playbooks/`.
