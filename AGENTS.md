@@ -60,6 +60,37 @@ call in `bin/glimpse`, or an installed `glimpse` won't find it.
 Env/arg passing into the extracted scripts is unchanged: inline `VAR=… python3
 "$f" …` exports to the (external) `python3` exactly as the old inline heredoc did.
 
+## Per-artifact keying — several artifacts (and agents) can be active at once
+
+Every feedback / response / thread stream is **keyed per artifact by slug**, end to
+end, so highlights or answers on artifact A never leak into B's stream and an agent can
+address each independently. There is no global "the active artifact" state that carries
+feedback — the slug is the key at every hop:
+
+- **Storage (source of truth):** `threads/<slug>.json` — one exclusive-locked,
+  atomic read-modify-write per artifact (`glimpse_threads.py`). `feed.json` holds one
+  entry per slug. Two agents can `publish` / `reply` / `thread` different slugs
+  concurrently without contention (per-slug `flock`); a turn id from A's thread cannot
+  be answered inside B's (`add_agent` rejects a foreign `TO`).
+- **Bridge (`glimpse-bridge.mjs`):** keeps a live CDP connection to **every** open
+  canvas tab and routes each drained outbox message by its own `m.slug` — never by
+  which tab is focused. Dedup (`seen`) and emit (`emitted`) sets are keyed by globally
+  unique message / turn ids, so multiple tabs and multiple artifacts share them safely.
+- **Canvas shell (`canvas/index.html`):** browser→agent buffers are keyed off the
+  **iframe's own slug** (`f.dataset.slug`, stamped in `show()`), not the mutable
+  `current`. `window.__glimpse_responses[slug]` (read by `glimpse ask`), each pushed
+  `__glimpse_outbox` entry's `slug`, and `window.__glimpse_audit[slug]` (read by
+  `glimpse audit`) are all per-slug. `__glimpse_audit` is a **per-slug map** (not one
+  latest-buffer): viewing a second artifact no longer wipes the first's audit; `show()`
+  clears only the shown slug's stale entry so it re-captures fresh.
+
+The dashboard still renders **one artifact at a time** (the common single-artifact
+experience is unchanged) — the keying is what lets more than one be live without
+cross-talk. **When you touch any browser→agent buffer, key it by the sending iframe's
+slug, never by `current`.** Multi-tab, multiple-agent audit-window selection in
+`cmd_ask`/`cmd_audit` (which grab *a* canvas tab) is out of scope here; the buffers they
+read are already per-slug.
+
 ## Portable output: `export` (offline) & `share` (remote)
 
 Two verbs turn a *published* artifact into a portable copy. Both reuse one
@@ -149,7 +180,9 @@ uid=s0 RootWebArea "Snapshot Demo"
 
 ## Tests
 
-- `uv run --with pytest pytest tests/` — Python units (incl. `test_glimpse_export.py`, the inliner)
+- `uv run --with pytest pytest tests/` — Python units (incl. `test_glimpse_export.py`,
+  the inliner; and `test_glimpse_threads_multi.py`: two artifacts keep separate threads /
+  pending / replies, and clearing one leaves the other)
 - `node --test tests/*.mjs tests/*.cjs` — renderer/bridge units (no deps); includes
   `test_snapshot_render.mjs`, which drives the real `lib/glimpse-snapshot.mjs` body
   with a stubbed CDP channel (no browser) to cover tree-building, node collapsing,
@@ -159,5 +192,7 @@ uid=s0 RootWebArea "Snapshot Demo"
   (the export test is offline; it never uploads. the publish-audit test covers the
   auto-audit flag/env parsing + the "not watching → skip" path, no browser)
 - `GLIMPSE_RUNTIME_TESTS=1 bash tests/test_*_cdp.sh` / `test_node_roundtrip.sh` —
-  live-CDP, opt-in (need a running `glimpse open`). `test_publish_audit_cdp.sh`
-  is the end-to-end auto-audit warn/gate check against a real render.
+  live-CDP, opt-in (need a running `glimpse open`). `test_multi_artifact_cdp.sh` proves
+  two artifacts' audits coexist in `__glimpse_audit` and their threads stay isolated;
+  `test_publish_audit_cdp.sh` is the end-to-end auto-audit warn/gate check against a
+  real render.

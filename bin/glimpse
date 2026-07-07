@@ -317,7 +317,7 @@ _audit_capture(){
     let audit=null, stable=0, waited=0;
     for(let i=0;i<40;i++){                          // up to ~8s
       await new Promise(r=>setTimeout(r,200)); waited+=200;
-      let v; try{ v=(await send("Runtime.evaluate",{expression:"JSON.stringify(window.__glimpse_audit||null)",returnByValue:true})).result.value; }catch{ continue; }
+      let v; try{ v=(await send("Runtime.evaluate",{expression:"JSON.stringify((window.__glimpse_audit||{})["+JSON.stringify(slug)+"]||null)",returnByValue:true})).result.value; }catch{ continue; }
       if(!v) continue;
       let o; try{ o=JSON.parse(v); }catch{ continue; }
       if(o && o.slug===slug){
