@@ -48,10 +48,12 @@ while [ $# -gt 0 ]; do
 done
 
 # --- preflight: verify the runtime, with copy-pasteable fixes ---------------
-# node 22+ and python3 are REQUIRED (they fail the install non-zero so scripts
+# node 22+ is the only REQUIRED runtime (it fails the install non-zero so scripts
 # notice), but the CLI + assets are still installed first so `glimpse doctor`
 # is available to re-diagnose. Chrome is a warning: it is driven at runtime and
 # `glimpse doctor` re-checks it, so a missing browser never blocks the install.
+# python3 is optional — only the macOS menu-bar app (rumps) uses it; core glimpse
+# runs on Node + Chrome alone.
 echo "→ checking prerequisites"
 MISSING_REQUIRED=0
 CHROME_MISSING=0
