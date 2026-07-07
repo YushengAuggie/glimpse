@@ -344,11 +344,57 @@ uid=s0 RootWebArea "Snapshot Demo"
   appear in `Page.getFrameTree`) under their owning `Iframe` node via
   `DOM.getFrameOwner`, so a plain multi-frame URL still descends correctly.
 
+## Canvas freshness is push (SSE), not polling
+
+The canvas no longer busy-polls for new content. The static server
+(`lib/glimpse_server.py`) is the push side; `canvas/index.html` is the consumer.
+
+- **Server side — one watcher, an SSE endpoint.** A single daemon thread stats
+  `feed.json` (mtime+size) and `threads/*.json` (max mtime + file count) every
+  `POLL_S` (0.4s) and bumps a per-stream version (`feed`/`thread`) under a
+  `threading.Condition` when either fingerprint changes. `GET /__glimpse/events`
+  is a `text/event-stream` handler (added via a `do_GET` override on the existing
+  `Quiet` handler — all other paths still fall through to `SimpleHTTPRequestHandler`):
+  it blocks on the condition and writes `event: feed` / `event: thread` the instant
+  a version advances. This moves the freshness cost from *N browser HTTP+JSON polls*
+  to *one process doing `stat()`* — the reason `.server.log` used to balloon is gone.
+  The event body is a bare `data: 1` signal — **never file content** — so it can leak
+  nothing the served files don't already expose. Loopback bind is unchanged; stdlib
+  only (no framework). On connect the handler re-emits an initial `feed`+`thread`
+  so a fresh **or reconnected** client re-syncs, and sends a `: ping` comment every
+  `HEARTBEAT_S` (15s) to keep the socket open / surface a drop.
+- **Canvas side — `connectEvents()` replaces the three timers.** An `EventSource`
+  to `/__glimpse/events` calls `poll()` on a `feed` event and `pollThread()` on a
+  `thread` event; the socket says *when*, `poll`/`pollThread` still `fetch` the actual
+  content (so the per-slug thread routing and feed signature logic are untouched).
+  The old `setInterval(poll,1200)` / `setInterval(pollThread,1000)` are **removed**.
+  Recovery is layered: `EventSource` auto-reconnects on the server's `retry:` hint
+  (a restart re-syncs via the initial events), and a **slow 20s fallback heartbeat**
+  (`poll()`+`pollThread()`) re-syncs if the stream ever wedges silently — that 20s
+  timer is the only steady-state timer that touches the network, and only as a safety
+  net. `updateLiveness` **stays on its 1.5s timer**: it reflects the bridge's CDP-stamped
+  `window.__glimpse_bridge_live` (there is no server file to push for it) and does **no**
+  network I/O, so it is not the busy-poll the push channel removed.
+- **Pin reconcile.** `reconcilePins()` used to ride the 1.2s feed poll. The
+  daemon-confirm path now rides the SSE `feed` event (daemon rewrites `feed.json` →
+  push → `poll` → reconcile). A daemon-**down** revert has no feed change to ride, so
+  `ensureReconcile()` runs a short local ticker (cached feed, no fetch) that lives
+  **only** while `pendingPins` is non-empty, preserving the 3.5s "pin didn't stick"
+  revert without steady-state polling.
+- **Scope for the Node-consolidation task (J):** the push mechanism is confined to
+  `glimpse_server.py` (server) + `connectEvents()` (canvas). Folding the server into
+  Node means re-implementing the same watcher→SSE contract (`/__glimpse/events`,
+  `event: feed`/`event: thread`, initial re-emit, `retry:`+heartbeat); the canvas
+  consumer does not change.
+
 ## Tests
 
 - `uv run --with pytest pytest tests/` — Python units (incl. `test_glimpse_export.py`,
-  the inliner; and `test_glimpse_threads_multi.py`: two artifacts keep separate threads /
-  pending / replies, and clearing one leaves the other)
+  the inliner; `test_glimpse_threads_multi.py`: two artifacts keep separate threads /
+  pending / replies, and clearing one leaves the other; and `test_glimpse_server_sse.py`,
+  which starts the real server on a loopback port and asserts `/__glimpse/events` pushes
+  a `feed` event on a `feed.json` change and a `thread` event on a `threads/*.json` change,
+  carrying only the signal — no file content)
 - `node --test tests/*.mjs tests/*.cjs` — renderer/bridge/poll units (no deps); includes
   `test_snapshot_render.mjs`, which drives the real `lib/glimpse-snapshot.mjs` body
   with a stubbed CDP channel (no browser) to cover tree-building, node collapsing,
