@@ -5,6 +5,22 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 ### Added
+- **`glimpse poll` — one blocking call for human feedback.** Instead of running
+  `glimpse bridge` under an agent Monitor, an in-the-loop agent now parks on a
+  single `glimpse poll`: it blocks until there's undelivered feedback (a
+  highlight/question), prints it, and returns (analogue of `lavish-axi poll`). It
+  reuses the bridge's files-on-disk, pull-only machinery — draining the canvas
+  outbox into the durable per-document thread store and blocking on the pending
+  queue — so queued feedback survives if the agent wasn't polling yet and each
+  poll delivers the next item (nothing dropped). Dedup is a `.poll.state` cursor
+  that never mutates turn status, so the canvas keeps showing "awaiting answer"
+  until you `reply`. Degrades to disk-only when Chrome is down; `--timeout N`
+  (`0` = wait forever) with a heartbeat and exit code **3** on timeout means no
+  infinite hang. Default output is a compact, token-efficient TAB-separated record
+  format (self-describing header; `anchor` as `text:<occ>`/`node:<id>`/`-`); pass
+  `--json` for plain JSON. `glimpse list --json` and a `ts` field on
+  `glimpse __pending` round out the machine-readable output. Loopback-only and
+  secret-scrubbed like the bridge; `glimpse bridge`/`daemon` are unchanged.
 - **`glimpse audit <slug>` — render-correctness loop.** An auditor is injected
   into every artifact; after fonts load and layout settles it checks the *real*
   browser render for horizontal/element overflow, clipped text, and overlapping
@@ -57,6 +73,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 - `glimpse stop` (+ server PID file).
 
 ### Changed
+- **One-command install + loud, actionable `glimpse doctor`.** `install.sh` now
+  runs a preflight (node ≥22, python3, Chrome) with an OS-aware, copy-pasteable
+  fix per missing dep, then installs the CLI + assets regardless; a missing
+  *required* dep (node/python3) still installs the CLI but exits non-zero, while
+  a missing Chrome is a warning only. `glimpse doctor` is reformatted to one
+  `✓`/`✗`/`⚠`/`–` line per check, each `✗`/`⚠` followed by a `→ <fix>`, exiting
+  non-zero when a required check fails. On macOS it also verifies the launchd
+  menu-bar daemon and whether its minimal login-shell PATH can resolve
+  `node`/`python3` — the classic silent failure — with a `GLIMPSE_NODE` fix.
 - **Friendlier message boxes (annotate rail + code-explainer composer).**
   **Enter** now sends and **Shift+Enter** inserts a newline (⌘/Ctrl+Enter still
   sends); an IME-composition Enter — e.g. picking a Chinese/Japanese candidate —

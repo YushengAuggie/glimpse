@@ -105,7 +105,31 @@ Where `ask` is agent-initiated and one-shot, highlight-chat is **user-initiated 
 conversational**: you select text in an artifact and the agent answers in the margin,
 anchored to your highlight, with the thread saved per document.
 
-The agent runs the bridge once (under its Monitor) and answers each question:
+The agent's loop is **one blocking call it parks on** — `glimpse poll` waits until
+there's a new highlight/question, prints it, and returns:
+
+```bash
+glimpse poll                        # blocks; on delivery prints a compact record and exits 0:
+#   #glimpse-poll v1 fields=kind,thread,id,ts,anchor,quote,text
+#   question<TAB>arch<TAB>1718553600-3-6865<TAB>1718553600<TAB>text:0<TAB>write-through cache<TAB>why not write-back?
+glimpse reply arch "Write-through keeps cache and store consistent on every write." --to 1718553600-3-6865
+glimpse poll                        # park again for the next question
+```
+
+The record is TAB-separated in the order the header declares; `anchor` is a compact
+token (`text:<occurrence>` for a highlight, `node:<id>` for an explainer node, `-`
+for none). The `id` (3rd field) is the turn id — shape `<epoch>-<n>-<hex>` (e.g.
+`1718553600-3-6865`) — pass it verbatim to `--to`. Prefer `--json` if you'd rather
+parse plain JSON (`{"type":"poll","count":N,"items":[…]}`, with the full anchor
+object per item). On timeout `poll` prints `#glimpse-poll v1 timeout=Ns` and exits
+**3** (nothing was waiting — just poll again); tune the wait with `--timeout N`
+(seconds; `0` = wait indefinitely) and `--interval S`.
+
+Nothing is dropped: questions are durable on disk the instant they're asked, so a
+question raised before you started polling is delivered on your next `poll`, and each
+`poll` hands you the next undelivered item. This supersedes the older pattern of
+running `glimpse bridge` (a long-lived JSON-line stream) under an agent Monitor — the
+bridge is still available and is what the always-on **daemon** builds on:
 
 ```bash
 glimpse bridge                      # long-lived; one JSON line per question:
@@ -114,11 +138,12 @@ glimpse bridge                      # long-lived; one JSON line per question:
 #     "anchor":{"exact":"write-through cache","prefix":"uses a ","suffix":" to keep","occurrence":0}}
 #   {"type":"closed","reason":"chrome_died"}   # self-heals → wait for the next "ready" (bridge_stopped = clean stop)
 #   {"type":"error","code":"chrome_unavailable","message":"…"}  # exited (1) → re-run, or use --wait
-glimpse reply arch "Write-through keeps cache and store consistent on every write." --to 1718553600-3-6865
 ```
 
-The `id` is the turn id from the `question` line — it has the shape
-`<epoch>-<n>-<hex>` (e.g. `1718553600-3-6865`); pass it verbatim to `--to`.
+Don't run `poll` and `bridge`/`daemon` against the same canvas at once — both would
+deliver the same question (the on-disk store stays correct because writes are
+idempotent, but you'd have two answerers). Use `poll` for an in-the-loop agent and
+the daemon for always-on auto-answer.
 
 You (the human) just highlight + type in the page; the answer streams back in ~1s
 with no reload. Each answer gets a reply box so you can **follow up** — the thread
@@ -245,6 +270,7 @@ chrome-devtools MCP server (`./install.sh --mcp claude`) and use its tools.
 | `GLIMPSE_CDP_PORT` | `9222` | Chrome remote-debugging port |
 | `GLIMPSE_PROFILE` | `$GLIMPSE_DIR/chrome-profile` | dedicated Chrome profile |
 | `GLIMPSE_CHROME` | auto-detect | path to the Chrome/Chromium binary |
+| `GLIMPSE_NODE` | auto-detect | path to `node` when it isn't on `PATH` (e.g. for the launchd menu-bar daemon; set in `~/.config/secrets.env`) |
 | `GLIMPSE_ANNOTATE` | `1` | set `0` to disable highlight-chat injection globally |
 | `GLIMPSE_API_KEY` | — | daemon auto-answer key (falls back to `POE_API_KEY` / `ANTHROPIC_API_KEY`) |
 | `GLIMPSE_PROXY_URL` | `$ANTHROPIC_BASE_URL/v1/messages`, else `http://127.0.0.1:8787/v1/messages` | daemon answer endpoint |
@@ -252,10 +278,20 @@ chrome-devtools MCP server (`./install.sh --mcp claude`) and use its tools.
 
 ## Troubleshooting
 
-- **"chrome cdp: down"** in `glimpse doctor` → run `glimpse chrome`; if Chrome
-  isn't found set `GLIMPSE_CHROME=/path/to/chrome`.
+`glimpse doctor` prints one line per check — `✓` good, `✗` broken (fails the
+run, non-zero exit), `⚠` optional/degraded, `–` informational state — with a
+copy-pasteable `→ <fix>` under every `✗`/`⚠`. A "down" service (`server`,
+`cdp port`, `bridge`) is normal before `glimpse open` and never fails the run.
+
+- **`cdp port … no debuggable Chrome`** in `glimpse doctor` → run `glimpse chrome`;
+  if Chrome isn't found set `GLIMPSE_CHROME=/path/to/chrome`.
 - **Nothing appears after publish** → confirm the server is up
   (`glimpse doctor`), and that you published a `.html` file.
+- **Menu-bar daemon stops answering (macOS)** → `glimpse doctor` re-checks the
+  launchd job under its minimal login-shell PATH. If `launchd node` (or
+  `launchd python3`) shows `✗`, the always-on daemon can't find the runtime and
+  CDP calls die silently; pin it with `GLIMPSE_NODE` in `~/.config/secrets.env`
+  (the printed fix has the exact line), then re-toggle "Start at login".
 - **Port already in use** → set `GLIMPSE_PORT` / `GLIMPSE_CDP_PORT`.
 - **A site won't load logged-in** → log into it once in the Glimpse Chrome
   window; the dedicated profile persists across runs.

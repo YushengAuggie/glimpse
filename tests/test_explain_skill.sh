@@ -16,6 +16,10 @@ trap 'rm -rf "$GLIMPSE_DIR"' EXIT
 # <!-- SPEC_EXAMPLE --> marker line. (json.loads also rejects a stray marker.)
 SPEC="$(SKILL="$SKILL" python3 - <<'PY'
 import os, sys
+# Build the code-fence literal from chr(96) so no backtick appears in this
+# heredoc body: macOS's bash 3.2 misparses backticks inside $(...) command
+# substitution as nested command substitution, even in a quoted heredoc.
+fence = chr(96) * 3
 lines = open(os.environ["SKILL"], encoding="utf-8").read().splitlines()
 marker = "<!-- SPEC_EXAMPLE -->"
 try:
@@ -24,16 +28,16 @@ except StopIteration:
     sys.stderr.write("FAIL: %s marker not found in SKILL.md\n" % marker)
     sys.exit(1)
 # the fence must open on the very next line
-if mi + 1 >= len(lines) or lines[mi + 1].strip() != "```json":
-    sys.stderr.write("FAIL: marker is not immediately followed by a ```json fence\n")
+if mi + 1 >= len(lines) or lines[mi + 1].strip() != fence + "json":
+    sys.stderr.write("FAIL: marker is not immediately followed by a json fence\n")
     sys.exit(1)
 body = []
 for l in lines[mi + 2:]:
-    if l.strip() == "```":
+    if l.strip() == fence:
         break
     body.append(l)
 else:
-    sys.stderr.write("FAIL: unterminated ```json fence after marker\n")
+    sys.stderr.write("FAIL: unterminated json fence after marker\n")
     sys.exit(1)
 sys.stdout.write("\n".join(body))
 PY

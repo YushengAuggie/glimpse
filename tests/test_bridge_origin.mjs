@@ -5,9 +5,11 @@
 // loopback server — got no liveness stamp and no question capture. The agent
 // looked "offline" and everything typed into it silently vanished.
 //
-// This reads the real `isCanvasOrigin` predicate out of bin/glimpse (it lives in
-// a bash heredoc, so it can't be imported) and asserts it accepts every loopback
-// alias on the right port while staying anchored against look-alike hosts.
+// This reads the real `isCanvasOrigin` predicate out of lib/glimpse-bridge.mjs
+// (the bridge runs it as an ES module spliced after the CDP helper; importing the
+// file would start the bridge's poll loop, so we extract the predicate lines) and
+// asserts it accepts every loopback alias on the right port while staying anchored
+// against look-alike hosts.
 import test from "node:test";
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
@@ -15,7 +17,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const SRC = readFileSync(join(HERE, "..", "bin", "glimpse"), "utf8");
+const SRC = readFileSync(join(HERE, "..", "lib", "glimpse-bridge.mjs"), "utf8");
 
 // Pull the exact source lines out of the shipped script so the test exercises the
 // real predicate, not a copy — if someone reverts to `=== expectedOrigin`, the
