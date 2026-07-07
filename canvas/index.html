@@ -322,8 +322,15 @@ async function show(slug){
   f.title = a.title;
   // Inject the highlight-chat helper at RENDER time via srcdoc (the artifact file
   // on disk stays pristine; the opaque-origin sandbox can't fetch a sibling .js).
-  // A fresh channelId per iframe is the nonce that authenticates messages both ways.
-  const cid = 'ch-' + GL_EPOCH + '-' + (++glSeq);
+  // A fresh channelId per iframe is the nonce that authenticates messages both ways,
+  // so it must be UNGUESSABLE — use a crypto-random UUID, not a predictable counter.
+  // (127.0.0.1 is a secure context, so crypto.randomUUID is available; fall back to
+  // getRandomValues if it ever isn't. glSeq/GL_EPOCH kept only as a last resort.)
+  const cid = 'ch-' + (
+    (self.crypto && self.crypto.randomUUID) ? self.crypto.randomUUID() :
+    (self.crypto && self.crypto.getRandomValues)
+      ? Array.from(self.crypto.getRandomValues(new Uint8Array(16)), b=>b.toString(16).padStart(2,'0')).join('')
+      : (GL_EPOCH + '-' + (++glSeq)));
   currentChannel = cid;
   let injected = false;
   // Annotate is gated on reading mode; the explain renderer is NOT — an explain
