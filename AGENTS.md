@@ -39,6 +39,7 @@ the per-verb JS bodies passed to `run_cdp`) are fine.
 | `glimpse_audit_report.py` | `cmd_audit`, `_publish_autoaudit` | `python3 …` reads audit JSON on stdin; env `MODE`(full\|brief) `SLUG`; exits 2 iff an error-severity finding |
 | `glimpse-cdp.mjs` | `run_cdp`, `cmd_bridge` | shared CDP client (`cdpConnect`, `fail`) — **spliced** ahead of the body via `node --input-type=module -e "$(cat …)"` |
 | `glimpse-bridge.mjs` | `cmd_bridge` | the highlight-chat bridge loop — spliced after `glimpse-cdp.mjs`; env `GLIMPSE_BIN WAIT PORT GLIMPSE_DIR` (+ daemon `GLIMPSE_ANSWER …`) |
+| `glimpse-poll.mjs` | `cmd_poll` | the single-shot blocking feedback drainer — spliced after `glimpse-cdp.mjs`; env `GLIMPSE_BIN PORT CDP_PORT GLIMPSE_DIR POLL_JSON POLL_TIMEOUT_MS POLL_INTERVAL_MS` |
 | `glimpse-snapshot.mjs` | `cmd_snapshot` | accessibility-tree text snapshot body — read by `cmd_snapshot` and passed to `run_cdp` (not spliced standalone); env `URL SECRET_PATTERN` |
 
 `glimpse-cdp.mjs` / `glimpse-bridge.mjs` are the verbatim former `CDP_HELPER` /
@@ -136,6 +137,66 @@ is ht-ml.app, and its endpoint host is **anchored** (`host == "ht-ml.app" ||
 host.endswith(".ht-ml.app")`) — a `GLIMPSE_HTML_APP_BASE` override can't point it
 elsewhere. There is no delete endpoint on ht-ml.app; a shared page persists.
 
+## Highlight-chat feedback: `poll` (one blocking call) vs `bridge` (a stream)
+
+There are two ways to receive human highlights/questions, over the **same**
+files-on-disk, pull-only machinery — the durable queue is the set of `pending`
+user turns in `threads/<slug>.json`; nothing is ever an inbound network endpoint.
+
+- **`glimpse poll` is the agent interface**: ONE blocking call the agent parks on.
+  It blocks until there is undelivered feedback, prints it, and returns. This is
+  the analogue of `lavish-axi poll`, and it supersedes the old "run `glimpse bridge`
+  under a Monitor" pattern for an in-the-loop agent. Usage pattern: call `glimpse
+  poll` → read the record(s) → `glimpse reply <slug> "…" --to <id>` → call `glimpse
+  poll` again. On timeout it exits **3** with a marker (re-poll); on delivery it
+  exits **0**.
+- **`glimpse bridge` stays as-is** — a long-lived JSON-line stream. The **daemon**
+  (`cmd_daemon`) still layers auto-answer on top of the bridge, and the menu-bar app
+  drives the daemon. Don't run `poll` and `bridge`/`daemon` against the same canvas
+  at once: both would drain and both would emit (persist is idempotent, so the store
+  stays correct, but you'd get two answerers). Poll = human-agent-in-the-loop;
+  daemon = always-on auto-answer.
+
+How poll reuses the machinery (`lib/glimpse-poll.mjs`, spliced after the CDP helper
+exactly like the bridge): each tick it (a) drains every canvas tab's
+`window.__glimpse_outbox` into the store via `glimpse __thread-add-user` (idempotent
+by `clientTurnId`, so it coexists with a running bridge), then (b) reads
+`glimpse __pending` and emits the pending turns it hasn't delivered yet. Dedup is a
+persisted delivered set in **`.poll.state`** — it does **NOT** mutate turn `status`,
+so the canvas keeps showing "awaiting answer" until you `reply` (the front-end reads
+`status`). If Chrome is down it degrades to disk-only (still blocks on the queue).
+Because turns are secret-scrubbed at persist time and poll only emits fields from
+that scrubbed store, poll can't leak a scrubbed secret. Its canvas-origin predicate
+is kept **byte-identical** to the bridge's; `tests/test_poll.mjs` extracts both and
+asserts they match, so the loopback allowlist can't drift.
+
+### Output format (token-efficient, documented, `--json` escape hatch)
+
+`glimpse poll` default output is a compact, TOON-like line format: a self-describing
+header comment declares the field order once, then one **TAB-separated** record per
+feedback item — far cheaper for an agent to parse than repeated-key JSON.
+
+```
+#glimpse-poll v1 fields=kind,thread,id,ts,anchor,quote,text
+question<TAB>arch<TAB>1751-2-ab<TAB>1751<TAB>text:1<TAB>the cache<TAB>why write-through?
+```
+
+- Fields containing tab/newline/CR/backslash are escaped (`\t \n \r \\`) so a record
+  is always exactly one line. `anchor` collapses to a compact token:
+  `text:<occurrence>` (highlight) · `node:<id>` (explainer node) · `-` (none).
+- Lines beginning with `#` are metadata/markers (header, and `#glimpse-poll v1
+  timeout=Ns` on timeout) — a parser skips them.
+- `--json` emits one JSON object `{"type":"poll","count":N,"ts":…,"items":[…]}`
+  (each item keeps the **full** anchor object); on timeout it adds `"timeout":N`.
+- `glimpse list --json` (feed) and `glimpse read` (already JSON) give agents the same
+  machine-readable escape hatch; `glimpse __pending` now includes each turn's `ts`.
+
+The pure format helpers live in a `// >>> glimpse-poll format helpers … // <<<`
+block in `lib/glimpse-poll.mjs` (extracted+eval'd by `tests/test_poll.mjs`). A sibling
+task may fold the Python ops into Node; poll's queue read (`__pending`) and persist
+(`__thread-add-user`) go through the existing flocked writer, so poll's own logic
+(drain loop, delivered cursor, formatting) stays cleanly separable from that move.
+
 ## `glimpse snapshot` — agent-facing a11y-tree capture
 
 `glimpse snapshot [#slug|url]` is the readable, token-efficient sibling of `shot`
@@ -183,14 +244,19 @@ uid=s0 RootWebArea "Snapshot Demo"
 - `uv run --with pytest pytest tests/` — Python units (incl. `test_glimpse_export.py`,
   the inliner; and `test_glimpse_threads_multi.py`: two artifacts keep separate threads /
   pending / replies, and clearing one leaves the other)
-- `node --test tests/*.mjs tests/*.cjs` — renderer/bridge units (no deps); includes
+- `node --test tests/*.mjs tests/*.cjs` — renderer/bridge/poll units (no deps); includes
   `test_snapshot_render.mjs`, which drives the real `lib/glimpse-snapshot.mjs` body
   with a stubbed CDP channel (no browser) to cover tree-building, node collapsing,
-  iframe grafting, and secret scrubbing
+  iframe grafting, and secret scrubbing, and `test_poll.mjs` (format helpers + origin
+  anti-drift). Note `tests/cdp_assert_render.mjs` is a live-CDP helper caught by the
+  glob; it only passes with a running `glimpse open` and otherwise fails (not a unit
+  regression).
 - `bash tests/test_explain_cli.sh`, `bash tests/test_node_anchor.sh`,
   `bash tests/test_export_cli.sh`, `bash tests/test_publish_audit.sh` — CLI smoke
   (the export test is offline; it never uploads. the publish-audit test covers the
   auto-audit flag/env parsing + the "not watching → skip" path, no browser)
+- `bash tests/test_poll_cli.sh` — `glimpse poll` end-to-end (disk-only: blocks→delivers,
+  dedup/nothing-dropped, `--json`, timeout exit 3)
 - `GLIMPSE_RUNTIME_TESTS=1 bash tests/test_*_cdp.sh` / `test_node_roundtrip.sh` —
   live-CDP, opt-in (need a running `glimpse open`). `test_multi_artifact_cdp.sh` proves
   two artifacts' audits coexist in `__glimpse_audit` and their threads stay isolated;

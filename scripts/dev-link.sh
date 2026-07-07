@@ -34,6 +34,7 @@ ASSETS=(
   "lib/glimpse_audit_report.py|glimpse_audit_report.py"
   "lib/glimpse-cdp.mjs|glimpse-cdp.mjs"
   "lib/glimpse-bridge.mjs|glimpse-bridge.mjs"
+  "lib/glimpse-poll.mjs|glimpse-poll.mjs"
   "lib/glimpse-snapshot.mjs|glimpse-snapshot.mjs"
 )
 
