@@ -52,21 +52,39 @@
     letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2);margin-bottom:10px;}
   .opt{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--line);
     border-radius:var(--radius-sm);margin:8px 0;cursor:pointer;transition:border-color .12s,background .12s;}
-  .opt:hover{background:var(--bg-sunk);}
+  .opt:hover{background:var(--bg-sunk);border-color:var(--ink-3);}
   .opt:has(input:checked){border-color:var(--accent);background:var(--accent-soft);}
-  .opt input{accent-color:var(--accent);width:17px;height:17px;flex:0 0 auto;}
+  /* Custom radio: clearly hollow when off, accent-filled ring when on — identical in both themes. */
+  .opt input{appearance:none;-webkit-appearance:none;margin:0;flex:0 0 auto;
+    width:20px;height:20px;border-radius:50%;border:2px solid var(--ink-3);
+    background:var(--bg-elev);cursor:pointer;display:grid;place-content:center;
+    transition:border-color .12s,background .12s;}
+  .opt input::before{content:"";width:8px;height:8px;border-radius:50%;
+    background:var(--bg-elev);transform:scale(0);transition:transform .12s;}
+  .opt input:checked{border-color:var(--accent);background:var(--accent);}
+  .opt input:checked::before{transform:scale(1);}
+  .opt input:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
   .opt .muted{color:var(--ink-2);font-size:14px;}
   .opt b{font-family:var(--mono);}
-  .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;}
+  .opt > span{flex:1 1 auto;min-width:0;}
+  /* Checkmark appears on the chosen row. */
+  .opt .tick{flex:0 0 auto;color:var(--accent);font-weight:800;opacity:0;transition:opacity .12s;}
+  .opt:has(input:checked) .tick{opacity:1;}
+  .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px;}
   .btn{font:600 15px/1 var(--sans);border-radius:var(--radius-sm);padding:12px 20px;
     border:1px solid var(--line);background:var(--bg-elev);color:var(--ink);cursor:pointer;transition:.12s;}
-  .btn:hover{border-color:var(--accent);}
+  .btn:hover{border-color:var(--accent);background:var(--bg-sunk);}
   .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
-  .btn.primary{background:var(--good);border-color:var(--good);color:#fff;}
-  :root[data-theme="dark"] .btn.primary{color:#08210f;}
-  .btn.primary:hover{filter:brightness(1.05);}
-  .btn.danger{color:var(--danger);border-color:var(--danger-soft);background:var(--danger-soft);}
-  .sent{margin-top:16px;padding:11px 14px;border-radius:var(--radius-sm);background:var(--good-soft);
+  /* Primary = indigo brand accent (not a status color). */
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+  :root[data-theme="dark"] .btn.primary{color:#0b1020;}
+  @media (prefers-color-scheme: dark){:root[data-theme="auto"] .btn.primary{color:#0b1020;}}
+  .btn.primary:hover{background:var(--accent-ink);border-color:var(--accent-ink);}
+  :root[data-theme="dark"] .btn.primary:hover{filter:brightness(1.08);background:var(--accent);border-color:var(--accent);}
+  /* Danger reserved strictly for the destructive Reject; readable outline, fills on hover. */
+  .btn.danger{color:var(--danger);border-color:var(--danger);background:transparent;}
+  .btn.danger:hover{background:var(--danger-soft);border-color:var(--danger);}
+  .sent{margin-top:18px;padding:11px 14px;border-radius:var(--radius-sm);background:var(--good-soft);
     color:var(--good);font-weight:650;font-size:14.5px;}
   code{font:13px/1.5 var(--mono);background:var(--bg-sunk);color:var(--accent-ink);padding:.12em .4em;border-radius:5px;}
   .foot{color:var(--ink-3);font-size:13px;margin-top:28px;padding-top:16px;border-top:1px solid var(--line-2);}
@@ -90,9 +108,9 @@
   <form class="card" onsubmit="return approve(event)">
     <fieldset>
       <legend>Batch size</legend>
-      <label class="opt"><input type="radio" name="batch" value="500"><span><b>500</b> <span class="muted">— slower, gentlest on live traffic</span></span></label>
-      <label class="opt"><input type="radio" name="batch" value="1000" checked><span><b>1,000</b> <span class="muted">— default, ~6h to full coverage</span></span></label>
-      <label class="opt"><input type="radio" name="batch" value="5000"><span><b>5,000</b> <span class="muted">— faster, heavier worker load</span></span></label>
+      <label class="opt"><input type="radio" name="batch" value="500"><span><b>500</b> <span class="muted">— slower, gentlest on live traffic</span></span><span class="tick" aria-hidden="true">✓</span></label>
+      <label class="opt"><input type="radio" name="batch" value="1000" checked><span><b>1,000</b> <span class="muted">— default, ~6h to full coverage</span></span><span class="tick" aria-hidden="true">✓</span></label>
+      <label class="opt"><input type="radio" name="batch" value="5000"><span><b>5,000</b> <span class="muted">— faster, heavier worker load</span></span><span class="tick" aria-hidden="true">✓</span></label>
     </fieldset>
     <div class="row">
       <button type="submit" class="btn primary">Approve &amp; start</button>
@@ -121,14 +139,17 @@
     var root=document.documentElement, btn=document.getElementById('themeToggle'),
         icon=document.getElementById('themeIcon'), label=document.getElementById('themeLabel'), KEY='glimpse-theme';
     function systemDark(){return matchMedia('(prefers-color-scheme: dark)').matches;}
-    function effective(){var t=root.getAttribute('data-theme');return t==='auto'?(systemDark()?'dark':'light'):t;}
-    function paint(){var d=effective()==='dark';icon.textContent=d?'☀️':'🌙';label.textContent=d?'Light':'Dark';}
-    try{var s=localStorage.getItem(KEY);if(s)root.setAttribute('data-theme',s);}catch(e){}
+    function effective(){var t=root.getAttribute('data-theme');return (t==='dark'||t==='light')?t:(systemDark()?'dark':'light');}
+    function paint(){var d=effective()==='dark';icon.textContent=d?'☀️':'🌙';label.textContent=d?'Light':'Dark';
+      btn.setAttribute('aria-label', d?'Switch to light theme':'Switch to dark theme');
+      if(window.__onThemeChange)window.__onThemeChange(effective());}
+    window.__applyTheme=function(mode){root.setAttribute('data-theme',mode);
+      try{localStorage.setItem(KEY,mode);}catch(e){}paint();};
+    try{var s=localStorage.getItem(KEY);if(s==='dark'||s==='light')root.setAttribute('data-theme',s);}catch(e){}
     paint();
-    btn.addEventListener('click',function(){var n=effective()==='dark'?'light':'dark';
-      root.setAttribute('data-theme',n);try{localStorage.setItem(KEY,n);}catch(e){}paint();});
+    btn.addEventListener('click',function(){window.__applyTheme(effective()==='dark'?'light':'dark');});
     matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(){
-      if(root.getAttribute('data-theme')==='auto')paint();});
+      var t=root.getAttribute('data-theme'); if(t!=='dark'&&t!=='light')paint();});
   })();
 </script>
 </body>

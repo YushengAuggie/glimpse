@@ -36,23 +36,33 @@
     min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:32px 24px;}
   .deck{max-width:900px;width:100%;margin:0 auto;}
   .eyebrow{font:600 12px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--accent);}
+  /* Three deliberate bands: kicker top, content centered, meta bottom. */
   .slide{display:none;aspect-ratio:16/9;background:var(--bg-elev);border:1px solid var(--line);
     border-radius:var(--radius);box-shadow:var(--shadow);
-    padding:clamp(28px,5vw,60px);flex-direction:column;justify-content:center;overflow:hidden;}
+    padding:clamp(30px,4.5vw,56px);flex-direction:column;justify-content:space-between;overflow:hidden;}
   .slide.on{display:flex;}
-  .slide h2{font-size:clamp(26px,4.6vw,46px);line-height:1.08;letter-spacing:-.025em;margin:14px 0 0;font-weight:760;}
-  .slide p{font-size:clamp(15px,1.9vw,19px);color:var(--ink-2);margin:14px 0 0;max-width:34ch;}
+  .slide .mid{margin:auto 0;}
+  .slide .smeta{font:600 11px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);
+    border-top:1px solid var(--line-2);padding-top:12px;display:flex;justify-content:space-between;gap:12px;}
+  .slide h2{font-size:clamp(26px,4.6vw,46px);line-height:1.08;letter-spacing:-.025em;margin:16px 0 0;font-weight:760;}
+  .slide p{font-size:clamp(15px,1.9vw,19px);color:var(--ink-2);margin:16px 0 0;max-width:40ch;}
   .big{font-size:clamp(56px,11vw,112px);font-weight:780;letter-spacing:-.04em;line-height:1;
     background:linear-gradient(120deg,var(--accent),var(--accent-ink));-webkit-background-clip:text;background-clip:text;color:transparent;}
   .cols{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:20px;}
   .cols>div{min-width:0;} .cols h3{font-size:15px;margin:0 0 6px;}
   .cols .k{font:600 11px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);}
   .kv{font-size:clamp(15px,2vw,18px);color:var(--ink-2);}
-  .nav{display:flex;gap:12px;align-items:center;justify-content:center;margin-top:20px;color:var(--ink-2);}
+  .nav{display:flex;gap:16px;align-items:center;justify-content:center;margin-top:22px;color:var(--ink-2);}
   .nav button{font:inherit;padding:9px 18px;border-radius:999px;border:1px solid var(--line);
     background:var(--bg-elev);color:var(--ink);cursor:pointer;transition:.12s;box-shadow:var(--shadow);}
-  .nav button:hover{border-color:var(--accent);} .nav button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
-  #pos{font:600 13px/1 var(--mono);letter-spacing:.05em;min-width:56px;text-align:center;}
+  .nav button:hover:not(:disabled){border-color:var(--accent);}
+  .nav button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  .nav button:disabled{opacity:.35;cursor:default;box-shadow:none;}
+  .dots{display:flex;gap:9px;align-items:center;}
+  .dots i{width:8px;height:8px;border-radius:50%;background:var(--line);transition:background .15s,transform .15s;}
+  :root[data-theme="dark"] .dots i{background:#39415a;}
+  @media (prefers-color-scheme: dark){:root[data-theme="auto"] .dots i{background:#39415a;}}
+  .dots i.on{background:var(--accent);transform:scale(1.35);}
   .theme-toggle{position:fixed;top:16px;right:16px;z-index:10;font:600 13px/1 var(--sans);
     display:inline-flex;align-items:center;gap:7px;background:var(--bg-elev);color:var(--ink-2);
     border:1px solid var(--line);border-radius:999px;padding:8px 13px;cursor:pointer;box-shadow:var(--shadow);}
@@ -65,52 +75,72 @@
 <div class="deck">
   <section class="slide on">
     <span class="eyebrow">01 · thesis</span>
-    <h2>Ship the thumbnail backfill this week</h2>
-    <p>One decision, three slides of context, one ask. Use arrow keys.</p>
+    <div class="mid">
+      <h2>Ship the thumbnail backfill this week</h2>
+      <p>One decision, three slides of context, one ask. Arrow keys or click to advance.</p>
+    </div>
+    <div class="smeta"><span>Backfill review</span><span>Glimpse · slides playbook</span></div>
   </section>
   <section class="slide">
     <span class="eyebrow">02 · why now</span>
-    <div class="big">2.1M</div>
-    <p>images predate on-upload thumbnails and have none — every one is an
-      on-the-fly resize on read.</p>
+    <div class="mid">
+      <div class="big">2.1M</div>
+      <p>images predate on-upload thumbnails and have none — every read is an
+        on-the-fly resize, burning worker CPU on the hot path.</p>
+    </div>
+    <div class="smeta"><span>The problem</span><span>2 / 4</span></div>
   </section>
   <section class="slide">
     <span class="eyebrow">03 · the plan</span>
-    <h2>Add a column, backfill in batches, cut reads over</h2>
-    <div class="cols">
-      <div><div class="k">Migration</div><p class="kv">Nullable <span style="font-family:var(--mono)">thumb_key</span>, online, non-blocking.</p></div>
-      <div><div class="k">Safety</div><p class="kv">Idempotent by id; originals kept; resize fallback stays.</p></div>
+    <div class="mid">
+      <h2>Add a column, backfill in batches, cut reads over</h2>
+      <div class="cols">
+        <div><div class="k">Migration</div><p class="kv">Nullable <span style="font-family:var(--mono)">thumb_key</span> — online, non-blocking.</p></div>
+        <div><div class="k">Safety</div><p class="kv">Idempotent by id; originals kept; resize fallback stays.</p></div>
+      </div>
     </div>
+    <div class="smeta"><span>The approach</span><span>3 / 4</span></div>
   </section>
   <section class="slide">
     <span class="eyebrow">04 · the ask</span>
-    <h2>Approve a batch size and I start today</h2>
-    <p>Default 1,000/batch → full coverage in ~6 hours, throttled on queue depth.</p>
+    <div class="mid">
+      <h2>Approve a batch size and I start today</h2>
+      <p>Default 1,000 per batch → full coverage in ~6 hours, throttled on queue depth so live uploads keep priority.</p>
+    </div>
+    <div class="smeta"><span>The decision</span><span>Your call</span></div>
   </section>
   <div class="nav">
-    <button onclick="go(-1)" aria-label="Previous slide">←</button>
-    <span id="pos">1 / 4</span>
-    <button onclick="go(1)" aria-label="Next slide">→</button>
+    <button id="prev" onclick="go(-1)" aria-label="Previous slide">←</button>
+    <div class="dots" id="dots"></div>
+    <button id="next" onclick="go(1)" aria-label="Next slide">→</button>
   </div>
 </div>
 <script>
   var i=0, s=[].slice.call(document.querySelectorAll('.slide'));
-  function go(d){ s[i].classList.remove('on'); i=(i+d+s.length)%s.length;
-    s[i].classList.add('on'); document.getElementById('pos').textContent=(i+1)+' / '+s.length; }
+  var prev=document.getElementById('prev'), next=document.getElementById('next'), dots=document.getElementById('dots');
+  s.forEach(function(_,n){ var d=document.createElement('i'); if(n===0)d.className='on';
+    d.addEventListener('click',function(){go(n-i);}); dots.appendChild(d); });
+  function sync(){ [].forEach.call(dots.children,function(d,n){ d.className=(n===i)?'on':''; });
+    prev.disabled=(i===0); next.disabled=(i===s.length-1); }
+  function go(d){ var n=Math.min(s.length-1,Math.max(0,i+d)); if(n===i)return;
+    s[i].classList.remove('on'); i=n; s[i].classList.add('on'); sync(); }
+  sync();
   addEventListener('keydown',function(e){ if(e.key==='ArrowRight')go(1); if(e.key==='ArrowLeft')go(-1); });
 
   (function(){
     var root=document.documentElement, btn=document.getElementById('themeToggle'),
         icon=document.getElementById('themeIcon'), label=document.getElementById('themeLabel'), KEY='glimpse-theme';
     function systemDark(){return matchMedia('(prefers-color-scheme: dark)').matches;}
-    function effective(){var t=root.getAttribute('data-theme');return t==='auto'?(systemDark()?'dark':'light'):t;}
-    function paint(){var d=effective()==='dark';icon.textContent=d?'☀️':'🌙';label.textContent=d?'Light':'Dark';}
-    try{var v=localStorage.getItem(KEY);if(v)root.setAttribute('data-theme',v);}catch(e){}
+    function effective(){var t=root.getAttribute('data-theme');return (t==='dark'||t==='light')?t:(systemDark()?'dark':'light');}
+    function paint(){var d=effective()==='dark';icon.textContent=d?'☀️':'🌙';label.textContent=d?'Light':'Dark';
+      btn.setAttribute('aria-label', d?'Switch to light theme':'Switch to dark theme');}
+    window.__applyTheme=function(mode){root.setAttribute('data-theme',mode);
+      try{localStorage.setItem(KEY,mode);}catch(e){}paint();};
+    try{var v=localStorage.getItem(KEY);if(v==='dark'||v==='light')root.setAttribute('data-theme',v);}catch(e){}
     paint();
-    btn.addEventListener('click',function(){var n=effective()==='dark'?'light':'dark';
-      root.setAttribute('data-theme',n);try{localStorage.setItem(KEY,n);}catch(e){}paint();});
+    btn.addEventListener('click',function(){window.__applyTheme(effective()==='dark'?'light':'dark');});
     matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(){
-      if(root.getAttribute('data-theme')==='auto')paint();});
+      var t=root.getAttribute('data-theme'); if(t!=='dark'&&t!=='light')paint();});
   })();
 </script>
 </body>

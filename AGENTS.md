@@ -26,8 +26,12 @@ review-artifact playbooks in sibling tooling.
    labels are the signature. Match the existing `examples/` house style.
 2. **First-class light AND dark mode.** Tokens on `:root` (light), overridden
    under both `@media (prefers-color-scheme: dark)` and `:root[data-theme="dark"]`
-   so an explicit toggle beats the OS. Mermaid bakes its theme at `initialize()` —
-   re-initialize + re-run on theme change (see `diagram.html`).
+   so an explicit toggle beats the OS. All theme changes route through one
+   `window.__applyTheme(mode)` that sets the attribute AND repaints the toggle
+   label/aria, so state can never drift (the pill label names the mode you switch
+   TO). Mermaid bakes its theme at `initialize()` — re-init + re-run on change via
+   the `window.__onThemeChange` hook, using custom `theme:'base'` `themeVariables`
+   matched to the palette (not stock `neutral`/`dark`, which read as generic).
 3. **No horizontal overflow at any nesting level:** flex/grid children need
    `min-width:0`, tracks use `minmax(min(240px,100%),1fr)`; long tokens/URLs/paths
    `overflow-wrap:anywhere`; tables in `.table-wrap{overflow-x:auto}`;
@@ -38,10 +42,10 @@ review-artifact playbooks in sibling tooling.
 ### Verifying artifact rendering
 Local files render/screenshot via `chrome-devtools-axi`: `newpage file://…`,
 `resize 1440 900`, then `selectpage <id>` (resize deselects the page), set the
-theme with `eval "() => { document.documentElement.setAttribute('data-theme','dark');
-window.__onThemeChange && window.__onThemeChange('dark') }"`, `screenshot <abspath>`
-(use an **absolute** path — relative paths write to the bridge's cwd, not yours).
-`glimpse shot` is the alternative when the canvas is up.
+theme with `eval "() => window.__applyTheme('dark')"` (repaints label + re-themes
+Mermaid), `screenshot <abspath>` (use an **absolute** path — relative paths write
+to the bridge's cwd, not yours). `glimpse shot` is the alternative when the canvas
+is up.
 
 **Scope guard:** playbooks are authoring guidance only. Do not encode runtime
 behavior — the CLI verbs live in `bin/glimpse` and must not be invented in docs.

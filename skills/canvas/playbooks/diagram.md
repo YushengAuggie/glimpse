@@ -33,9 +33,13 @@ branching is a numbered list, and tabular data is a [table](table.md).
 
 Mermaid bakes its theme **at `initialize()`** and won't restyle on a CSS theme
 flip. Wire it to the toggle: stash each graph's source, and on theme change
-re-`initialize` with the right theme then re-`run`. Use `theme:'neutral'` for
-light and `theme:'dark'` for dark — both read well against the page. Give
-`.diagram` `overflow:auto` so a wide graph scrolls instead of bleeding.
+re-`initialize` then re-`run`. **Don't ship the stock `neutral`/`dark` themes** —
+they read as generic AI-Mermaid (flat gray nodes, gray edge-label boxes that
+clash in dark). Use `theme:'base'` with `themeVariables` matched to the page
+palette: accent-tinted `mainBkg`, accent `nodeBorder`, ink `primaryTextColor`,
+and `edgeLabelBackground` set to the card surface so labels blend. Give `.diagram`
+`overflow:auto`, and prefer **`LR`** for a cyclic/wide flow so every node stays
+above the laptop fold. The example wires all of this up.
 
 ## Snippet
 
@@ -44,29 +48,32 @@ light and `theme:'dark'` for dark — both read well against the page. Give
   <div class="eyebrow">Flow · upload → thumbnail</div>
   <h2>How does an upload become a thumbnail?</h2>
   <div class="diagram" style="overflow:auto"><pre class="mermaid">
-flowchart TB
+flowchart LR
   U([Client]) -->|upload| API[Upload API]
-  API -->|store original| S3[(Object store)]
-  API -->|enqueue| Q[[Queue]]
-  Q --> W[Resizer worker]
+  API -->|store| S3[(Object store)]
+  API -->|enqueue| Q[[Queue]] --> W[Resizer worker]
   W -->|write sizes| S3
-  S3 --> CDN[(CDN)] --> U
+  S3 --> CDN[(CDN)] -->|serve| U
   </pre></div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 <script>
-  // Keep the source so we can re-render when the theme flips.
   document.querySelectorAll('.mermaid').forEach(n => n.dataset.src = n.textContent);
+  // Brand-matched vars — swap the hexes for your page tokens.
+  const vars = m => m === 'dark'
+    ? { background:'transparent', mainBkg:'#1b2140', nodeBorder:'#93a4ff', lineColor:'#7c8bff',
+        primaryTextColor:'#e6e8f0', edgeLabelBackground:'#171923' }
+    : { background:'transparent', mainBkg:'#eef1ff', nodeBorder:'#4c5fd5', lineColor:'#7784d8',
+        primaryTextColor:'#1a1b26', edgeLabelBackground:'#ffffff' };
   function renderMermaid(mode){
     document.querySelectorAll('.mermaid').forEach(n => {
       n.removeAttribute('data-processed'); n.textContent = n.dataset.src;
     });
-    mermaid.initialize({ startOnLoad:false, theme: mode === 'dark' ? 'dark' : 'neutral' });
+    mermaid.initialize({ startOnLoad:false, theme:'base', themeVariables: vars(mode) });
     mermaid.run();
   }
-  // base.html calls this on every theme change; also run once on load.
-  window.__onThemeChange = renderMermaid;
+  window.__onThemeChange = renderMermaid;   // base.html calls this on every theme flip
   renderMermaid(document.documentElement.getAttribute('data-theme') === 'dark'
     || (document.documentElement.getAttribute('data-theme') !== 'light'
         && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light');

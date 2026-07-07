@@ -50,6 +50,9 @@
   .grid>*{min-width:0;}
   .opt{position:relative;background:var(--bg-elev);border:1px solid var(--line);border-radius:var(--radius);
     padding:20px 22px;box-shadow:var(--shadow);}
+  /* Raise the non-recommended card's edge so both cards read as distinct in dark. */
+  :root[data-theme="dark"] .opt:not(.win){border-color:#3a4258;background:#1a1d29;}
+  @media (prefers-color-scheme: dark){:root[data-theme="auto"] .opt:not(.win){border-color:#3a4258;background:#1a1d29;}}
   .opt.win{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent), var(--shadow);}
   .chip{position:absolute;top:-11px;left:20px;font:600 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;
     background:var(--accent);color:#fff;border-radius:999px;padding:5px 11px;}
@@ -108,14 +111,17 @@
     var root=document.documentElement, btn=document.getElementById('themeToggle'),
         icon=document.getElementById('themeIcon'), label=document.getElementById('themeLabel'), KEY='glimpse-theme';
     function systemDark(){return matchMedia('(prefers-color-scheme: dark)').matches;}
-    function effective(){var t=root.getAttribute('data-theme');return t==='auto'?(systemDark()?'dark':'light'):t;}
-    function paint(){var d=effective()==='dark';icon.textContent=d?'☀️':'🌙';label.textContent=d?'Light':'Dark';}
-    try{var s=localStorage.getItem(KEY);if(s)root.setAttribute('data-theme',s);}catch(e){}
+    function effective(){var t=root.getAttribute('data-theme');return (t==='dark'||t==='light')?t:(systemDark()?'dark':'light');}
+    function paint(){var d=effective()==='dark';icon.textContent=d?'☀️':'🌙';label.textContent=d?'Light':'Dark';
+      btn.setAttribute('aria-label', d?'Switch to light theme':'Switch to dark theme');
+      if(window.__onThemeChange)window.__onThemeChange(effective());}
+    window.__applyTheme=function(mode){root.setAttribute('data-theme',mode);
+      try{localStorage.setItem(KEY,mode);}catch(e){}paint();};
+    try{var s=localStorage.getItem(KEY);if(s==='dark'||s==='light')root.setAttribute('data-theme',s);}catch(e){}
     paint();
-    btn.addEventListener('click',function(){var n=effective()==='dark'?'light':'dark';
-      root.setAttribute('data-theme',n);try{localStorage.setItem(KEY,n);}catch(e){}paint();});
+    btn.addEventListener('click',function(){window.__applyTheme(effective()==='dark'?'light':'dark');});
     matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(){
-      if(root.getAttribute('data-theme')==='auto')paint();});
+      var t=root.getAttribute('data-theme'); if(t!=='dark'&&t!=='light')paint();});
   })();
 </script>
 </body>

@@ -153,20 +153,21 @@
         icon=document.getElementById('themeIcon'), label=document.getElementById('themeLabel');
     var KEY='glimpse-theme';
     function systemDark(){return matchMedia('(prefers-color-scheme: dark)').matches;}
-    function effective(){var t=root.getAttribute('data-theme');return t==='auto'?(systemDark()?'dark':'light'):t;}
+    function effective(){var t=root.getAttribute('data-theme');return (t==='dark'||t==='light')?t:(systemDark()?'dark':'light');}
     function paint(){var d=effective()==='dark';
+      // Label names the mode you'll switch TO, so it doubles as the action.
       icon.textContent=d?'☀️':'🌙'; label.textContent=d?'Light':'Dark';
+      btn.setAttribute('aria-label', d?'Switch to light theme':'Switch to dark theme');
       if(window.__onThemeChange)window.__onThemeChange(effective());}
-    try{var saved=localStorage.getItem(KEY); if(saved)root.setAttribute('data-theme',saved);}catch(e){}
-    paint();
-    btn.addEventListener('click',function(){
-      var next=effective()==='dark'?'light':'dark';
-      root.setAttribute('data-theme',next);
-      try{localStorage.setItem(KEY,next);}catch(e){}
-      paint();
-    });
+    // Single entry point for toggle AND programmatic (screenshot) theme changes,
+    // so the label/state can never drift from the rendered theme.
+    window.__applyTheme=function(mode){root.setAttribute('data-theme',mode);
+      try{localStorage.setItem(KEY,mode);}catch(e){}paint();};
+    try{var saved=localStorage.getItem(KEY); if(saved==='dark'||saved==='light')root.setAttribute('data-theme',saved);}catch(e){}
+    paint();  // always sync label to the effective theme on load
+    btn.addEventListener('click',function(){window.__applyTheme(effective()==='dark'?'light':'dark');});
     matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(){
-      if(root.getAttribute('data-theme')==='auto')paint();
+      var t=root.getAttribute('data-theme'); if(t!=='dark'&&t!=='light')paint();
     });
   })();
 </script>
