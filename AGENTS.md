@@ -535,11 +535,11 @@ renders identically opened directly from disk and via Pages.
   It leads with the differentiator — a live app in a browser frame with a CDP
   command drawer (`glimpse open/read/click/wait`) driving it — built in HTML so it
   themes flawlessly in light AND dark. This deliberately replaced an earlier raster
-  hero (`assets/glimpse-hero.png`), which showed a *bright-white* canvas doc that
-  read as a glaring white block in dark mode (a design-review must-fix). Rule of
-  thumb: any hero-scale visual must have a correct dark treatment; prefer inline
-  themed HTML over a single-theme screenshot. The drawer/terminals are dark in both
-  themes on purpose (they are code surfaces, `--code-bg`).
+  hero (the removed `assets/glimpse-hero.png`), which showed a *bright-white* canvas
+  doc that read as a glaring white block in dark mode (a design-review must-fix).
+  Rule of thumb: any hero-scale visual must have a correct dark treatment; prefer
+  inline themed HTML over a single-theme screenshot. The drawer/terminals are dark
+  in both themes on purpose (they are code surfaces, `--code-bg`).
 - **Assets are local + relative.** `docs/assets/` holds `glimpse-icon.svg` and
   `docs/assets/shots/*` — copies of the playbook example screenshots
   (`examples/screenshots/<name>-{light,dark}.png`). Relative paths (`assets/…`) are
@@ -594,3 +594,14 @@ with code, the code wins.
 - **CI badge + playbooks pointer** belong in the README: badge →
   `.github/workflows/ci.yml` (workflow name `ci`); authoring playbooks live in
   `skills/canvas/playbooks/` with worked examples in `examples/playbooks/`.
+- **README leads with the moat and its hero is dark-safe.** The top-of-fold
+  headline is "Your AI coding agent gets a real browser" (real Chrome over CDP),
+  with "live, two-way visual canvas" as supporting language — mirror the showcase
+  (`docs/index.html`) voice, not a generic-canvas pitch. The hero is a `<picture>`
+  with `assets/glimpse-hero-{light,dark}.png` (`prefers-color-scheme:dark` `<source>`
+  + light `<img>` fallback) so GitHub serves the right one per theme — never a single
+  light-only raster (it reads as a glaring white block on GitHub dark). Those two PNGs
+  are cropped from `docs/index.html`'s inline moat scene (`.hero-scene`), captured once
+  per theme (set `window.__applyTheme('light'|'dark')` explicitly before EACH shot —
+  the theme persists in localStorage per `file://` origin). Both are `*.png`-ignored,
+  so `.gitignore` must allowlist each (`!assets/glimpse-hero-light.png`, `-dark.png`).
