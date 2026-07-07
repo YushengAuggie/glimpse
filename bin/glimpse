@@ -8,6 +8,8 @@
 #   glimpse explain <slug> <title> [spec.json]   publish an interactive code-explainer (spec on stdin if omitted)
 #   glimpse ask <slug> <title> [file] [--timeout N]   publish an interactive artifact,
 #                                block until the user responds, print {"slug","value"} JSON
+#   glimpse export <slug> [--out <path>]   write a single portable HTML file (local assets inlined; remote refs kept)
+#   glimpse share <slug> [--public] [--password <pw>]   upload a portable copy to ht-ml.app; PRIVATE (password) by default
 #   glimpse list                 list artifacts (pinned first)
 #   glimpse rm <slug>...         delete artifacts (from the feed + disk)
 #   glimpse clear --all | --keep N   prune artifacts (pinned are always kept)
@@ -356,6 +358,112 @@ _write_artifact(){
   cat -- "$src" > "$tmp"
   chmod 0644 "$tmp"
   mv -f "$tmp" "$dest"
+}
+
+# --- portable output: standalone export + private-by-default remote share ------
+# `glimpse publish`/`explain`/`ask` above write to the LOCAL canvas. `export` and
+# `share` here take a published artifact and emit a portable, self-contained copy:
+# export writes it to disk (fully offline), share uploads it to ht-ml.app. Naming:
+# the remote command is `share` (not `publish`) precisely so it can't be confused
+# with — or clobber — the existing local `publish`/canvas verb.
+
+# Print the self-contained (all LOCAL assets inlined) HTML for a published artifact
+# to stdout. Inliner warnings go to stderr; the module confines reads to the
+# artifact's directory and secret-scrubs the bundle (see lib/glimpse_export.py).
+_inline_artifact(){
+  local slug="$1" src="$ARTIFACTS/${slug}.html"
+  [ -f "$src" ] || die "no artifact '$slug' — publish it first (glimpse publish $slug …). try: glimpse list"
+  local mod; mod="$(_lib_file glimpse_export.py)" || die "export engine not found (lib/glimpse_export.py) — reinstall glimpse"
+  have python3 || die "python3 is required to export/share"
+  python3 "$mod" "$src"
+}
+
+cmd_export(){
+  local out=""; local -a pos=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --out) out="${2:-}"; shift 2 || die "usage: glimpse export <slug> [--out <path>]";;
+      *) pos+=("$1"); shift;;
+    esac
+  done
+  local slug="${pos[0]:-}"
+  [ -n "$slug" ] || die "usage: glimpse export <slug> [--out <path>]"
+  _validate_slug "$slug"
+  [ -f "$ARTIFACTS/${slug}.html" ] || die "no artifact '$slug' — publish it first. try: glimpse list"
+  # Default to the current directory: the artifact source lives in a hidden managed
+  # data dir ($GLIMPSE_DIR/artifacts), so writing "next to the source" would bury
+  # the file where the user can't find it. --out overrides.
+  local dest="${out:-$PWD/${slug}.export.html}"
+  local ddir; ddir="$(dirname "$dest")"
+  [ -d "$ddir" ] || die "output directory does not exist: $ddir"
+  local tmp="$dest.glimpse-tmp.$$"
+  _inline_artifact "$slug" > "$tmp" || { rm -f "$tmp"; exit 1; }
+  chmod 0644 "$tmp"
+  mv -f "$tmp" "$dest"
+  echo "exported → $dest  (open it in any browser; no glimpse server needed)"
+}
+
+cmd_share(){
+  local public=0 password="" pw_set=0; local -a pos=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --public)   public=1; shift;;
+      --password) password="${2:-}"; pw_set=1; shift 2 || die "usage: glimpse share <slug> [--public] [--password <pw>]";;
+      *) pos+=("$1"); shift;;
+    esac
+  done
+  local slug="${pos[0]:-}"
+  [ -n "$slug" ] || die "usage: glimpse share <slug> [--public] [--password <pw>]"
+  _validate_slug "$slug"
+  [ -f "$ARTIFACTS/${slug}.html" ] || die "no artifact '$slug' — publish it first. try: glimpse list"
+  have python3 || die "python3 is required to share"
+  local share; share="$(_lib_file glimpse_share.py)" || die "share engine not found (lib/glimpse_share.py) — reinstall glimpse"
+  [ "$public" = 1 ] && [ "$pw_set" = 1 ] && die "--public and --password are mutually exclusive"
+
+  # PRIVATE by default — a firm product decision that deliberately diverges from
+  # lavish's public-by-default: with no flag, publish a password-protected page.
+  # Use --password if given, else mint a strong random one and print it. --public
+  # opts into a fully open page.
+  local gen=0
+  if [ "$public" = 1 ]; then
+    password=""
+  elif [ "$pw_set" = 1 ]; then
+    [ -n "$password" ] || die "--password needs a non-empty value (or use --public for an open page)"
+  else
+    password="$(python3 -c 'import secrets; print(secrets.token_urlsafe(18))')"
+    gen=1
+  fi
+
+  # One-time privacy notice (glimpse is otherwise local & serverless): make it
+  # unmistakable that the artifact leaves the machine for a third-party host,
+  # before the upload happens. Concise — not a nag.
+  {
+    echo "glimpse share: uploading '$slug' to ht-ml.app — a third-party public host. The"
+    echo "               artifact leaves your machine; local assets are inlined, remote refs"
+    if [ "$public" = 1 ]; then
+      echo "               load over the network. The page will be PUBLIC — anyone with the link can view."
+    else
+      echo "               load over the network. The page is PRIVATE (password-protected)."
+    fi
+  } >&2
+
+  # Build the self-contained bundle offline, then hand it to the uploader on stdin.
+  local result
+  result="$(_inline_artifact "$slug" | GLIMPSE_PASSWORD="$password" python3 "$share")" \
+    || die "share failed (see the error above)"
+
+  local url key
+  url="$(printf '%s' "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin)["url"])')"
+  key="$(printf '%s' "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("update_key",""))')"
+
+  echo "shared → $url"
+  if [ "$public" = 1 ]; then
+    echo "  visibility: PUBLIC — anyone with the link can view"
+  else
+    echo "  visibility: PRIVATE — viewers must enter this password:"
+    echo "  password:   $password$([ "$gen" = 1 ] && echo '   (generated — save it; the page cannot be viewed without it)')"
+  fi
+  [ -n "$key" ] && echo "  update key: $key   (secret — keep it to update or manage the page later)"
 }
 
 # Resolve the explain engine (validator + wrapper). Mirrors _seed_asset's search:
@@ -733,6 +841,8 @@ case "${1:-help}" in
   publish) shift; cmd_publish "$@";;
   explain) shift; cmd_explain "$@";;
   ask)     shift; cmd_ask "$@";;
+  export)  shift; cmd_export "$@";;
+  share)   shift; cmd_share "$@";;
   list|ls) shift; cmd_list "$@";;
   rm)      shift; cmd_rm "$@";;
   clear)   shift; cmd_clear "$@";;
