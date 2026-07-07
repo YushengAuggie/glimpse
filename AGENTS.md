@@ -524,16 +524,32 @@ renders identically opened directly from disk and via Pages.
   one `window.__applyTheme`). No horizontal overflow at any nesting level
   (`min-width:0` grid children, `minmax(min(240px,100%),1fr)` tracks, code in
   `overflow:auto` `<pre>`, the CLI table in `.table-wrap{overflow-x:auto}`).
-- **Assets are local + relative.** `docs/assets/` holds `glimpse-icon.svg`,
-  `glimpse-hero.png`, and `docs/assets/shots/*` — copies of the playbook example
-  screenshots (`examples/screenshots/<name>-{light,dark}.png`). Relative paths
-  (`assets/…`) are required so project Pages (base path `/glimpse/`) resolves them;
-  never use root-absolute `/assets`.
+- **The hero visual is an inline, natively-themed "moat scene", NOT a raster.**
+  It leads with the differentiator — a live app in a browser frame with a CDP
+  command drawer (`glimpse open/read/click/wait`) driving it — built in HTML so it
+  themes flawlessly in light AND dark. This deliberately replaced an earlier raster
+  hero (`assets/glimpse-hero.png`), which showed a *bright-white* canvas doc that
+  read as a glaring white block in dark mode (a design-review must-fix). Rule of
+  thumb: any hero-scale visual must have a correct dark treatment; prefer inline
+  themed HTML over a single-theme screenshot. The drawer/terminals are dark in both
+  themes on purpose (they are code surfaces, `--code-bg`).
+- **Assets are local + relative.** `docs/assets/` holds `glimpse-icon.svg` and
+  `docs/assets/shots/*` — copies of the playbook example screenshots
+  (`examples/screenshots/<name>-{light,dark}.png`). Relative paths (`assets/…`) are
+  required so project Pages (base path `/glimpse/`) resolves them; never use
+  root-absolute `/assets`.
 - **Theme-aware gallery.** Each playbook card holds a `.light`+`.dark` `<img>`
   pair; CSS shows the one matching the active theme (`prefers-color-scheme` +
   `:root[data-theme]`). The gallery imgs are intentionally **not** `loading=lazy`
   — a full-page screenshot (design review / social preview) must capture them, and
   they are the centerpiece; a lazy gallery screenshots blank below the fold.
+- **Structure: hero → 3 differentiator pillars → gallery → quickstart → CLI table.**
+  The page leads on the moat and collapses capabilities into three pillars —
+  (1) drives & inspects real apps over CDP, (2) live two-way review, (3) local &
+  private/always-on — rather than a long capability-card grid (a design + marketing
+  review flagged the grid as redundant with the CLI table and page-lengthening). The
+  full verb list lives ONLY in the grouped CLI reference table; don't reintroduce a
+  parallel card grid for the same verbs.
 - **Content is marketing but accurate** to shipped verbs (`publish/poll/reply/
   ask --form/explain/audit/read/shot/snapshot/click/scroll/wait/daemon/export/
   share/list/pin/doctor`). Keep it in sync when verbs change; it is public, so no

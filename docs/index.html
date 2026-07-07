@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Glimpse — a live, two-way visual canvas for AI coding agents</title>
-<meta name="description" content="Glimpse gives AI coding agents a real browser canvas: they publish rich HTML you can read, highlight, and talk back to — and drive live apps over CDP. Local, serverless, private.">
+<title>Glimpse — a real browser for your AI coding agent</title>
+<meta name="description" content="Glimpse gives your AI coding agent a real Chrome over CDP: it renders its work as live HTML, drives and inspects your running app, and you highlight anything to talk back. Local, serverless, private.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" type="image/svg+xml" href="assets/glimpse-icon.svg">
 <!-- Open Graph / social -->
-<meta property="og:title" content="Glimpse — a live, two-way visual canvas for AI coding agents">
-<meta property="og:description" content="Your agent shows its work as rendered HTML in a real browser — and you can highlight any passage and talk back. Local, serverless, private.">
+<meta property="og:title" content="Glimpse — a real browser for your AI coding agent">
+<meta property="og:description" content="Your agent renders its work as live HTML, drives and inspects your running app over CDP, and you highlight anything to talk back. Local, serverless, private.">
 <meta property="og:type" content="website">
-<meta property="og:image" content="assets/glimpse-hero.png">
+<meta property="og:image" content="assets/shots/diagram-dark.png">
 <style>
   /* ============================================================================
      Design tokens — mirror skills/canvas/playbooks/base.html. Light is default;
@@ -26,7 +26,7 @@
     --accent:#4c5fd5; --accent-ink:#3245b8; --accent-soft:#eef1ff;
     --good:#2f9e44; --good-soft:#eaf7ee; --warn:#e8590c; --warn-soft:#fdf0e6;
     --danger:#e03131; --danger-soft:#fdeded; --info:#1c7ed6; --info-soft:#e7f2fc;
-    --code-bg:#0f1117; --code-ink:#e6e8ee; --code-dim:#8a93a6; --code-accent:#93a4ff; --code-str:#9ece6a;
+    --code-bg:#0f1117; --code-ink:#e6e8ee; --code-dim:#9aa3b8; --code-accent:#93a4ff; --code-str:#9ece6a;
     --shadow-sm:0 1px 2px rgba(20,20,40,.05), 0 6px 16px -14px rgba(20,20,40,.20);
     --shadow:0 1px 2px rgba(20,20,40,.05), 0 12px 32px -20px rgba(20,20,40,.28);
     --shadow-lg:0 2px 6px rgba(20,20,40,.06), 0 40px 80px -40px rgba(20,20,40,.34);
@@ -44,7 +44,7 @@
       --accent:#93a4ff; --accent-ink:#b7c2ff; --accent-soft:#1b2140;
       --good:#51cf66; --good-soft:#12281a; --warn:#ff922b; --warn-soft:#2a1c10;
       --danger:#ff6b6b; --danger-soft:#2a1414; --info:#4dabf7; --info-soft:#0f2233;
-      --code-bg:#0b0d13; --code-ink:#e6e8ee; --code-dim:#7c8296;
+      --code-bg:#0b0d13; --code-ink:#e6e8ee; --code-dim:#8891a6;
       --shadow-sm:0 1px 2px rgba(0,0,0,.4), 0 8px 20px -16px rgba(0,0,0,.7);
       --shadow:0 1px 2px rgba(0,0,0,.4), 0 16px 40px -24px rgba(0,0,0,.8);
       --shadow-lg:0 2px 6px rgba(0,0,0,.5), 0 50px 100px -50px rgba(0,0,0,.9);
@@ -58,7 +58,7 @@
     --accent:#93a4ff; --accent-ink:#b7c2ff; --accent-soft:#1b2140;
     --good:#51cf66; --good-soft:#12281a; --warn:#ff922b; --warn-soft:#2a1c10;
     --danger:#ff6b6b; --danger-soft:#2a1414; --info:#4dabf7; --info-soft:#0f2233;
-    --code-bg:#0b0d13; --code-ink:#e6e8ee; --code-dim:#7c8296;
+    --code-bg:#0b0d13; --code-ink:#e6e8ee; --code-dim:#8891a6;
     --shadow-sm:0 1px 2px rgba(0,0,0,.4), 0 8px 20px -16px rgba(0,0,0,.7);
     --shadow:0 1px 2px rgba(0,0,0,.4), 0 16px 40px -24px rgba(0,0,0,.8);
     --shadow-lg:0 2px 6px rgba(0,0,0,.5), 0 50px 100px -50px rgba(0,0,0,.9);
@@ -78,7 +78,7 @@
   :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px;}
 
   .wrap{width:100%;max-width:1120px;margin:0 auto;padding:0 24px;}
-  .narrow{max-width:760px;}
+  .narrow{max-width:780px;}
 
   /* ---- Typography ---------------------------------------------------------- */
   h1,h2,h3{letter-spacing:-.02em;}
@@ -86,7 +86,7 @@
     color:var(--accent);display:inline-flex;align-items:center;gap:9px;margin:0 0 16px;}
   .eyebrow::before{content:"";width:22px;height:2px;background:var(--accent);border-radius:2px;}
   .eyebrow.center{justify-content:center;}
-  .section-title{font-size:clamp(24px,3.4vw,32px);font-weight:760;line-height:1.15;margin:0 0 12px;}
+  .section-title{font-size:clamp(24px,3.4vw,33px);font-weight:760;line-height:1.15;margin:0 0 12px;}
   .section-lede{font-size:clamp(16px,2vw,18px);line-height:1.6;color:var(--ink-2);margin:0;max-width:640px;}
 
   /* ---- Nav ----------------------------------------------------------------- */
@@ -101,7 +101,6 @@
   .nav-links{display:flex;align-items:center;gap:6px;margin-left:auto;min-width:0;}
   .nav-links a{color:var(--ink-2);font-size:14px;font-weight:550;padding:7px 11px;border-radius:8px;white-space:nowrap;}
   .nav-links a:hover{color:var(--ink);background:var(--bg-sunk);text-decoration:none;}
-  .nav-links .nav-hide{}
   @media (max-width:720px){ .nav-links .nav-hide{display:none;} }
 
   /* ---- Buttons ------------------------------------------------------------- */
@@ -126,74 +125,144 @@
   .theme-toggle:hover{color:var(--ink);border-color:var(--accent);}
 
   /* ---- Hero ---------------------------------------------------------------- */
-  .hero{position:relative;padding:clamp(56px,9vw,104px) 0 clamp(40px,6vw,64px);}
-  .hero::before{content:"";position:absolute;inset:0 0 auto 0;height:520px;background:var(--glow);pointer-events:none;z-index:-1;}
+  .hero{position:relative;padding:clamp(52px,8vw,92px) 0 clamp(40px,6vw,60px);}
+  .hero::before{content:"";position:absolute;inset:0 0 auto 0;height:560px;background:var(--glow);pointer-events:none;z-index:-1;}
   .hero-badge{display:inline-flex;align-items:center;gap:8px;font:600 12.5px/1 var(--mono);
     letter-spacing:.04em;color:var(--ink-2);background:var(--bg-elev);border:1px solid var(--line);
     border-radius:999px;padding:7px 13px;margin-bottom:22px;box-shadow:var(--shadow-sm);}
   .hero-badge .pip{width:8px;height:8px;border-radius:50%;background:var(--good);box-shadow:0 0 0 3px color-mix(in srgb,var(--good) 25%,transparent);}
-  .hero h1{font-size:clamp(34px,6vw,60px);line-height:1.04;font-weight:800;margin:0 0 20px;max-width:16ch;}
+  .hero h1{font-size:clamp(34px,6vw,60px);line-height:1.05;font-weight:800;margin:0 0 20px;max-width:20ch;}
   .hero h1 .grad{background:linear-gradient(105deg,var(--accent),color-mix(in srgb,var(--accent) 55%, #b16cff));
     -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:var(--accent);}
-  .hero-lede{font-size:clamp(17px,2.4vw,21px);line-height:1.55;color:var(--ink-2);max-width:56ch;margin:0 0 30px;}
+  .hero-lede{font-size:clamp(17px,2.4vw,20px);line-height:1.55;color:var(--ink-2);max-width:60ch;margin:0 0 30px;}
+  .hero-lede b{color:var(--ink);font-weight:650;}
   .hero-cta{display:flex;flex-wrap:wrap;gap:12px;align-items:center;}
-  .hero-meta{margin-top:22px;display:flex;flex-wrap:wrap;gap:8px 20px;color:var(--ink-3);font-size:13.5px;}
-  .hero-meta span{display:inline-flex;align-items:center;gap:7px;}
-  .hero-meta svg{width:15px;height:15px;color:var(--good);flex:none;}
 
-  /* Browser-chrome frame for the hero shot */
-  .frame{margin-top:clamp(40px,6vw,64px);border:1px solid var(--line);border-radius:var(--radius-lg);
+  /* Trust strip: readable (ink-2), one graceful wrapping line. */
+  .trust{margin-top:22px;display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;
+    color:var(--ink-2);font-size:13.5px;line-height:1.5;}
+  .trust .t{display:inline-flex;align-items:center;gap:7px;}
+  .trust .t svg{width:15px;height:15px;color:var(--good);flex:none;}
+  .trust .sep{width:4px;height:4px;border-radius:50%;background:var(--ink-3);opacity:.6;}
+  @media (max-width:520px){ .trust .sep{display:none;} .trust{gap:8px 12px;} }
+
+  /* ---- Browser-chrome frame ------------------------------------------------ */
+  .frame{border:1px solid var(--line);border-radius:var(--radius-lg);
     background:var(--bg-elev);box-shadow:var(--shadow-lg);overflow:hidden;}
-  .frame-bar{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line-2);background:var(--bg-sunk);}
-  .frame-dots{display:flex;gap:7px;}
+  .frame-bar{display:flex;align-items:center;gap:9px;padding:12px 16px;border-bottom:1px solid var(--line-2);background:var(--bg-sunk);}
+  .frame-dots{display:flex;gap:7px;flex:none;}
   .frame-dots i{width:11px;height:11px;border-radius:50%;background:var(--line);display:block;}
   .frame-dots i:nth-child(1){background:#ff5f57;} .frame-dots i:nth-child(2){background:#febc2e;} .frame-dots i:nth-child(3){background:#28c840;}
-  .frame-url{flex:1;min-width:0;margin-left:8px;font:12.5px/1 var(--mono);color:var(--ink-3);
+  .frame-url{flex:1;min-width:0;margin-left:6px;font:12.5px/1 var(--mono);color:var(--ink-2);
     background:var(--bg-elev);border:1px solid var(--line-2);border-radius:8px;padding:7px 11px;
-    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .frame img{width:100%;display:block;}
+    display:flex;align-items:center;gap:8px;overflow:hidden;white-space:nowrap;}
+  .frame-url .lock{color:var(--ink-3);flex:none;}
+  .frame-url .u{overflow:hidden;text-overflow:ellipsis;}
+  .frame-tag{flex:none;font:600 11px/1 var(--mono);letter-spacing:.04em;color:var(--accent-ink);
+    background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 22%,transparent);
+    border-radius:999px;padding:5px 9px;}
+  @media (max-width:600px){ .frame-tag{display:none;} }
+
+  /* ---- Hero scene: a live app + a CDP command drawer (themes natively) ----- */
+  .hero-scene{margin-top:clamp(38px,6vw,60px);}
+  .scene{display:flex;flex-direction:column;}
+  .app{padding:clamp(18px,3vw,30px);background:
+      radial-gradient(120% 120% at 100% 0%, color-mix(in srgb,var(--accent) 7%,transparent), transparent 55%);}
+  .app-chrome{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px;min-width:0;}
+  .app-chrome .app-brand{display:flex;align-items:center;gap:9px;font-weight:700;font-size:14px;color:var(--ink);min-width:0;}
+  .app-chrome .app-brand .glyph{width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,var(--accent),color-mix(in srgb,var(--accent) 50%,#b16cff));flex:none;}
+  .app-chrome .app-nav{display:flex;gap:16px;color:var(--ink-3);font-size:12.5px;}
+  @media (max-width:560px){ .app-chrome .app-nav{display:none;} }
+  .app-h{font-size:clamp(17px,2.4vw,20px);font-weight:740;margin:0 0 3px;color:var(--ink);letter-spacing:-.01em;}
+  .app-sub{margin:0 0 16px;color:var(--ink-3);font-size:13px;}
+  .stat-row{display:grid;gap:12px;grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:16px;}
+  .stat{background:var(--bg-elev);border:1px solid var(--line);border-radius:12px;padding:13px 15px;min-width:0;box-shadow:var(--shadow-sm);}
+  .stat .k{font:600 10.5px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);}
+  .stat .v{font-size:clamp(18px,2.6vw,22px);font-weight:760;margin-top:6px;color:var(--ink);letter-spacing:-.02em;}
+  .stat .v .up{font-size:12px;font-weight:650;color:var(--good);margin-left:6px;}
+  .chart{display:flex;align-items:flex-end;gap:clamp(6px,1.4vw,11px);height:76px;padding:14px 16px;background:var(--bg-elev);
+    border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-sm);margin-bottom:18px;}
+  .chart i{flex:1;min-width:0;border-radius:5px 5px 0 0;
+    background:linear-gradient(180deg,var(--accent),color-mix(in srgb,var(--accent) 45%,transparent));opacity:.9;}
+  .app-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+  .app-btn{font:600 13px/1 var(--sans);background:var(--accent);color:#fff;border:none;border-radius:10px;padding:10px 16px;
+    box-shadow:0 8px 18px -10px color-mix(in srgb,var(--accent) 70%,transparent);}
+  :root[data-theme="dark"] .app-btn, :root[data-theme="auto"] .app-btn{color:#0e0f16;}
+  @media (prefers-color-scheme: light){ :root[data-theme="auto"] .app-btn{color:#fff;} }
+  .app-toast{display:inline-flex;align-items:center;gap:7px;font:600 12.5px/1 var(--sans);color:var(--good);
+    background:var(--good-soft);border:1px solid color-mix(in srgb,var(--good) 30%,transparent);border-radius:999px;padding:8px 12px;}
+  .app-toast svg{width:14px;height:14px;}
+
+  /* CDP drawer — a docked terminal strip; dark in BOTH themes (code surface). */
+  .drawer{background:var(--code-bg);border-top:1px solid rgba(255,255,255,.07);}
+  .drawer-head{display:flex;align-items:center;gap:9px;padding:11px 18px;border-bottom:1px solid rgba(255,255,255,.06);
+    font:600 11.5px/1 var(--mono);letter-spacing:.05em;color:var(--code-dim);}
+  .drawer-head .live{width:8px;height:8px;border-radius:50%;background:#51cf66;box-shadow:0 0 0 3px rgba(81,207,102,.22);flex:none;}
+  .drawer-head .grow{flex:1;}
+  .drawer-head .badge{color:var(--code-accent);}
+  .drawer pre{margin:0;padding:16px 18px 18px;overflow:auto;max-width:100%;font:13px/1.75 var(--mono);color:var(--code-ink);}
+  .drawer .c{color:var(--code-dim);} .drawer .p{color:var(--code-accent);} .drawer .s{color:var(--code-str);}
+  .drawer .ok{color:#51cf66;}
 
   /* ---- Sections ------------------------------------------------------------ */
-  section{padding:clamp(52px,8vw,88px) 0;}
+  section{padding:clamp(52px,8vw,86px) 0;}
   section + section{padding-top:0;}
   .section-head{margin-bottom:36px;}
   .section-head.center{text-align:center;display:flex;flex-direction:column;align-items:center;}
 
-  /* ---- Pillars (three ideas) ---------------------------------------------- */
-  .pillars{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr));}
-  .pillars > *{min-width:0;}
-  .pillar{background:var(--bg-elev);border:1px solid var(--line);border-radius:var(--radius);
-    padding:26px;box-shadow:var(--shadow-sm);}
-  .pillar .ico{width:42px;height:42px;border-radius:11px;display:grid;place-items:center;margin-bottom:16px;
-    background:var(--accent-soft);color:var(--accent-ink);}
-  .pillar .ico svg{width:22px;height:22px;}
-  .pillar h3{font-size:18px;font-weight:720;margin:0 0 8px;}
-  .pillar p{margin:0;color:var(--ink-2);font-size:15px;line-height:1.6;}
-
-  /* ---- Split feature rows (moat + two-way) --------------------------------- */
-  .split{display:grid;gap:clamp(24px,4vw,52px);align-items:center;
-    grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr));}
-  .split > *{min-width:0;}
-  .split .media{border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);background:var(--bg-elev);}
-  .split .media .frame-bar{border-radius:0;}
-  .feature-list{list-style:none;padding:0;margin:18px 0 0;display:grid;gap:12px;}
+  /* ---- Pillars (differentiator splits) ------------------------------------- */
+  .pillar-split{display:grid;gap:clamp(26px,4vw,56px);align-items:center;
+    grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr));}
+  .pillar-split > *{min-width:0;}
+  .pillar-split + .pillar-split{margin-top:clamp(52px,8vw,86px);}
+  .pillar-num{font:700 12px/1 var(--mono);letter-spacing:.1em;color:var(--accent);
+    display:inline-flex;align-items:center;gap:9px;margin-bottom:14px;}
+  .pillar-num .b{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent-ink);}
+  .feature-list{list-style:none;padding:0;margin:20px 0 0;display:grid;gap:12px;}
   .feature-list li{display:flex;gap:11px;align-items:flex-start;color:var(--ink-2);font-size:15px;line-height:1.55;}
   .feature-list svg{width:19px;height:19px;color:var(--accent);flex:none;margin-top:2px;}
   .feature-list b{color:var(--ink);font-weight:650;}
 
-  /* ---- Capability grid ----------------------------------------------------- */
-  .cap-grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr));}
-  .cap-grid > *{min-width:0;}
-  .cap{background:var(--bg-elev);border:1px solid var(--line);border-radius:var(--radius);
-    padding:22px;box-shadow:var(--shadow-sm);transition:border-color .15s ease,transform .12s ease,box-shadow .15s ease;}
-  .cap:hover{border-color:color-mix(in srgb,var(--accent) 55%,var(--line));transform:translateY(-2px);box-shadow:var(--shadow);}
-  .cap .cmd{font:600 12.5px/1.4 var(--mono);color:var(--accent-ink);background:var(--accent-soft);
-    display:inline-block;padding:4px 9px;border-radius:7px;margin-bottom:13px;max-width:100%;
-    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .cap h3{font-size:16px;font-weight:700;margin:0 0 6px;}
-  .cap p{margin:0;color:var(--ink-2);font-size:14px;line-height:1.55;}
-  .cap .tag{display:inline-block;margin-top:12px;font:600 11px/1 var(--mono);letter-spacing:.06em;
-    text-transform:uppercase;color:var(--ink-3);border:1px solid var(--line);border-radius:999px;padding:4px 9px;}
+  /* ---- Terminal ------------------------------------------------------------ */
+  .terminal{background:var(--code-bg);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);border:1px solid rgba(255,255,255,.06);}
+  .terminal .frame-bar{background:rgba(255,255,255,.04);border-bottom:1px solid rgba(255,255,255,.07);}
+  .terminal .frame-bar .lbl{font:12px/1 var(--mono);color:var(--code-dim);margin-left:6px;}
+  .terminal pre{margin:0;padding:20px 22px;overflow:auto;max-width:100%;font:13.5px/1.75 var(--mono);color:var(--code-ink);}
+  .terminal .c{color:var(--code-dim);} .terminal .p{color:var(--code-accent);} .terminal .s{color:var(--code-str);} .terminal .ok{color:#51cf66;}
+  .copy-row{display:flex;align-items:center;gap:10px;margin-top:14px;flex-wrap:wrap;}
+
+  /* ---- Highlight-to-chat mock (pillar 2) ----------------------------------- */
+  .chat-mock{border:1px solid var(--line);border-radius:var(--radius);background:var(--bg-elev);box-shadow:var(--shadow);overflow:hidden;}
+  .chat-doc{padding:22px 24px;}
+  .chat-doc h4{margin:0 0 10px;font-size:15px;font-weight:720;color:var(--ink);}
+  .chat-doc p{margin:0;color:var(--ink-2);font-size:14.5px;line-height:1.7;}
+  .chat-doc mark{background:color-mix(in srgb,var(--accent) 22%,transparent);color:inherit;border-radius:4px;padding:.05em .15em;
+    box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 30%,transparent);position:relative;}
+  .chat-doc mark .pin{font:700 10px/1 var(--mono);color:#fff;background:var(--accent);border-radius:5px;padding:2px 5px;
+    position:relative;top:-8px;margin-left:3px;}
+  :root[data-theme="dark"] .chat-doc mark .pin,:root[data-theme="auto"] .chat-doc mark .pin{color:#0e0f16;}
+  @media (prefers-color-scheme: light){ :root[data-theme="auto"] .chat-doc mark .pin{color:#fff;} }
+  .chat-thread{border-top:1px solid var(--line-2);background:var(--bg-sunk);padding:16px 20px;display:grid;gap:10px;}
+  .chat-turn{display:flex;gap:10px;align-items:flex-start;}
+  .chat-turn .who{font:700 10px/1.6 var(--mono);letter-spacing:.06em;text-transform:uppercase;flex:none;width:34px;padding-top:2px;}
+  .chat-turn.q .who{color:var(--ink-3);} .chat-turn.a .who{color:var(--accent);}
+  .chat-turn .bubble{font-size:14px;line-height:1.5;color:var(--ink);background:var(--bg-elev);border:1px solid var(--line);
+    border-radius:10px;padding:9px 13px;min-width:0;}
+  .chat-turn.a .bubble{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 20%,transparent);}
+
+  /* ---- Trust card (pillar 3) ----------------------------------------------- */
+  .trust-card{background:var(--bg-elev);border:1px solid var(--line);border-radius:var(--radius);padding:26px 28px;box-shadow:var(--shadow);}
+  .trust-card .shield{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;margin-bottom:16px;
+    background:var(--good-soft);color:var(--good);}
+  .trust-card .shield svg{width:23px;height:23px;}
+  .trust-card .feature-list{margin-top:0;}
+  .trust-card .feature-list svg{color:var(--good);}
+
+  /* ---- Callout ------------------------------------------------------------- */
+  .callout{border:1px solid var(--line);border-left:3px solid var(--accent);background:var(--accent-soft);
+    border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:16px 20px;color:var(--ink);margin-top:20px;}
+  .callout.good{border-left-color:var(--good);background:var(--good-soft);}
+  .callout p{margin:0;color:var(--ink-2);font-size:14px;line-height:1.6;}
 
   /* ---- Playbook gallery ---------------------------------------------------- */
   .gallery{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));}
@@ -213,20 +282,9 @@
   :root[data-theme="dark"] .shot-imgs .dark{display:block;}
   :root[data-theme="light"] .shot-imgs .light{display:block;}
   :root[data-theme="light"] .shot-imgs .dark{display:none;}
-  .shot-cap{padding:14px 16px;border-top:1px solid var(--line-2);display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;}
-  .shot-cap .k{font:600 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent);}
+  .shot-cap{padding:14px 16px;border-top:1px solid var(--line-2);display:flex;flex-wrap:wrap;gap:5px 8px;}
+  .shot-cap .k{flex-basis:100%;font:600 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent);}
   .shot-cap .d{color:var(--ink-2);font-size:13.5px;min-width:0;}
-
-  /* ---- Code / terminal ----------------------------------------------------- */
-  .terminal{background:var(--code-bg);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);border:1px solid rgba(255,255,255,.06);}
-  .terminal .frame-bar{background:rgba(255,255,255,.04);border-bottom:1px solid rgba(255,255,255,.07);}
-  .terminal .frame-bar .lbl{font:12px/1 var(--mono);color:var(--code-dim);margin-left:6px;}
-  .terminal pre{margin:0;padding:20px 22px;overflow:auto;max-width:100%;
-    font:13.5px/1.75 var(--mono);color:var(--code-ink);}
-  .terminal .c{color:var(--code-dim);}            /* comment */
-  .terminal .p{color:var(--code-accent);}          /* prompt / cmd */
-  .terminal .s{color:var(--code-str);}             /* string / value */
-  .copy-row{display:flex;align-items:center;gap:10px;margin-top:14px;flex-wrap:wrap;}
 
   /* ---- Steps (quickstart) -------------------------------------------------- */
   .steps{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr));margin-bottom:26px;}
@@ -238,25 +296,18 @@
   @media (prefers-color-scheme: light){ :root[data-theme="auto"] .step .n{color:#fff;} }
   .step h3{font-size:15.5px;font-weight:700;margin:0 0 6px;}
   .step p{margin:0;color:var(--ink-2);font-size:14px;line-height:1.55;}
-  .step code{font:12.5px/1.5 var(--mono);background:var(--bg-sunk);color:var(--accent-ink);padding:.12em .4em;border-radius:5px;overflow-wrap:anywhere;}
+  .step code, .section-lede code, .hero-lede code{font:12.5px/1.5 var(--mono);background:var(--bg-sunk);color:var(--accent-ink);padding:.12em .4em;border-radius:5px;overflow-wrap:anywhere;}
 
   /* ---- CLI reference table ------------------------------------------------- */
   .table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-sm);background:var(--bg-elev);}
   table{border-collapse:collapse;width:100%;font-size:14.5px;min-width:520px;}
   th,td{padding:13px 18px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line-2);}
-  thead th{background:var(--bg-sunk);font:600 11px/1 var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);}
+  thead th{background:var(--bg-sunk);font:600 11px/1 var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--ink-2);}
   tbody tr:last-child td{border-bottom:none;}
   td code, .cli-cmd{font:600 13px/1.5 var(--mono);color:var(--accent-ink);white-space:nowrap;}
   td.desc{color:var(--ink-2);}
   .grp-row td{background:color-mix(in srgb,var(--accent-soft) 60%,var(--bg-elev));
     font:600 11px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent-ink);padding:9px 18px;}
-
-  /* ---- Callout ------------------------------------------------------------- */
-  .callout{border:1px solid var(--line);border-left:3px solid var(--accent);background:var(--accent-soft);
-    border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:18px 22px;color:var(--ink);}
-  .callout h3{margin:0 0 6px;font-size:15px;font-weight:720;}
-  .callout p{margin:0;color:var(--ink-2);font-size:14.5px;line-height:1.6;}
-  .callout.good{border-left-color:var(--good);background:var(--good-soft);}
 
   /* ---- Final CTA ----------------------------------------------------------- */
   .cta-band{background:linear-gradient(135deg,var(--bg-elev),var(--bg-tint));
@@ -285,10 +336,10 @@
   <div class="wrap nav-inner">
     <a class="brand" href="#top"><img src="assets/glimpse-icon.svg" alt="">Glimpse</a>
     <nav class="nav-links" aria-label="Primary">
-      <a class="nav-hide" href="#how">How it works</a>
-      <a class="nav-hide" href="#capabilities">Capabilities</a>
+      <a class="nav-hide" href="#pillars">Why Glimpse</a>
       <a class="nav-hide" href="#playbooks">Playbooks</a>
       <a class="nav-hide" href="#quickstart">Quickstart</a>
+      <a class="nav-hide" href="#cli">CLI</a>
       <a href="https://github.com/YushengAuggie/glimpse" rel="noopener">GitHub ↗</a>
       <button class="theme-toggle" id="themeToggle" aria-label="Toggle light/dark theme">
         <span id="themeIcon">🌙</span><span id="themeLabel">Dark</span>
@@ -302,11 +353,11 @@
 <!-- ===== Hero ===== -->
 <section class="hero">
   <div class="wrap">
-    <div class="hero-badge"><span class="pip"></span>Local · two-way · serverless</div>
-    <h1>A live, two-way <span class="grad">visual canvas</span> for AI coding agents.</h1>
-    <p class="hero-lede">Your agent shows its work as rendered HTML in a real browser — diagrams,
-      tables, deep-dives, live demos — and you can <b>highlight any passage and talk back</b>.
-      No walls of terminal text.</p>
+    <div class="hero-badge"><span class="pip"></span>Local · real Chrome over CDP · two-way</div>
+    <h1>Your AI agent gets a <span class="grad">real browser</span>.</h1>
+    <p class="hero-lede">Glimpse renders your agent's work as live HTML, lets it <b>drive and inspect
+      your running app</b> over the Chrome DevTools Protocol, and lets you <b>highlight anything to
+      talk back</b>. It's a two-way visual canvas — and it all runs on your machine.</p>
     <div class="hero-cta">
       <a class="btn btn-primary" href="#quickstart">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="8 6 3 12 8 18"/><polyline points="16 6 21 12 16 18"/></svg>
@@ -317,74 +368,86 @@
         Star on GitHub
       </a>
     </div>
-    <div class="hero-meta">
-      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Runs entirely on loopback</span>
-      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>No account, no telemetry</span>
-      <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>One HTML file + one shell script</span>
-    </div>
+    <p class="trust">
+      <span class="t"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg>Runs entirely on your machine</span>
+      <span class="sep" aria-hidden="true"></span>
+      <span class="t">Real Chrome + Node</span>
+      <span class="sep" aria-hidden="true"></span>
+      <span class="t">No account, no server, no telemetry</span>
+      <span class="sep" aria-hidden="true"></span>
+      <span class="t">One script · ~1 min setup</span>
+      <span class="sep" aria-hidden="true"></span>
+      <span class="t">MIT licensed</span>
+    </p>
 
-    <figure class="frame" style="margin-bottom:0;">
+    <!-- Hero scene: a live app under review + the CDP command drawer driving it.
+         Built inline so it themes flawlessly in light AND dark (no raster). -->
+    <div class="frame hero-scene" role="img"
+         aria-label="A live web app in a browser window, with a Glimpse CDP session drawer below it running glimpse open, read, click, and wait commands — showing the agent driving and inspecting the real app.">
       <div class="frame-bar">
         <div class="frame-dots"><i></i><i></i><i></i></div>
-        <div class="frame-url">127.0.0.1:4321 — Glimpse canvas</div>
+        <div class="frame-url"><span class="lock">🔒</span><span class="u">localhost:5173 · your app</span></div>
+        <span class="frame-tag">driven by Glimpse ⟷ CDP</span>
       </div>
-      <img src="assets/glimpse-hero.png" width="900"
-           alt="The Glimpse canvas: a sidebar of published artifacts and a rendered document with an inline highlight-to-chat thread anchored in the margin.">
-    </figure>
-  </div>
-</section>
-
-<!-- ===== How it works / three ideas ===== -->
-<section id="how">
-  <div class="wrap">
-    <div class="section-head">
-      <div class="eyebrow">The idea</div>
-      <h2 class="section-title">Fix the rendering surface, not the model.</h2>
-      <p class="section-lede">Coding agents produce output that's miserable to read in a terminal —
-        long tables, architecture diagrams, multi-section reports, before/after diffs. Glimpse gives
-        the agent a real browser to draw in, and gives you a way to answer back.</p>
-    </div>
-    <div class="pillars">
-      <div class="pillar">
-        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg></div>
-        <h3>A shared screen, not a scrollback</h3>
-        <p>Your agent publishes a full HTML page per thing it wants to show. It appears in a real
-          Chrome window the instant it's written — no refresh, no copy-paste, no leaving your editor.</p>
-      </div>
-      <div class="pillar">
-        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></div>
-        <h3>Highlight anything, ask in place</h3>
-        <p>Select a passage in any artifact and ask about it. The answer threads in the margin,
-          <b>anchored to your highlight</b> and saved per document — it survives refreshes, restarts,
-          and new sessions.</p>
-      </div>
-      <div class="pillar">
-        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v6M12 17v6M4.2 4.2l4.3 4.3M15.5 15.5l4.3 4.3M1 12h6M17 12h6M4.2 19.8l4.3-4.3M15.5 8.5l4.3-4.3"/></svg></div>
-        <h3>An agent that's always on</h3>
-        <p>A tiny macOS menu-bar app keeps Glimpse answering your highlights even with
-          <b>no live session</b>, via an Anthropic-compatible proxy you point it at.</p>
+      <div class="scene">
+        <div class="app">
+          <div class="app-chrome">
+            <div class="app-brand"><span class="glyph"></span><span>Acme Analytics</span></div>
+            <div class="app-nav"><span>Overview</span><span>Orders</span><span>Settings</span></div>
+          </div>
+          <h3 class="app-h">Revenue this week</h3>
+          <p class="app-sub">Updated a few seconds ago</p>
+          <div class="stat-row">
+            <div class="stat"><div class="k">Orders</div><div class="v">1,284<span class="up">▲ 12%</span></div></div>
+            <div class="stat"><div class="k">Revenue</div><div class="v">$48.2k<span class="up">▲ 8%</span></div></div>
+            <div class="stat"><div class="k">Refunds</div><div class="v">17</div></div>
+          </div>
+          <div class="chart" aria-hidden="true">
+            <i style="height:38%"></i><i style="height:54%"></i><i style="height:46%"></i>
+            <i style="height:72%"></i><i style="height:63%"></i><i style="height:88%"></i><i style="height:100%"></i>
+          </div>
+          <div class="app-actions">
+            <button class="app-btn" type="button">Place order</button>
+            <span class="app-toast"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Order placed</span>
+          </div>
+        </div>
+        <div class="drawer">
+          <div class="drawer-head"><span class="live"></span>Glimpse · CDP session<span class="grow"></span><span class="badge">reads console · drives clicks · screenshots · a11y snapshot</span></div>
+<pre><span class="p">glimpse open</span> <span class="s">localhost:5173</span>
+<span class="p">glimpse read</span>   <span class="c">→ {title, url, text, console: 4 logs, errors: 0}</span>
+<span class="p">glimpse click</span> <span class="s">"button.place-order"</span>
+<span class="p">glimpse wait</span>  <span class="s">--text "Order placed"</span>   <span class="ok">✓ visible</span></pre>
+        </div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ===== The CDP moat ===== -->
-<section id="cdp">
+<!-- ===== Pillars (3 differentiators) ===== -->
+<section id="pillars">
   <div class="wrap">
-    <div class="split">
+    <div class="section-head center">
+      <div class="eyebrow center">Why Glimpse</div>
+      <h2 class="section-title">Three things a terminal can't do.</h2>
+      <p class="section-lede">Glimpse fixes the rendering surface, not the model — and turns the one Chrome
+        it needs into a moat: your agent can drive real apps, and you can answer back in place.</p>
+    </div>
+
+    <!-- Pillar 1 — the CDP moat (lead) -->
+    <div class="pillar-split">
       <div>
-        <div class="eyebrow">The moat · Chrome DevTools Protocol</div>
-        <h2 class="section-title">The same channel drives real apps.</h2>
-        <p class="section-lede">Because Glimpse renders through a real Chrome over CDP, that one
-          connection does double duty: your agent can navigate, read, screenshot, and interact with
-          the <b>live app under development</b> — the thing a static-artifact tool can never see.</p>
+        <div class="pillar-num"><span class="b">1</span>The moat · real Chrome over CDP</div>
+        <h2 class="section-title">It doesn't just render — it drives your live app.</h2>
+        <p class="section-lede">Because Glimpse renders through a real Chrome over the Chrome DevTools
+          Protocol, that one connection does double duty. Your agent can open your running app and
+          inspect the real page — the thing a static-artifact tool can never see.</p>
         <ul class="feature-list">
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>Inspect (read-only):</b> <code>read</code> a page's text + console + uncaught errors, capture a <code>shot</code>, or take an a11y-tree <code>snapshot</code>.</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>Inspect, read-only:</b> <code>read</code> a page's text + console + uncaught errors, capture a <code>shot</code>, or take an a11y-tree <code>snapshot</code>.</span></li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>Interact:</b> <code>click</code>, <code>scroll</code>, and <code>wait</code> for elements — the only intentionally state-changing verbs, never a side effect of reading.</span></li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>A dedicated profile:</b> the CDP Chrome doesn't see your everyday logins or tabs — only what you load into it.</span></li>
         </ul>
       </div>
-      <div class="terminal" role="img" aria-label="Example terminal commands for driving a live app over CDP">
+      <div class="terminal" role="img" aria-label="Terminal commands for driving a live app over CDP">
         <div class="frame-bar"><div class="frame-dots"><i></i><i></i><i></i></div><span class="lbl">live-app review</span></div>
 <pre><span class="c"># open the app under review in the CDP Chrome</span>
 <span class="p">glimpse open</span> <span class="s">http://localhost:3000</span>
@@ -393,41 +456,33 @@
 <span class="p">glimpse read</span>
 <span class="c">→ {title, url, text, console, errors}</span>
 
-<span class="c"># drive it, then verify</span>
+<span class="c"># drive it, then verify what the user sees</span>
 <span class="p">glimpse click</span> <span class="s">"button.checkout"</span>
 <span class="p">glimpse wait</span> <span class="s">--text "Order placed"</span>
 <span class="p">glimpse shot</span> <span class="s">/tmp/after.png</span></pre>
       </div>
     </div>
-  </div>
-</section>
 
-<!-- ===== Two-way conversation ===== -->
-<section id="twoway">
-  <div class="wrap">
-    <div class="split">
-      <div class="terminal" role="img" aria-label="Example terminal commands for the highlight-to-chat feedback loop" style="order:2;">
-        <div class="frame-bar"><div class="frame-dots"><i></i><i></i><i></i></div><span class="lbl">the feedback loop</span></div>
-<pre><span class="c"># park on ONE blocking call for human feedback</span>
-<span class="p">glimpse poll</span>
-<span class="c">→ question  arch  1751-2-ab  "why write-through?"</span>
-
-<span class="c"># answer it — pinned to that highlight</span>
-<span class="p">glimpse reply</span> arch <span class="s">"Cache stays hot on read."</span> --to 1751-2-ab
-
-<span class="c"># …and park again for the next one</span>
-<span class="p">glimpse poll</span>
-
-<span class="c"># the agent asks YOU, and blocks for the answer</span>
-<span class="p">glimpse ask</span> plan <span class="s">"Approve the migration?"</span> spec.json --form
-<span class="c">→ {"slug":"plan","value":{"decision":"approve"}}</span></pre>
+    <!-- Pillar 2 — live two-way review -->
+    <div class="pillar-split">
+      <div class="chat-mock" role="img" aria-label="An artifact with a highlighted passage and a margin thread: a question anchored to the highlight and the agent's answer beneath it.">
+        <div class="chat-doc">
+          <h4>How the round-trip works</h4>
+          <p>When you ask, the question is captured with a
+            <mark>text-quote anchor<span class="pin">1</span></mark> — the exact words plus a little
+            surrounding context — so the highlight can be re-found even after the document re-renders.</p>
+        </div>
+        <div class="chat-thread">
+          <div class="chat-turn q"><span class="who">You</span><span class="bubble">Why anchor to the selection, not store DOM offsets?</span></div>
+          <div class="chat-turn a"><span class="who">Agent</span><span class="bubble">DOM offsets break the moment the page re-renders. A quote + context survives that, so your highlight stays put.</span></div>
+        </div>
       </div>
-      <div style="order:1;">
-        <div class="eyebrow">Two-way · durable threads</div>
-        <h2 class="section-title">A conversation, anchored to the page.</h2>
-        <p class="section-lede">Feedback isn't a chat log that scrolls away. Every question is captured
-          with a <b>text-quote anchor</b> and written straight to disk — the durable source of truth —
-          so it survives refreshes, restarts, and fresh sessions.</p>
+      <div>
+        <div class="pillar-num"><span class="b">2</span>Two-way · durable threads</div>
+        <h2 class="section-title">Highlight anything. Ask in place. It sticks.</h2>
+        <p class="section-lede">Feedback isn't a chat log that scrolls away. Select any passage and ask —
+          the answer threads in the margin, anchored to your highlight and saved per document, so it
+          survives refreshes, restarts, and fresh sessions.</p>
         <ul class="feature-list">
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span><b><code>glimpse poll</code></b> is one blocking call an agent parks on — it waits for feedback, prints a token-efficient record, and returns.</span></li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span><b><code>glimpse ask</code></b> flips it around: the agent publishes an interactive form and blocks until you approve, pick, or note.</span></li>
@@ -435,78 +490,31 @@
         </ul>
       </div>
     </div>
-  </div>
-</section>
 
-<!-- ===== Capabilities ===== -->
-<section id="capabilities">
-  <div class="wrap">
-    <div class="section-head center">
-      <div class="eyebrow center">Everything it does</div>
-      <h2 class="section-title">One CLI, a lot of surface.</h2>
-      <p class="section-lede">From publishing a diagram to driving a real app to shipping a portable copy —
-        all through the same local, serverless <code>glimpse</code> command.</p>
-    </div>
-    <div class="cap-grid">
-      <div class="cap">
-        <span class="cmd">glimpse publish</span>
-        <h3>Live artifacts</h3>
-        <p>Publish a full HTML page by slug; re-publishing the same slug updates it in place. The canvas opens it automatically — freshness is pushed over SSE, not polled.</p>
+    <!-- Pillar 3 — local, private, always-on -->
+    <div class="pillar-split">
+      <div>
+        <div class="pillar-num"><span class="b">3</span>Local · private · serverless</div>
+        <h2 class="section-title">A personal screen between you and one agent.</h2>
+        <p class="section-lede">Everything runs on your machine — a static file server and a Chrome window,
+          both on loopback. No account, no hosted server, no telemetry. And a tiny macOS menu-bar daemon
+          keeps the canvas answering even with no live session.</p>
+        <ul class="feature-list">
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg><span><b>Sandboxed artifacts:</b> each renders in an <code>allow-scripts</code>-only iframe (opaque origin), so artifact JS can't reach the shell or a sibling.</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg><span><b>Egress is loud, never silent:</b> feedback is treated as untrusted data and secret-scrubbed; <code>share</code> prints a notice before anything leaves your machine.</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg><span><b>Always-on, optional:</b> <code>glimpse daemon</code> auto-answers via an Anthropic-compatible proxy — Q&amp;A only, no tools, writes nothing but the answer.</span></li>
+        </ul>
       </div>
-      <div class="cap">
-        <span class="cmd">glimpse poll</span>
-        <h3>Blocking feedback</h3>
-        <p>One call an agent parks on: it blocks until there's an undelivered highlight/question, prints it, and returns. Queued feedback is durable on disk — nothing is dropped.</p>
-      </div>
-      <div class="cap">
-        <span class="cmd">glimpse explain</span>
-        <h3>Code explainer</h3>
-        <p>Turn a change into three linked views — an Architecture summary, a Mermaid data-flow diagram, and a clickable call stack with per-node snippets and ask-on-node.</p>
-      </div>
-      <div class="cap">
-        <span class="cmd">glimpse ask --form</span>
-        <h3>Structured input</h3>
-        <p>A declarative JSON spec renders native, accessible controls — radio, checkbox, select, text — blocks for the human, and returns the choice as JSON. No HTML to hand-write.</p>
-      </div>
-      <div class="cap">
-        <span class="cmd">glimpse audit</span>
-        <h3>Auto-audit on publish</h3>
-        <p>An auditor checks the <i>real</i> render for overflow, clipped text, and overlaps after layout settles — so an unreadable layout is caught before a human sees it. Opt-in gate fails CI.</p>
-      </div>
-      <div class="cap">
-        <span class="cmd">glimpse read · shot</span>
-        <h3>Live-app review</h3>
-        <p>Point Chrome at your running app and inspect the real page — text, console, uncaught errors, screenshots — over the same CDP channel that renders artifacts.</p>
-      </div>
-      <div class="cap">
-        <span class="cmd">glimpse click · wait</span>
-        <h3>Drive the browser</h3>
-        <p>Click, scroll, and wait for elements or text on a live page — the only deliberately state-changing verbs, so reading is never accidentally mutating.</p>
-      </div>
-      <div class="cap">
-        <span class="cmd">glimpse snapshot</span>
-        <h3>A11y-tree snapshot</h3>
-        <p>A readable, token-efficient role/name outline of a page's accessibility tree — for an agent to reason about structure without a screenshot. Read-only, secret-scrubbed.</p>
-      </div>
-      <div class="cap">
-        <span class="cmd">glimpse daemon</span>
-        <h3>Always-on agent</h3>
-        <p>Keep the canvas answering highlights with no live session, via an Anthropic-compatible proxy. Q&amp;A only: untrusted text, no tools, writes nothing but the answer.</p>
-      </div>
-      <div class="cap">
-        <span class="cmd">glimpse export</span>
-        <h3>Offline export</h3>
-        <p>Write a single self-contained HTML file with all local assets inlined — it opens with no server and no sibling files. Fully offline; secret-scrubbed.</p>
-      </div>
-      <div class="cap">
-        <span class="cmd">glimpse share</span>
-        <h3>Private publish</h3>
-        <p>Upload a portable bundle to a remote host and get a visitable URL — <b>private &amp; password-protected by default</b>, with a loud egress notice. Opt into <code>--public</code>.</p>
-      </div>
-      <div class="cap">
-        <span class="cmd">threads/&lt;slug&gt;.json</span>
-        <h3>Multi-artifact</h3>
-        <p>Every feedback, response, and thread stream is keyed per artifact by slug, end to end — so several artifacts (and agents) can be live at once without cross-talk.</p>
+      <div class="trust-card">
+        <div class="shield"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg></div>
+        <h2 class="section-title" style="font-size:19px;">Local &amp; private by design</h2>
+        <p class="section-lede" style="font-size:15px;">No walls of terminal text, and no data you didn't send.
+          The one part that can call out — the optional daemon — is explicit about exactly what it sends.</p>
+        <div class="callout good">
+          <p>Read the model, not just the marketing: the data flow, alternatives, and full threat model are in
+            <a href="https://github.com/YushengAuggie/glimpse/blob/main/docs/DESIGN.md" rel="noopener">docs/DESIGN.md</a> and
+            <a href="https://github.com/YushengAuggie/glimpse/blob/main/SECURITY.md" rel="noopener">SECURITY.md</a>.</p>
+        </div>
       </div>
     </div>
   </div>
@@ -517,7 +525,7 @@
   <div class="wrap">
     <div class="section-head center">
       <div class="eyebrow center">Authoring playbooks</div>
-      <h2 class="section-title">What a polished artifact looks like.</h2>
+      <h2 class="section-title">What a published artifact looks like.</h2>
       <p class="section-lede">Glimpse ships a set of authoring playbooks — the friendliness &amp; quality layer.
         First-class light <i>and</i> dark mode, indigo accent, monospace eyebrows, no overflow at any
         nesting level. These are real example renders — <b>they follow your theme</b>.</p>
@@ -575,8 +583,9 @@
     <div class="section-head">
       <div class="eyebrow">Quickstart</div>
       <h2 class="section-title">Running in about a minute.</h2>
-      <p class="section-lede">Node 22+ and Google Chrome are the whole runtime. <code>glimpse doctor</code>
-        tells you what's missing. macOS and Linux are first-class; on Windows use WSL or Git Bash.</p>
+      <p class="section-lede">One script, and the whole runtime is just <b>Node 22+ and Google Chrome</b>.
+        <code>glimpse doctor</code> tells you exactly what's missing. macOS and Linux are first-class;
+        on Windows use WSL or Git Bash.</p>
     </div>
 
     <div class="steps">
@@ -628,7 +637,7 @@
   <div class="wrap narrow">
     <div class="section-head">
       <div class="eyebrow">CLI reference</div>
-      <h2 class="section-title">The commands, grouped.</h2>
+      <h2 class="section-title">Every verb, grouped.</h2>
       <p class="section-lede">Or just talk: Glimpse ships <code>canvas</code>, <code>chrome-cdp</code>, and
         <code>explain</code> skills for Claude Code and compatible agents, so you never type the plumbing.</p>
     </div>
@@ -666,36 +675,14 @@
   </div>
 </section>
 
-<!-- ===== Security / local-first ===== -->
-<section id="security">
-  <div class="wrap narrow">
-    <div class="section-head">
-      <div class="eyebrow">Local &amp; private by design</div>
-      <h2 class="section-title">A personal screen between you and one agent.</h2>
-    </div>
-    <ul class="feature-list" style="margin-top:0;gap:16px;">
-      <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg><span><b>Everything runs on your machine.</b> A static file server and a Chrome window, both on loopback. No account, no hosted server, no telemetry.</span></li>
-      <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg><span><b>Artifacts are sandboxed.</b> Each renders in an <code>allow-scripts</code>-only iframe (opaque origin), so artifact JS can't reach the shell or a sibling artifact.</span></li>
-      <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg><span><b>No new inbound surface.</b> Highlight-chat <i>pulls</i> over the existing CDP channel. Feedback text is treated as untrusted data and secret-scrubbed at every hop.</span></li>
-      <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg><span><b>Egress is loud, never silent.</b> The optional always-on daemon is the one part that can call out — and <code>share</code> prints an unmistakable notice before anything leaves your machine.</span></li>
-    </ul>
-    <div class="callout good" style="margin-top:26px;">
-      <h3>Read the model, not just the marketing.</h3>
-      <p>The data flow, alternatives considered, and full threat model live in
-        <a href="https://github.com/YushengAuggie/glimpse/blob/main/docs/DESIGN.md" rel="noopener">docs/DESIGN.md</a> and
-        <a href="https://github.com/YushengAuggie/glimpse/blob/main/SECURITY.md" rel="noopener">SECURITY.md</a>.</p>
-    </div>
-  </div>
-</section>
-
 <!-- ===== Final CTA ===== -->
 <section id="get">
   <div class="wrap">
     <div class="cta-band">
       <div class="eyebrow center">Get started</div>
-      <h2>Give your agent a screen.</h2>
-      <p>Clone the repo, run one install script, and your next agent session can show its work
-        in a real browser — and hear you highlight back.</p>
+      <h2>Give your agent a real browser.</h2>
+      <p>Clone the repo, run one install script, and your next agent session can render its work,
+        drive your live app, and hear you highlight back — all on your machine.</p>
       <div class="hero-cta">
         <a class="btn btn-primary" href="https://github.com/YushengAuggie/glimpse" rel="noopener">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.7.5.5 5.7.5 12a11.5 11.5 0 0 0 7.9 10.9c.6.1.8-.2.8-.6v-2c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.7 1.3 3.4 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.4 11.4 0 0 1 6 0C17.3 4.6 18.3 5 18.3 5c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .4.2.7.8.6A11.5 11.5 0 0 0 23.5 12C23.5 5.7 18.3.5 12 .5Z"/></svg>
@@ -720,7 +707,7 @@
         <a href="https://github.com/YushengAuggie/glimpse/blob/main/SECURITY.md" rel="noopener">Security</a>
       </nav>
     </div>
-    <p class="foot-note">A live, two-way visual canvas for AI coding agents · Local · serverless · MIT licensed.</p>
+    <p class="foot-note">A real browser for your AI coding agent · Local · serverless · MIT licensed.</p>
   </div>
 </footer>
 
