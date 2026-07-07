@@ -344,6 +344,52 @@ uid=s0 RootWebArea "Snapshot Demo"
   appear in `Page.getFrameTree`) under their owning `Iframe` node via
   `DOM.getFrameOwner`, so a plain multi-frame URL still descends correctly.
 
+## Live-app review — drive Chrome to a real running app and inspect/interact
+
+Glimpse markets itself as a static-artifact canvas, but the same shared CDP channel
+also lets an agent **review a live running app**: point Chrome at the app under
+development and inspect the REAL page (state, console, network-driven content) — the
+thing a static-artifact tool cannot see. The flow is `glimpse open <url>` once, then
+inspect and interact against that tab.
+
+**Inspect (read-only — never mutate the page):**
+
+- **`glimpse read [url]`** — navigate to `url` (or read the current app tab when
+  omitted) and print `{title,url,text,console,errors}` JSON. The **console output +
+  uncaught errors captured during load** are the review payoff — subscribed *before*
+  navigation via the new persistent `on()` subscription on the CDP client, so early
+  logs aren't missed. Text is capped (8000 chars), console/errors keep the most
+  recent 50 (300 chars each). The text/console sibling of `shot` (pixels) and
+  `snapshot` (a11y tree). Body: `lib/glimpse-read.mjs`.
+- **`glimpse shot <out.png> [url]`** — screenshot the current (or given) page.
+- **`glimpse snapshot [#slug|url]`** — a11y-tree outline (see above).
+
+**Interact (the ONLY intentionally state-changing browser verbs — each a deliberate
+command, never a side effect of reading):**
+
+- **`glimpse click <css-selector>`** — `scrollIntoView` then `.click()` the first
+  match; reports `{ok,tag,text,…}`.
+- **`glimpse scroll <selector> | --to <px> | --by <px>`** — exactly one target; scroll
+  into an element, to an absolute Y, or by a delta.
+- **`glimpse wait <selector> | --text <str> [--timeout N]`** — poll (200ms) until an
+  element is visible or text appears; default 8s timeout. Exits non-zero on timeout.
+
+Interaction bodies live in `lib/glimpse-interact.mjs` (`ACTION=click|scroll|wait`).
+A failed action (`ok:false`) exits `2`.
+
+**Tab selection — `cdpConnectApp` (in `lib/glimpse-cdp.mjs`), NOT `cdpConnect`.**
+Live-app verbs must act on the *app's* tab, never clobber the canvas. With a target
+URL, `cdpConnectApp(url)` matches the page by **host** (reuses the app tab, opening a
+fresh one only if none exists — exactly how `glimpse open` chooses). With no URL, it
+prefers a **non-canvas** page (the app under review) over the canvas tab (canvas =
+`127.0.0.1:$PORT`/`localhost:$PORT`), then falls back to any page. `read`, `shot`,
+`snapshot`, and `interact` all route through it — no second browser connection.
+
+**Security posture (unchanged):** names/text/console/element text are secret-scrubbed
+against `SECRET_PATTERN` (same posture as thread turns / snapshot), so a token that
+slipped into the page or a log line is never surfaced. `chrome-cdp` skill (v1.1.0)
+advertises the flow ("review the running app", "screenshot the app").
+
 ## Canvas freshness is push (SSE), not polling
 
 The canvas no longer busy-polls for new content. The static server
@@ -402,10 +448,13 @@ The canvas no longer busy-polls for new content. The static server
 - `node --test tests/*.mjs tests/*.cjs` — renderer/bridge/poll units (no deps); includes
   `test_snapshot_render.mjs`, which drives the real `lib/glimpse-snapshot.mjs` body
   with a stubbed CDP channel (no browser) to cover tree-building, node collapsing,
-  iframe grafting, and secret scrubbing, and `test_poll.mjs` (format helpers + origin
-  anti-drift). Note `tests/cdp_assert_render.mjs` is a live-CDP helper caught by the
-  glob; it only passes with a running `glimpse open` and otherwise fails (not a unit
-  regression).
+  iframe grafting, and secret scrubbing; `test_read_render.mjs` /
+  `test_interact_render.mjs`, which drive the real `lib/glimpse-read.mjs` /
+  `lib/glimpse-interact.mjs` bodies with a stubbed `cdpConnectApp` (no browser) to
+  cover console/error accumulation, the text cap, JSON shape, click/scroll/wait, and
+  secret scrubbing; and `test_poll.mjs` (format helpers + origin anti-drift). Note
+  `tests/cdp_assert_render.mjs` is a live-CDP helper caught by the glob; it only
+  passes with a running `glimpse open` and otherwise fails (not a unit regression).
 - `bash tests/test_explain_cli.sh`, `bash tests/test_node_anchor.sh`,
   `bash tests/test_export_cli.sh`, `bash tests/test_publish_audit.sh` — CLI smoke
   (the export test is offline; it never uploads. the publish-audit test covers the
@@ -413,7 +462,10 @@ The canvas no longer busy-polls for new content. The static server
 - `bash tests/test_poll_cli.sh` — `glimpse poll` end-to-end (disk-only: blocks→delivers,
   dedup/nothing-dropped, `--json`, timeout exit 3)
 - `GLIMPSE_RUNTIME_TESTS=1 bash tests/test_*_cdp.sh` / `test_node_roundtrip.sh` —
-  live-CDP, opt-in (need a running `glimpse open`). `test_multi_artifact_cdp.sh` proves
+  live-CDP, opt-in (need a running `glimpse open`); includes `test_liveapp_cdp.sh`,
+  the end-to-end live-app review smoke (serve a local app, open it, then
+  read/shot/snapshot/click/scroll/wait against the real page).
+  `test_multi_artifact_cdp.sh` proves
   two artifacts' audits coexist in `__glimpse_audit` and their threads stay isolated;
   `test_publish_audit_cdp.sh` is the end-to-end auto-audit warn/gate check against a
   real render.
