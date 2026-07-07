@@ -77,21 +77,31 @@ _bridge_cleanup(){
   return 0
 }
 
+# Stable, non-session node install locations to probe when `node` isn't already
+# on PATH (NOT the per-shell fnm multishell dirs, which don't exist outside an
+# interactive shell). Newline-delimited (paths may contain spaces). Shared by
+# _ensure_node and `glimpse doctor` so the launchd-PATH check never drifts from
+# the fallback it is diagnosing. Override the first entry with GLIMPSE_NODE.
+_node_candidates(){
+  printf '%s\n' \
+    "${GLIMPSE_NODE:-}" \
+    "$HOME/.local/share/fnm/aliases/default/bin/node" \
+    "$HOME/.fnm/aliases/default/bin/node" \
+    "/opt/homebrew/bin/node" "/usr/local/bin/node"
+}
+
 # Put node on PATH when it isn't already. Launchd starts the menu-bar app via a
 # login *bash* shell, which never sources the zsh setup that fnm (or nvm) installs
 # — so `node` is missing even though it's installed, and every CDP/bridge call from
-# the menu bar silently dies. Probe stable, non-session install locations (NOT the
-# per-shell fnm multishell dirs, which don't exist outside an interactive shell)
-# and prepend the first that works. Override with GLIMPSE_NODE=/path/to/node.
+# the menu bar silently dies. Prepend the first working candidate above.
 _ensure_node(){
   have node && return 0
   local c
-  for c in "${GLIMPSE_NODE:-}" \
-           "$HOME/.local/share/fnm/aliases/default/bin/node" \
-           "$HOME/.fnm/aliases/default/bin/node" \
-           "/opt/homebrew/bin/node" "/usr/local/bin/node"; do
+  while IFS= read -r c; do
     [ -n "$c" ] && [ -x "$c" ] && { PATH="$(dirname "$c"):$PATH"; export PATH; return 0; }
-  done
+  done <<EOF
+$(_node_candidates)
+EOF
   return 1
 }
 
@@ -906,36 +916,120 @@ cmd_menubar(){
   else die "the menu-bar needs the 'rumps' package — install uv (https://docs.astral.sh/uv/) then it's automatic, or:  uv pip install rumps"; fi
 }
 
+# Faithfully reproduce how the always-on launchd daemon resolves a runtime binary
+# and echo the path it would use (empty if it wouldn't find one). The daemon runs
+# `/bin/bash -lc 'source secrets; exec glimpse …'` under launchd's minimal PATH —
+# which misses the fnm/nvm setup that only zsh sources — so we re-run that same
+# login-shell + secrets sourcing here. For node we then apply glimpse's own
+# fallback probe INSIDE that same sourced subshell, so a GLIMPSE_NODE (or PATH)
+# pinned only in secrets.env is honored exactly as _ensure_node would — otherwise
+# doctor reports a false "launchd node" failure whose printed fix wouldn't clear
+# it. The shared _node_candidates list is fed in via env (never re-copied) so this
+# check can't drift from _ensure_node, and its GLIMPSE_NODE entry is re-evaluated
+# inside the subshell from the sourced secrets rather than the doctor's own env.
+# Always returns 0 so a `x=$(_launchd_resolve …)` assignment is safe under set -e.
+_launchd_resolve(){
+  local cmd="$1" secrets="$HOME/.config/secrets.env" found
+  found="$(env -i HOME="$HOME" PATH="/usr/bin:/bin:/usr/sbin:/sbin" \
+    SECRETS="$secrets" CMD="$cmd" CANDS="$(_node_candidates)" \
+    /bin/bash -lc '
+      source "$SECRETS" 2>/dev/null || true
+      p="$(command -v "$CMD" 2>/dev/null || true)"
+      [ -n "$p" ] && { printf "%s" "$p"; exit 0; }
+      [ "$CMD" = node ] || exit 0
+      while IFS= read -r c; do
+        [ -n "$c" ] && [ -x "$c" ] && { printf "%s (glimpse fallback)" "$c"; exit 0; }
+      done <<CANDLIST
+${GLIMPSE_NODE:-}
+$CANDS
+CANDLIST
+    ' 2>/dev/null || true)"
+  echo "$found"; return 0
+}
+
 cmd_doctor(){
   local fail=0
-  echo "glimpse doctor"
-  echo "  dir:        $GLIMPSE_DIR"
-  echo "  canvas port: $PORT   cdp port: $CDP_PORT"
-  printf "  node:        "
-  if have node; then
-    printf "%s" "$(node --version)"
-    if node -e 'process.exit(parseInt(process.version.slice(1),10)>=22?0:1)' 2>/dev/null; then echo ""; else echo "  ⚠ <22 — CDP commands need node 22+"; fail=1; fi
-  else echo "MISSING (needed to drive Chrome; v22+)"; fail=1; fi
-  printf "  python3:     "; if have python3; then python3 --version; else echo "MISSING (needed for server; 3.8+ for --bind)"; fail=1; fi
-  printf "  curl:        "; if have curl; then echo "ok"; else echo "MISSING (needed for readiness checks)"; fail=1; fi
-  printf "  chrome:      "; if detect_chrome; then :; else echo "NOT FOUND (set GLIMPSE_CHROME)"; fail=1; fi
-  printf "  server:      "; curl -fsS "http://127.0.0.1:${PORT}/feed.json" >/dev/null 2>&1 && echo "up on :$PORT" || echo "down"
-  printf "  chrome cdp:  "; curl -fsS "http://127.0.0.1:${CDP_PORT}/json/version" >/dev/null 2>&1 && echo "debuggable on :$CDP_PORT" || echo "down"
-  printf "  annotate:    "
-  if [ ! -f "$GLIMPSE_DIR/glimpse-annotate.js" ]; then echo "asset missing — run glimpse serve to seed"
-  elif [ "$ANNOTATE" = "0" ]; then echo "installed (disabled via GLIMPSE_ANNOTATE=0)"
-  else echo "installed"; fi
-  printf "  explain:     "
-  if [ -f "$GLIMPSE_DIR/glimpse_explain.py" ] || [ -f "$SELF_DIR/../lib/glimpse_explain.py" ]; then echo "engine installed"
-  else echo "engine missing — reinstall glimpse"; fi
-  printf "  bridge:      "
+  # One line per check. ✓ good · ✗ broken (fails the run) · ⚠ optional/degraded
+  # · – informational state. Every ✗/⚠ is followed by a copy-pasteable fix.
+  _dok(){   printf "  ✓ %-15s %s\n" "$1" "$2"; }
+  _dbad(){  printf "  ✗ %-15s %s\n" "$1" "$2"; fail=1; }
+  _dwarn(){ printf "  ⚠ %-15s %s\n" "$1" "$2"; }
+  _dnote(){ printf "  – %-15s %s\n" "$1" "$2"; }
+  _dfix(){  printf "      → %s\n" "$1"; }
+
+  echo "glimpse doctor  (dir: $GLIMPSE_DIR  canvas :$PORT  cdp :$CDP_PORT)"
+
+  # --- required runtime ------------------------------------------------------
+  if [ -n "${BASH_VERSION:-}" ]; then _dok bash "$BASH_VERSION"
+  else _dbad bash "not running under bash"; _dfix "run glimpse with bash (its shebang is /usr/bin/env bash)"; fi
+
+  if have python3; then _dok python3 "$(python3 --version 2>&1)"
+  else _dbad python3 "MISSING — needed to serve the canvas"
+       _dfix "$([ "$(uname -s)" = Darwin ] && echo 'xcode-select --install   # or brew install python3' || echo 'install Python 3 (e.g. apt install python3)')"; fi
+
+  if have node && node -e 'process.exit(parseInt(process.version.slice(1),10)>=22?0:1)' 2>/dev/null; then
+    _dok node "$(node --version)"
+  elif have node; then _dbad node "$(node --version) too old — CDP needs node 22+ (global WebSocket)"
+       _dfix "$([ "$(uname -s)" = Darwin ] && echo 'brew install node   # or: fnm install 22 && fnm default 22' || echo 'install Node 22+ from https://nodejs.org')"
+  else _dbad node "MISSING — needed to drive Chrome over CDP (v22+)"
+       _dfix "$([ "$(uname -s)" = Darwin ] && echo 'brew install node   # or: fnm install 22 && fnm default 22' || echo 'install Node 22+ from https://nodejs.org')"; fi
+
+  local chrome; if chrome="$(detect_chrome)"; then _dok chrome "$chrome"
+  else _dbad chrome "not found"
+       _dfix "$([ "$(uname -s)" = Darwin ] && echo 'brew install --cask google-chrome   # or set GLIMPSE_CHROME=/path/to/chrome' || echo 'install Chrome/Chromium, or set GLIMPSE_CHROME=/path/to/chrome')"; fi
+
+  if have curl; then _dok curl "ok"
+  else _dbad curl "MISSING — needed for readiness checks"; _dfix "install curl with your package manager"; fi
+
+  # --- live services (state, not install errors — 'down' is normal) ----------
+  if curl -fsS "http://127.0.0.1:${PORT}/feed.json" >/dev/null 2>&1; then _dok server "up on :$PORT"
+  else _dnote server "down on :$PORT — start with: glimpse serve  (or: glimpse open)"; fi
+
+  if curl -fsS "http://127.0.0.1:${CDP_PORT}/json/version" >/dev/null 2>&1; then _dok "cdp port" "debuggable Chrome on :$CDP_PORT"
+  else _dnote "cdp port" "no debuggable Chrome on :$CDP_PORT — start with: glimpse chrome  (or: glimpse open)"; fi
+
+  # --- always-on daemon (macOS launchd) --------------------------------------
+  local plist="$HOME/Library/LaunchAgents/com.glimpse.menubar.plist"
+  if [ "$(uname -s)" = Darwin ] && [ -f "$plist" ]; then
+    if launchctl print "gui/$(id -u)/com.glimpse.menubar" >/dev/null 2>&1; then _dok "launchd job" "loaded (com.glimpse.menubar)"
+    else _dbad "launchd job" "plist present but not loaded"
+         _dfix "launchctl bootstrap gui/$(id -u) \"$plist\"   # or toggle 'Start at login' in the menu bar"; fi
+    # The classic silent failure: launchd's login shell can't find node/python3.
+    local dnode; dnode="$(_launchd_resolve node)"
+    if [ -n "$dnode" ]; then _dok "launchd node" "$dnode"
+    else _dbad "launchd node" "the daemon's login shell can't find node → CDP dies silently"
+         _dfix "echo 'export GLIMPSE_NODE=\"'\"\$(command -v node)\"'\"' >> ~/.config/secrets.env   then re-toggle 'Start at login'"; fi
+    local dpy; dpy="$(_launchd_resolve python3)"
+    if [ -n "$dpy" ]; then _dok "launchd python3" "$dpy"
+    else _dbad "launchd python3" "the daemon's login shell can't find python3"
+         _dfix "echo 'export PATH=\"'\"\$(dirname \"\$(command -v python3)\")\"':\$PATH\"' >> ~/.config/secrets.env   then re-toggle 'Start at login'"; fi
+  elif [ "$(uname -s)" = Darwin ]; then
+    _dnote launchd "always-on daemon not configured — enable via the menu-bar 'Start at login' (glimpse menubar)"
+  fi
+
+  # --- optional features / assets --------------------------------------------
+  if [ ! -f "$GLIMPSE_DIR/glimpse-annotate.js" ]; then _dwarn annotate "asset missing"; _dfix "glimpse serve   # re-seeds canvas assets"
+  elif [ "$ANNOTATE" = "0" ]; then _dnote annotate "installed (disabled via GLIMPSE_ANNOTATE=0)"
+  else _dok annotate "installed"; fi
+
+  if [ -f "$GLIMPSE_DIR/glimpse_explain.py" ] || [ -f "$SELF_DIR/../lib/glimpse_explain.py" ]; then _dok explain "engine installed"
+  else _dwarn explain "engine missing"; _dfix "re-run install.sh to restore lib/glimpse_explain.py"; fi
+
   local bp; bp="$(cat "$GLIMPSE_DIR/.bridge.lock" 2>/dev/null || true)"
-  if [ -n "$bp" ] && kill -0 "$bp" 2>/dev/null; then echo "running (pid $bp)"; else echo "not running (start with: glimpse bridge / glimpse daemon)"; fi
-  printf "  proxy:       "
+  if [ -n "$bp" ] && kill -0 "$bp" 2>/dev/null; then _dok bridge "running (pid $bp)"
+  else _dnote bridge "not running — start with: glimpse bridge  (or: glimpse daemon)"; fi
+
   local pbase="${GLIMPSE_PROXY_URL:-${ANTHROPIC_BASE_URL:+${ANTHROPIC_BASE_URL%/}/v1/messages}}"; pbase="${pbase:-http://127.0.0.1:8787/v1/messages}"
   local prc=0; curl -s -o /dev/null -m 3 "$pbase" 2>/dev/null || prc=$?
-  if [ "$prc" = 7 ] || [ "$prc" = 28 ]; then echo "unreachable: $pbase (daemon answers will fail)"; else echo "reachable: $pbase"; fi
-  printf "  api key:     "; [ -n "${GLIMPSE_API_KEY:-${POE_API_KEY:-${ANTHROPIC_API_KEY:-}}}" ] && echo "set" || echo "unset (daemon needs GLIMPSE_API_KEY/POE_API_KEY)"
+  if [ "$prc" = 7 ] || [ "$prc" = 28 ]; then _dnote proxy "unreachable: $pbase (daemon answers will fail until it's up)"
+  else _dok proxy "reachable: $pbase"; fi
+
+  if [ -n "${GLIMPSE_API_KEY:-${POE_API_KEY:-${ANTHROPIC_API_KEY:-}}}" ]; then _dok "api key" "set"
+  else _dnote "api key" "unset — the auto-answer daemon needs GLIMPSE_API_KEY (or POE_API_KEY / ANTHROPIC_API_KEY)"; fi
+
+  echo
+  if [ "$fail" = 0 ]; then echo "✓ all required checks passed."
+  else echo "✗ some required checks failed (see ✗ lines above) — fix them, then re-run: glimpse doctor" >&2; fi
   return $fail
 }
 

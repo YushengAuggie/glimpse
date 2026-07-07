@@ -57,6 +57,11 @@ cd glimpse
 ./install.sh            # CLI → ~/.local/bin, canvas → ~/.glimpse, agent skills → ~/.claude/skills
 ```
 
+The installer runs a preflight first: it verifies node ≥22, python3, and Chrome
+and prints a copy-pasteable fix for anything missing. It always installs the CLI
+(so `glimpse doctor` can re-diagnose) but exits non-zero if a required dep
+(node/python3) is absent; a missing Chrome is only a warning. Re-running is safe.
+
 If your shell then says `command not found: glimpse`, add `~/.local/bin` to your
 `PATH` (the installer prints the exact line) and restart your shell.
 
@@ -287,6 +292,8 @@ glimpse doctor                       check dependencies and running state
 
 Config via env: `GLIMPSE_DIR` (`~/.glimpse`), `GLIMPSE_PORT` (`4321`),
 `GLIMPSE_CDP_PORT` (`9222`), `GLIMPSE_PROFILE`, `GLIMPSE_CHROME`,
+`GLIMPSE_NODE` (path to `node` when it isn't on `PATH` — e.g. for the launchd
+menu-bar daemon; set in `~/.config/secrets.env`),
 `GLIMPSE_ANNOTATE` (`0` disables highlight-chat injection). Daemon:
 `GLIMPSE_API_KEY` (or `POE_API_KEY` / `ANTHROPIC_API_KEY`), `GLIMPSE_PROXY_URL`
 (default from `ANTHROPIC_BASE_URL`, else `http://127.0.0.1:8787/v1/messages`),
