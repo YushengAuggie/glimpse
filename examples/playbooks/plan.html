@@ -66,6 +66,8 @@
   code{font:13px/1.5 var(--mono);background:var(--bg-sunk);color:var(--accent-ink);padding:.12em .4em;border-radius:5px;overflow-wrap:anywhere;}
   .note{border-left:3px solid var(--warn);background:var(--warn-soft);border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:13px 16px;margin:14px 0;}
   .note b{color:var(--warn);}
+  .note.info{border-left-color:var(--info);background:var(--info-soft);}
+  .note.info b{color:var(--info);}
   .foot{color:var(--ink-3);font-size:13px;margin-top:32px;padding-top:16px;border-top:1px solid var(--line-2);}
   .theme-toggle{position:fixed;top:16px;right:16px;z-index:10;font:600 13px/1 var(--sans);
     display:inline-flex;align-items:center;gap:7px;background:var(--bg-elev);color:var(--ink-2);
@@ -102,9 +104,9 @@
         fallback so a miss is never a hard error.</li>
     </ol>
     <div class="note"><b>Risk:</b> resize CPU on the workers — throttle batch rate
-      on queue depth so live uploads keep priority.<br>
-      <b>Open question:</b> keep originals forever, or expire at 1 year? Needs a
-      product call — see the comparison playbook for the options.</div>
+      on queue depth so live uploads keep priority.</div>
+    <div class="note info"><b>Open question:</b> keep originals forever, or expire at
+      1 year? Needs a product call — see the comparison playbook for the options.</div>
   </div>
   <div class="foot">Glimpse example · plan playbook · goal → state → approach → risks</div>
 </div>
