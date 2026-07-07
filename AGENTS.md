@@ -49,6 +49,23 @@ is up.
 
 **Scope guard:** playbooks are authoring guidance only. Do not encode runtime
 behavior — the CLI verbs live in `bin/glimpse` and must not be invented in docs.
+
+### Canvas shell theming mirrors the playbooks
+
+The canvas **shell** (`canvas/index.html` app chrome — sidebar/header/list/toast/
+pills) is light+dark themed with the SAME mechanism as the artifacts (see
+`skills/canvas/playbooks/base.html`), so it reads as one product. `:root` is the
+**light** token set; dark applies under BOTH `@media (prefers-color-scheme: dark)`
+(gated `:root:not([data-theme="light"])` so an explicit light choice beats the OS)
+and `:root[data-theme="dark"]`. A pre-paint `<head>` script applies the saved
+theme before first paint (no flash); the header sun/moon `.iconbtn#themetog`
+routes through `window.__applyTheme(mode)` and persists to `localStorage`
+(`glimpse-theme`). All shell colors are tokens (`--await-bg/ink`, `--done-bg/ink`,
+`--flash-bg`, `--live-line`, `--down-line`, `--toast-shadow` etc.) — don't
+reintroduce hardcoded dark hex. **Sandboxed artifact iframes theme themselves**
+(opaque origin — the shell can't restyle inside them); don't try to force the
+shell theme in. Contract locked by `tests/test_canvas_theme.mjs`.
+
 ## Install & doctor conventions
 
 - **`install.sh` is one idempotent command.** It runs a preflight (node ≥22, Chrome; python3 is an optional macOS-only hint) printing `✓`/`✗`/`⚠` with a copy-pasteable, OS-aware fix per line, then installs the CLI + canvas assets regardless. Node ≥22 is the **only required** runtime: if it is missing the installer still installs the CLI (so `glimpse doctor` can re-diagnose) but exits non-zero. Chrome is a **warning only** — it is driven at runtime and doctor re-checks it, so a missing browser never blocks the install. python3 is **optional** (only the macOS menu-bar app uses it) and never fails the install. Re-running is always safe.
