@@ -33,6 +33,7 @@ ASSETS=(
   "lib/glimpse_share.py|glimpse_share.py"
   "lib/glimpse-cdp.mjs|glimpse-cdp.mjs"
   "lib/glimpse-bridge.mjs|glimpse-bridge.mjs"
+  "lib/glimpse-snapshot.mjs|glimpse-snapshot.mjs"
 )
 
 mkdir -p "$GLIMPSE_DIR"
