@@ -33,6 +33,7 @@ the per-verb JS bodies passed to `run_cdp`) are fine.
 | `glimpse-cdp.mjs` | `run_cdp`, `cmd_bridge` | shared CDP client (`cdpConnect`, `fail`) — **spliced** ahead of the body via `node --input-type=module -e "$(cat …)"` |
 | `glimpse-bridge.mjs` | `cmd_bridge` | the highlight-chat bridge loop — spliced after `glimpse-cdp.mjs`; env `GLIMPSE_BIN WAIT PORT GLIMPSE_DIR` (+ daemon `GLIMPSE_ANSWER …`) |
 | `glimpse-poll.mjs` | `cmd_poll` | the single-shot blocking feedback drainer — spliced after `glimpse-cdp.mjs`; env `GLIMPSE_BIN PORT CDP_PORT GLIMPSE_DIR POLL_JSON POLL_TIMEOUT_MS POLL_INTERVAL_MS` |
+| `glimpse-snapshot.mjs` | `cmd_snapshot` | accessibility-tree text snapshot body — read by `cmd_snapshot` and passed to `run_cdp` (not spliced standalone); env `URL SECRET_PATTERN` |
 
 `glimpse-cdp.mjs` / `glimpse-bridge.mjs` are the verbatim former `CDP_HELPER` /
 `BRIDGE_JS` heredoc bodies with **no `import`/`export`** — they are concatenated
@@ -158,12 +159,58 @@ task may fold the Python ops into Node; poll's queue read (`__pending`) and pers
 (`__thread-add-user`) go through the existing flocked writer, so poll's own logic
 (drain loop, delivered cursor, formatting) stays cleanly separable from that move.
 
+## `glimpse snapshot` — agent-facing a11y-tree capture
+
+`glimpse snapshot [#slug|url]` is the readable, token-efficient sibling of `shot`
+(pixels) and `read` (raw innerText): it prints the page's **accessibility tree** as
+an indented role/name outline, for an AI agent to reason about structure without a
+screenshot. The format mirrors `chrome-devtools-axi snapshot` so agents used to that
+tool feel at home:
+
+```
+page:
+  title: "Snapshot Demo"
+  url: "http://127.0.0.1:4321/artifacts/snap-demo.html"
+  nodes: 20
+snapshot:
+uid=s0 RootWebArea "Snapshot Demo"
+  uid=s1 heading "Glimpse Snapshot Demo" level="1"
+  uid=s7 navigation "Main"
+    uid=s8 link "Example link"
+  uid=s13 textbox "Search" value="hello world"
+  uid=s15 checkbox "Subscribe" checked="true"
+```
+
+- One line per node: `uid=s<N> <role> "<name>"` plus state attrs (`level`,
+  `checked`, `expanded`, `value`, …). `uid`s are `s0..sN` in document order —
+  stable within a single snapshot. Structural noise (`generic`/`presentation`/
+  `InlineTextBox`) and `ignored` nodes are collapsed; their meaningful descendants
+  reparent up, so the tree stays compact.
+- **Read-only.** It navigates only when handed a target (like `read`), never mutates
+  the page. Built on the shared CDP client (`run_cdp` → `lib/glimpse-snapshot.mjs`) —
+  no second browser channel. Names/values are secret-scrubbed against `SECRET_PATTERN`
+  (same posture as thread turns) so a captured field can't leak a token.
+- **Sharp edge — `#slug` resolves to the served artifact FILE, not the canvas hash
+  route.** The canvas renders artifacts inside a `sandbox="allow-scripts"` iframe with
+  an **opaque origin** (no `allow-same-origin`). CDP's frame-scoped a11y calls
+  (`Accessibility.getFullAXTree({frameId})`, `Page.getFrameTree`) can't reach into
+  that isolated frame — from the shell it shows up as a bare `Iframe` leaf. So
+  `cmd_snapshot` maps `#slug → http://127.0.0.1:$PORT/artifacts/<slug>.html` and
+  snapshots the pristine file as a top-level document, yielding the artifact's full,
+  clean tree. The body still grafts *ordinary* same-origin child frames (which DO
+  appear in `Page.getFrameTree`) under their owning `Iframe` node via
+  `DOM.getFrameOwner`, so a plain multi-frame URL still descends correctly.
+
 ## Tests
 
 - `uv run --with pytest pytest tests/` — Python units (incl. `test_glimpse_export.py`, the inliner)
-- `node --test tests/*.mjs tests/*.cjs` — renderer/bridge/poll units (no deps).
-  Note `tests/cdp_assert_render.mjs` is a live-CDP helper caught by the glob; it only
-  passes with a running `glimpse open` and otherwise fails (not a unit regression).
+- `node --test tests/*.mjs tests/*.cjs` — renderer/bridge/poll units (no deps); includes
+  `test_snapshot_render.mjs`, which drives the real `lib/glimpse-snapshot.mjs` body
+  with a stubbed CDP channel (no browser) to cover tree-building, node collapsing,
+  iframe grafting, and secret scrubbing, and `test_poll.mjs` (format helpers + origin
+  anti-drift). Note `tests/cdp_assert_render.mjs` is a live-CDP helper caught by the
+  glob; it only passes with a running `glimpse open` and otherwise fails (not a unit
+  regression).
 - `bash tests/test_explain_cli.sh`, `bash tests/test_node_anchor.sh`, `bash tests/test_export_cli.sh` — CLI smoke (the export test is offline; it never uploads)
 - `bash tests/test_poll_cli.sh` — `glimpse poll` end-to-end (disk-only: blocks→delivers,
   dedup/nothing-dropped, `--json`, timeout exit 3)

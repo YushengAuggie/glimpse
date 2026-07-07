@@ -29,6 +29,7 @@
 #   glimpse audit <slug>         report real-render layout issues (overflow/clipped/overlapping text)
 #   glimpse read <url>           navigate Chrome to a URL and print its text
 #   glimpse shot <out.png> [url] screenshot the current (or given) page
+#   glimpse snapshot [#slug|url] print an accessibility-tree text snapshot (roles + names + uids); #slug → the artifact's own document
 #   glimpse doctor               check dependencies and running state
 #   glimpse help
 #
@@ -626,6 +627,33 @@ cmd_poll(){
   exit "$rc"
 }
 
+# Accessibility-tree text snapshot of the current (or given) page — the readable,
+# token-efficient sibling of `shot` (pixels) and `read` (innerText). Reuses the
+# same CDP channel (run_cdp) and is read-only: it navigates only when handed a
+# target, never mutates the page.
+#
+# `#slug` resolves to the artifact's own served document (artifacts/<slug>.html),
+# NOT the canvas hash route: the canvas renders artifacts inside a sandboxed,
+# opaque-origin iframe whose a11y tree CDP can't reach from the shell, so
+# snapshotting the file directly yields the artifact's full, clean tree instead of
+# a bare `Iframe` leaf. Anything else is treated as a URL. With no target the
+# current page is captured in place.
+cmd_snapshot(){
+  local target="${1:-}" url=""
+  if [ -n "$target" ]; then
+    if [[ "$target" == \#* ]]; then
+      local s="${target#\#}"; _validate_slug "$s"
+      url="http://127.0.0.1:${PORT}/artifacts/${s}.html"
+      cmd_serve >/dev/null            # the served file needs the static server up
+    else
+      url="$target"
+    fi
+  fi
+  cmd_chrome >/dev/null
+  local snap; snap="$(_lib_file glimpse-snapshot.mjs)" || die "glimpse-snapshot.mjs not found — reinstall glimpse"
+  URL="$url" run_cdp "$(cat "$snap")"
+}
+
 cmd_bridge(){
   local wait=0
   case "${1:-}" in --wait) wait=1;; "") ;; *) die "usage: glimpse bridge [--wait]";; esac
@@ -923,6 +951,7 @@ case "${1:-help}" in
   chrome)  shift; cmd_chrome "$@";;
   read)    shift; cmd_read "$@";;
   shot)    shift; cmd_shot "$@";;
+  snapshot) shift; cmd_snapshot "$@";;
   audit)   shift; cmd_audit "$@";;
   doctor)  shift; cmd_doctor "$@";;
   help|-h|--help) usage;;
