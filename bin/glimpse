@@ -4,6 +4,8 @@
 # local dashboard that you watch update in a real Chrome window.
 #
 #   glimpse open [url|#slug]      bring everything up + navigate Chrome to the canvas
+#                                (first run on an empty canvas auto-shows the built-in guide; GLIMPSE_NO_WELCOME=1 opts out)
+#   glimpse demo                  publish a curated set of bundled examples (guide + diagram + highlight-chat) and open the canvas
 #   glimpse publish <slug> <title> [file] [--no-annotate] [--gate] [--no-audit]   publish an HTML artifact (stdin if no file)
 #                                auto-audits the render and warns; --gate fails on layout errors; --no-audit skips
 #   glimpse explain <slug> <title> [spec.json]   publish an interactive code-explainer (spec on stdin if omitted)
@@ -46,6 +48,7 @@
 #   GLIMPSE_CDP_PORT   chrome debug port     (default: 9222)
 #   GLIMPSE_PROFILE    chrome profile dir    (default: $GLIMPSE_DIR/chrome-profile)
 #   GLIMPSE_CHROME     path to chrome binary (default: auto-detect)
+#   GLIMPSE_NO_WELCOME 1 to disable the first-run self-teaching guide (default: 0)
 #   GLIMPSE_ANNOTATE   0 to disable highlight-chat injection globally (default: 1)
 #   GLIMPSE_AUDIT      0 to disable auto-audit-on-publish (default: 1)
 #   GLIMPSE_AUDIT_GATE 1 to make a bad-layout publish fail hard (default: 0; per-publish: --gate)
@@ -91,6 +94,18 @@ _lib_file(){
   if   [ -f "$SELF_DIR/../lib/$n" ]; then echo "$SELF_DIR/../lib/$n"
   elif [ -f "$GLIMPSE_DIR/$n" ];     then echo "$GLIMPSE_DIR/$n"
   elif [ -f "$HOME/.glimpse/$n" ];   then echo "$HOME/.glimpse/$n"
+  else return 1; fi
+}
+
+# Resolve a bundled example artifact by filename. Mirrors _lib_file's search: this
+# checkout's examples/, then the copy install.sh seeds into $GLIMPSE_DIR/examples/,
+# then ~/.glimpse/examples/ (for a custom GLIMPSE_DIR). Prints the path; returns 1
+# if not found anywhere, so callers can degrade gracefully.
+_example_file(){
+  local n="$1"
+  if   [ -f "$SELF_DIR/../examples/$n" ]; then echo "$SELF_DIR/../examples/$n"
+  elif [ -f "$GLIMPSE_DIR/examples/$n" ];  then echo "$GLIMPSE_DIR/examples/$n"
+  elif [ -f "$HOME/.glimpse/examples/$n" ]; then echo "$HOME/.glimpse/examples/$n"
   else return 1; fi
 }
 
@@ -285,15 +300,11 @@ cmd_chrome(){
   die "Chrome did not expose the debug port within 15s"
 }
 
-cmd_open(){
-  # Use 127.0.0.1 to match the loopback bind (avoids localhost→::1 resolution misses).
-  local target="${1:-http://127.0.0.1:${PORT}/}"
-  [[ "$target" == \#* ]] && target="http://127.0.0.1:${PORT}/${target}"
-  cmd_serve >/dev/null
-  cmd_chrome >/dev/null
-  # Reuse a canvas tab if one exists, else open a new one — never hijack an
-  # unrelated tab the user opened in this profile.
-  URL="$target" run_cdp '
+# Point the (already-served, already-launched) canvas Chrome at a target URL:
+# reuse a tab whose host matches, else open a new one — never hijack an unrelated
+# tab the user opened in this profile. Shared by `open` and `demo`.
+_navigate_chrome(){
+  URL="$1" run_cdp '
     const url=process.env.URL; let host=""; try{host=new URL(url).host;}catch{}
     const same=(u)=>{ try{ return new URL(u).host===host; }catch{ return false; } };
     const {send,waitEvent,close}=await cdpConnect(x=>x.type==="page" && host && same(x.url));
@@ -303,7 +314,92 @@ cmd_open(){
     try{ await send("Page.bringToFront"); }catch(_){}   // activate the tab + raise its window so the user lands on it
     close();
   '
+}
+
+# Is the feed empty (fresh install / after a full clear)? Returns 0 when there are
+# no artifacts (or no feed yet). Used only to gate the first-run welcome.
+_feed_empty(){
+  [ -f "$GLIMPSE_DIR/feed.json" ] || return 0
+  require_node
+  node -e 'try{const j=JSON.parse(require("fs").readFileSync(process.env.GLIMPSE_DIR+"/feed.json","utf8"));process.exit((j.artifacts||[]).length===0?0:1)}catch{process.exit(0)}'
+}
+
+# First-run self-teaching: the very first time the canvas comes up empty, publish
+# the bundled "How to use Glimpse" guide so a newcomer sees the product explain
+# itself (the guide is itself a highlight-chat demo) instead of a blank canvas.
+# Quiet + idempotent:
+#   • only when the feed is empty                (fresh install / after a full clear)
+#   • only once, ever — a ~/.glimpse/.welcomed marker survives the user later
+#     dismissing/removing the guide, so it is never re-clobbered or duplicated
+#   • opt out entirely with GLIMPSE_NO_WELCOME=1
+#   • degrade silently (open the empty canvas as before) if the guide isn't installed
+# Returns 0 iff it published the guide, so the caller can navigate to it.
+_maybe_welcome(){
+  [ "${GLIMPSE_NO_WELCOME:-0}" = "1" ] && return 1
+  [ -f "$GLIMPSE_DIR/.welcomed" ] && return 1
+  _feed_empty || return 1
+  local guide; guide="$(_example_file glimpse-guide.html)" || return 1
+  _write_artifact glimpse-guide "$guide"
+  feed_upsert glimpse-guide "How to use Glimpse" "$(date +%s)" 0 0
+  : > "$GLIMPSE_DIR/.welcomed" 2>/dev/null || true   # welcomed once — never again
+  return 0
+}
+
+cmd_open(){
+  # Use 127.0.0.1 to match the loopback bind (avoids localhost→::1 resolution misses).
+  local target="${1:-}"
+  cmd_serve >/dev/null
+  cmd_chrome >/dev/null
+  # No explicit target + an empty, never-welcomed canvas → auto-show the guide.
+  # An explicit `glimpse open <url>`/`#slug` is untouched (target already set).
+  if [ -z "$target" ] && _maybe_welcome; then target="#glimpse-guide"; fi
+  target="${target:-http://127.0.0.1:${PORT}/}"
+  [[ "$target" == \#* ]] && target="http://127.0.0.1:${PORT}/${target}"
+  _navigate_chrome "$target"
   echo "canvas open in Chrome → $target"
+}
+
+# Publish the curated demo set (guide + diagram/plan + highlight-chat) into the
+# feed. Pure disk work — no browser — so it is unit-testable on its own. Idempotent
+# by slug (re-running overwrites the same slugs, never duplicates) and degrades
+# per-item if an example isn't installed. Prints one line per published slug; sets
+# the .welcomed marker (a demo means the user has now seen the guide). Returns 1 if
+# nothing at all could be published.
+_publish_demo_set(){
+  seed_root
+  # slug|title|example-filename
+  local -a items=(
+    "glimpse-guide|How to use Glimpse|glimpse-guide.html"
+    "architecture-overview|Architecture Overview|architecture-overview.html"
+    "highlight-chat-demo|Highlight-to-chat demo|highlight-chat-demo.html"
+  )
+  local e slug title file src any=0
+  for e in "${items[@]}"; do
+    IFS='|' read -r slug title file <<<"$e"
+    if src="$(_example_file "$file")"; then
+      _write_artifact "$slug" "$src"
+      feed_upsert "$slug" "$title" "$(date +%s)" 0 0
+      echo "published → http://127.0.0.1:${PORT}/#${slug}"
+      any=1
+    else
+      echo "glimpse: skipped $slug — example $file not installed (reinstall glimpse)" >&2
+    fi
+  done
+  [ "$any" = 1 ] || return 1
+  : > "$GLIMPSE_DIR/.welcomed" 2>/dev/null || true
+  return 0
+}
+
+# glimpse demo — publish a small curated set of bundled examples so a newcomer sees
+# the range at once: the self-teaching guide + a diagram/plan artifact + the
+# highlight-chat demo. Idempotent by slug, brings the canvas up, and opens the
+# guide. Reuses the shipped examples/ files.
+cmd_demo(){
+  _publish_demo_set || die "no example artifacts found to publish — reinstall glimpse"
+  cmd_serve >/dev/null
+  cmd_chrome >/dev/null
+  _navigate_chrome "http://127.0.0.1:${PORT}/#glimpse-guide"
+  echo "demo ready → canvas open in Chrome (start with the guide in the sidebar)"
 }
 
 # Is the canvas already live (static server AND a debuggable Chrome both up)? The
@@ -1069,8 +1165,14 @@ cmd__pending(){
 
 usage(){ awk 'NR==1{next} /^#/{sub(/^# ?/,"");print;next} {exit}' "$SOURCE"; }
 
+# Dispatch only when executed directly. Sourcing the script (e.g. from the disk-level
+# unit tests) then loads the function definitions without running a command, so the
+# pure-disk helpers (_maybe_welcome, _publish_demo_set, …) can be exercised without a
+# browser. No behavior change when run as a CLI.
+if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
 case "${1:-help}" in
   open)    shift; cmd_open "$@";;
+  demo)    shift; cmd_demo "$@";;
   publish) shift; cmd_publish "$@";;
   explain) shift; cmd_explain "$@";;
   ask)     shift; cmd_ask "$@";;
@@ -1104,3 +1206,4 @@ case "${1:-help}" in
   help|-h|--help) usage;;
   *) die "unknown command '${1}'. Try: glimpse help";;
 esac
+fi

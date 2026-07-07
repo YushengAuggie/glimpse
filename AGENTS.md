@@ -73,6 +73,34 @@ files with `node`; **do not reintroduce polyglot heredoc bodies in `bin/glimpse`
 Small inline one-liners (`node -e`, and the per-verb JS bodies passed to `run_cdp`)
 are fine.
 
+**The dispatch `case` is guarded by `if [ "${BASH_SOURCE[0]}" = "${0}" ]`** so the
+script can be *sourced* (loading its functions without running a command) — the
+disk-level onboarding tests do exactly this. Keep any browser-touching work out of
+the pure-disk helpers so they stay unit-testable when sourced.
+
+## Newcomer onboarding — self-teaching first run + `glimpse demo`
+
+A fresh `glimpse open` used to show a blank canvas. Now the product teaches itself:
+
+- **First-run welcome (`_maybe_welcome`, called only from `cmd_open` with no target).**
+  When the feed is empty AND no `~/.glimpse/.welcomed` marker exists AND
+  `GLIMPSE_NO_WELCOME` != 1, it publishes the bundled `examples/glimpse-guide.html`
+  (slug `glimpse-guide`, title "How to use Glimpse") and navigates to it. The marker
+  makes it fire **once, ever** — never re-clobbering after the user dismisses/removes
+  the guide, never duplicating on later opens, even after a full clear. Degrades
+  silently (opens the empty canvas) if the guide example isn't installed. Only the
+  no-target `glimpse open` path triggers it; `glimpse open <url>`/`#slug` is untouched.
+- **`glimpse demo` (`cmd_demo` → `_publish_demo_set`).** Publishes a curated trio —
+  the guide + `architecture-overview.html` + `highlight-chat-demo.html` — idempotent
+  by slug, then brings the canvas up and opens the guide. `_publish_demo_set` is the
+  pure-disk half (no browser) so it's unit-tested directly.
+- **Example resolution: `_example_file <name>`** mirrors `_lib_file` — this checkout's
+  `examples/`, then `$GLIMPSE_DIR/examples/`, then `~/.glimpse/examples/` (install.sh
+  copies `examples/` into `$GLIMPSE_DIR`). Both features + the `GLIMPSE_NO_WELCOME`
+  env live in the `bin/glimpse` header (source of truth for `usage()`), mirrored to
+  README + `docs/USAGE.md`. Coverage: `tests/test_welcome_demo.sh` (disk-level, sources
+  the dispatcher; no browser).
+
 ### `lib/` layout
 
 Every lib file is Node (`.mjs`, Node stdlib only). The ops modules expose their
@@ -605,3 +633,10 @@ with code, the code wins.
   per theme (set `window.__applyTheme('light'|'dark')` explicitly before EACH shot —
   the theme persists in localStorage per `file://` origin). Both are `*.png`-ignored,
   so `.gitignore` must allowlist each (`!assets/glimpse-hero-light.png`, `-dark.png`).
+
+## Maintaining this file
+
+Keep this file for knowledge useful to almost every future agent session in this project.
+Do not repeat what the codebase already shows; point to the authoritative file or command instead.
+Prefer rewriting or pruning existing entries over appending new ones.
+When updating this file, preserve this bar for all agents and keep entries concise.

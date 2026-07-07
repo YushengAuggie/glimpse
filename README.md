@@ -71,6 +71,23 @@ HTML file (`export`) or a private link (`share`).
 
 ---
 
+## 60-second start
+
+```bash
+git clone https://github.com/YushengAuggie/glimpse.git && cd glimpse
+./install.sh          # CLI → ~/.local/bin, canvas → ~/.glimpse
+glimpse open          # serve + launch Chrome; a fresh canvas auto-shows the built-in guide
+```
+
+`glimpse open` on a brand-new install brings up Chrome and — because the canvas is
+empty — **auto-publishes the "How to use Glimpse" guide**, so the first thing you
+see is the product explaining itself (it's a live highlight-chat demo, too). Want
+the full tour? `glimpse demo` publishes a curated set — the guide, an architecture
+diagram, and the highlight-chat demo — in one command. Opt out of the auto-guide
+with `GLIMPSE_NO_WELCOME=1`.
+
+---
+
 ## Quickstart
 
 ### Requirements
@@ -104,13 +121,20 @@ so MCP-capable agents get first-class browser tools.
 
 ### See it work
 ```bash
-glimpse doctor                                 # confirm node / chrome are found
-glimpse open                                   # serve + launch Chrome + open the canvas
-glimpse publish guide "How to use Glimpse" ~/.glimpse/examples/glimpse-guide.html
-glimpse publish demo  "Architecture"       ~/.glimpse/examples/architecture-overview.html
+glimpse doctor        # confirm node / chrome are found
+glimpse open          # serve + launch Chrome; a fresh canvas auto-shows the guide
+glimpse demo          # (optional) publish the full curated tour in one command
 ```
-The artifacts appear in the sidebar instantly and open automatically. Start with
-**How to use Glimpse** — it explains the whole idea.
+On a fresh install `glimpse open` auto-publishes **How to use Glimpse** — the
+first thing you see is the product explaining itself. It appears once (a
+`~/.glimpse/.welcomed` marker keeps later opens quiet, and it's never re-shown
+after you remove it); set `GLIMPSE_NO_WELCOME=1` to skip it. `glimpse demo` adds an
+architecture diagram and the highlight-chat demo alongside the guide. You can
+always publish the bundled examples by hand, too:
+```bash
+glimpse publish arch "Architecture" ~/.glimpse/examples/architecture-overview.html
+```
+Artifacts appear in the sidebar instantly and open automatically.
 
 ---
 
@@ -385,6 +409,8 @@ The sidebar reflects `feed.json`. As it grows, manage it two ways:
 **Publishing & artifacts**
 ```
 glimpse open [url|#slug]              serve + launch Chrome + navigate to the canvas
+                                     (first run on an empty canvas auto-shows the guide; GLIMPSE_NO_WELCOME=1 opts out)
+glimpse demo                         publish a curated set of bundled examples (guide + diagram + highlight-chat) and open
 glimpse publish <slug> <title> [file] [--no-annotate] [--gate] [--no-audit]
                                      publish an HTML artifact (stdin if no file); auto-audits the
                                      render and warns — --gate fails on layout errors, --no-audit skips
@@ -435,6 +461,7 @@ Config via env: `GLIMPSE_DIR` (`~/.glimpse`), `GLIMPSE_PORT` (`4321`),
 `GLIMPSE_CDP_PORT` (`9222`), `GLIMPSE_PROFILE`, `GLIMPSE_CHROME`,
 `GLIMPSE_NODE` (path to `node` when it isn't on `PATH` — e.g. for the launchd
 menu-bar daemon; set in `~/.config/secrets.env`),
+`GLIMPSE_NO_WELCOME` (`1` disables the first-run self-teaching guide),
 `GLIMPSE_ANNOTATE` (`0` disables highlight-chat injection),
 `GLIMPSE_AUDIT` (`0` disables auto-audit-on-publish),
 `GLIMPSE_AUDIT_GATE` (`1` makes a bad-layout publish fail hard). Daemon:

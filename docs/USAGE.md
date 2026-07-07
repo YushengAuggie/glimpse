@@ -19,23 +19,54 @@ sequenceDiagram
 
 You typically only ever say *"put it on the canvas."* The agent does the rest.
 
-## First run
-
-```bash
-glimpse doctor     # confirm node (22+) / chrome are found
-glimpse open       # opens the empty canvas in Chrome
-```
+## First run — the first loop, step by step
 
 > Runtime is **Node 22+ and Chrome** only. Python 3 is optional — it's used solely
 > by the macOS menu-bar app (rumps); core glimpse never touches it.
 
-Publish the bundled example to see a real artifact:
+1. **Check your setup.**
+   ```bash
+   glimpse doctor     # confirm node (22+) / chrome are found
+   ```
 
-```bash
-glimpse publish arch "Architecture Overview" ~/.glimpse/examples/architecture-overview.html
-```
+2. **Open the canvas — it teaches itself.**
+   ```bash
+   glimpse open       # serve + launch Chrome + navigate to the canvas
+   ```
+   On a **fresh install the canvas is empty**, so `glimpse open` auto-publishes the
+   built-in **How to use Glimpse** guide and lands you on it — the first thing you
+   see is the product explaining itself (the guide is itself a highlight-chat demo).
+   It appears **once**: a `~/.glimpse/.welcomed` marker keeps later opens quiet, and
+   it is never re-shown after you remove it. Skip it entirely with
+   `GLIMPSE_NO_WELCOME=1 glimpse open`. Want the whole tour at once?
+   ```bash
+   glimpse demo       # publish the guide + an architecture diagram + the highlight-chat demo
+   ```
+   `glimpse demo` is idempotent (re-running never duplicates) and brings the canvas
+   up for you.
 
-It should appear in the sidebar within ~1 second and open automatically.
+3. **Publish your own artifact.** An artifact is one self-contained HTML file
+   (see [Writing a good artifact](#writing-a-good-artifact)):
+   ```bash
+   glimpse publish arch "Architecture Overview" ~/.glimpse/examples/architecture-overview.html
+   ```
+   It appears in the sidebar within ~1 second and opens automatically.
+
+4. **Highlight & ask.** In the Chrome window, **select any passage** in an artifact
+   and click **Ask** in the little toolbar, then type a question. Your highlight and
+   question are saved to that document's thread.
+
+5. **Receive the question (agent side).** Park on one blocking call:
+   ```bash
+   glimpse poll       # blocks until there's feedback, prints it, returns (exit 0)
+   ```
+
+6. **Answer it.** Reply to the turn id `poll` printed:
+   ```bash
+   glimpse reply arch "It's write-through so reads never see stale data." --to <turnId>
+   ```
+   The answer threads inline next to the highlight. Loop back to step 5 (`glimpse
+   poll` again) for the next question.
 
 ## Writing a good artifact
 
