@@ -108,12 +108,17 @@
     background:none; border:1px solid var(--line); border-radius:7px; color:var(--dim); cursor:pointer; padding:0; }
   .iconbtn:hover { color:var(--text); border-color:var(--accent); }
   .iconbtn:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
-  /* Theme toggle sits at the far right of the bar in both the welcome and
-     artifact-open layouts. annpill's margin-left:auto claims the free space
-     when it's visible; this one claims it when annpill is hidden. */
-  #themetog { margin-left:auto; }
+  /* Right-side control cluster (annotate pill · note · export · share · theme).
+     One margin-left:auto here pushes the whole group right in BOTH the welcome and
+     artifact-open layouts, so the export/share buttons sit flush with the theme
+     toggle instead of leaving a gap (which two competing margin-left:autos caused). */
+  .baractions { margin-left:auto; display:flex; align-items:center; gap:8px; min-width:0; }
+  /* Export/Share ride the pull-only browser→agent channel; when no bridge/daemon is
+     listening they can't be serviced, so they read as clearly inert (but stay clickable
+     to surface the "start the daemon" hint). */
+  .iconbtn.actionbtn.inert { opacity:.45; border-style:dashed; }
   .bar .held { font-size:11px; color:var(--dim); border:1px solid var(--line); border-radius:6px; padding:1px 7px; }
-  .annpill { margin-left:auto; font-size:11px; color:var(--dim); border:1px solid var(--line); border-radius:6px; padding:1px 9px; cursor:pointer; outline:none; }
+  .annpill { font-size:11px; color:var(--dim); border:1px solid var(--line); border-radius:6px; padding:1px 9px; cursor:pointer; outline:none; }
   .annpill:focus-visible { border-color:var(--accent); }
   .annpill.live { color:var(--accent2); border-color:var(--live-line); }
   .annpill.down { color:var(--amber); border-color:var(--down-line); }
@@ -124,7 +129,7 @@
   iframe { border:0; width:100%; height:100%; background:var(--panel); opacity:0; transition:opacity .15s ease; }
   .toast { position:fixed; left:14px; bottom:14px; z-index:60; display:flex; gap:12px; align-items:center;
     background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:8px 12px; font-size:12.5px;
-    color:var(--text); box-shadow:var(--toast-shadow); max-width:260px; }
+    color:var(--text); box-shadow:var(--toast-shadow); max-width:340px; }
   .toast[hidden] { display:none; }
   .toast button { background:none; border:0; color:var(--accent); cursor:pointer; font:inherit; font-weight:650; padding:0; }
   .toast button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
@@ -143,7 +148,7 @@
     <div class="foot"><span id="count" role="status" aria-live="polite">0 artifacts</span><span id="clock" aria-hidden="true"></span></div>
   </aside>
   <main>
-    <div class="bar"><button id="navtog" class="iconbtn" type="button" aria-pressed="false" aria-label="Hide sidebar" title="Toggle sidebar"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="1.25" y="2.25" width="13.5" height="11.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="6" y1="2.25" x2="6" y2="13.75" stroke="currentColor" stroke-width="1.5"/></svg></button><h1 id="title">Welcome</h1><span class="held" id="held" hidden>held</span><span class="annpill" id="annpill" role="button" tabindex="0" hidden title="Highlight-chat — click to toggle reading mode">Annotate</span><span class="note" id="note" role="status" aria-live="polite">✓ response recorded</span><button id="themetog" class="iconbtn" type="button" aria-pressed="false" aria-label="Switch to dark theme" title="Toggle light/dark theme"><span id="themeicon" aria-hidden="true"></span></button></div>
+    <div class="bar"><button id="navtog" class="iconbtn" type="button" aria-pressed="false" aria-label="Hide sidebar" title="Toggle sidebar"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="1.25" y="2.25" width="13.5" height="11.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="6" y1="2.25" x2="6" y2="13.75" stroke="currentColor" stroke-width="1.5"/></svg></button><h1 id="title">Welcome</h1><span class="held" id="held" hidden>held</span><div class="baractions"><span class="annpill" id="annpill" role="button" tabindex="0" hidden title="Highlight-chat — click to toggle reading mode">Annotate</span><span class="note" id="note" role="status" aria-live="polite">✓ response recorded</span><button id="exportbtn" class="iconbtn actionbtn" type="button" hidden aria-label="Export standalone HTML" title="Export standalone HTML"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v11"/><path d="M8 10l4 4 4-4"/><path d="M5 20h14"/></svg></button><button id="sharebtn" class="iconbtn actionbtn" type="button" hidden aria-label="Share private link" title="Share a private link (uploads to ht-ml.app)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg></button><button id="themetog" class="iconbtn" type="button" aria-pressed="false" aria-label="Switch to dark theme" title="Toggle light/dark theme"><span id="themeicon" aria-hidden="true"></span></button></div></div>
     <div id="stage" style="flex:1; min-height:0;">
       <div class="welcome">
         <h2>This is your live canvas.</h2>
@@ -427,6 +432,7 @@ async function show(slug){
                                         // the mutable `current`, so nothing is misattributed.
   f.addEventListener('load', ()=>{ f.style.opacity='1'; threadSig=""; pollThread(); updateLiveness(); });
   stage.appendChild(f);
+  updateActionButtons();
   render();
 }
 
@@ -487,6 +493,97 @@ window.addEventListener('message', (e)=>{
     };
     return;
   }
+});
+
+// --- Export / Share from the canvas -----------------------------------------
+// These ride the SAME pull-only outbox highlight-chat uses (no inbound endpoint):
+// a click pushes a {type:"glimpse:action"} request; the bridge/daemon runs the real
+// `glimpse export`/`share` verb and pushes the result back via __glimpseActionResult
+// (below). If no bridge is listening the action can't be serviced, so we gate on the
+// bridge liveness the annotate pill already tracks and surface a hint instead.
+const pendingActions = new Map();   // clientId -> { kind, timer }
+function bridgeUsable(){
+  const stamp = window.__glimpse_bridge_live || 0;
+  const live = (Date.now() - stamp) < 4000;
+  // Brief grace right after load before the first liveness stamp arrives (mirrors
+  // updateLiveness) so we don't false-negative a daemon that's actually up.
+  const connecting = !live && !stamp && (Date.now() - Number(GL_EPOCH)) < 4000;
+  return live || connecting;
+}
+function startAction(kind, opts){
+  if(!current) return;
+  if(!bridgeUsable()){ toast('Start `glimpse daemon` (or `glimpse bridge`) to '+kind+' from the canvas.'); return; }
+  const id = GL_EPOCH + '-' + (++glSeq);
+  pushOutbox({ id: id, type:'glimpse:action', action: kind, slug: current, opts: opts||{}, clientId: id, ts: Date.now() });
+  showNote(kind==='share' ? 'Sharing…' : 'Exporting…');
+  const timer = setTimeout(()=>{
+    if(pendingActions.has(id)){ pendingActions.delete(id);
+      toast((kind==='share'?'Share':'Export')+' timed out — is the glimpse daemon still running?'); }
+  }, kind==='share' ? 45000 : 20000);   // share uploads to a remote host, so allow longer
+  pendingActions.set(id, { kind: kind, timer: timer });
+}
+function copyToClipboard(text){
+  try { if(navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text); } catch(e){}
+  try { const ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.focus(); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+    return Promise.resolve(); } catch(e){ return Promise.reject(e); }
+}
+// Render an export/share result in the toast (path, or URL + password + a Copy button).
+function showActionToast(res){
+  const t=document.getElementById('toast'); t.textContent=''; clearTimeout(t._t);
+  const wrap=document.createElement('div');
+  wrap.style.cssText='display:flex; flex-direction:column; gap:2px; min-width:0; overflow-wrap:anywhere;';
+  let copyStr=null;
+  if(!res.ok){
+    const d=document.createElement('div');
+    d.textContent=(res.kind==='share'?'Share failed: ':'Export failed: ')+(res.error||'unknown error');
+    wrap.appendChild(d);
+  } else if(res.kind==='share'){
+    const d1=document.createElement('div'); d1.textContent='Shared (private) →'; wrap.appendChild(d1);
+    const d2=document.createElement('div'); d2.textContent=res.url||'(no url)'; d2.style.color='var(--accent)'; wrap.appendChild(d2);
+    if(res.password){ const d3=document.createElement('div'); d3.textContent='Password: '+res.password; wrap.appendChild(d3); }
+    copyStr=(res.url||'')+(res.password?('\nPassword: '+res.password):'');
+  } else {
+    const d1=document.createElement('div'); d1.textContent='Exported →'; wrap.appendChild(d1);
+    const d2=document.createElement('div'); d2.textContent=res.path||'(no path)'; d2.style.color='var(--accent)'; wrap.appendChild(d2);
+    copyStr=res.path||'';
+  }
+  t.appendChild(wrap);
+  if(res.ok && copyStr){
+    const b=document.createElement('button'); b.type='button'; b.textContent='Copy';
+    b.onclick=()=>{ copyToClipboard(copyStr).then(()=>{ b.textContent='Copied'; }, ()=>{ b.textContent='Copy failed'; }); };
+    t.appendChild(b);
+  }
+  t.hidden=false;
+  t._t=setTimeout(()=>{ t.hidden=true; }, res.ok?15000:8000);
+}
+// Inbound (bridge → shell) result delivery over CDP — NOT a server endpoint. The
+// bridge evaluates this in the shell window; the payload is a JSON string it parses.
+window.__glimpseActionResult = function(s){
+  let res; try { res = (typeof s==='string') ? JSON.parse(s) : s; } catch(e){ return; }
+  if(!res || typeof res!=='object') return;
+  const p = res.clientId ? pendingActions.get(res.clientId) : null;
+  if(p){ clearTimeout(p.timer); pendingActions.delete(res.clientId); }
+  showActionToast(res);
+};
+// Show the buttons only when an artifact is open; dim them when no agent is listening.
+function updateActionButtons(){
+  const eb=document.getElementById('exportbtn'), sb=document.getElementById('sharebtn');
+  if(!eb || !sb) return;
+  const on = !!current;
+  eb.hidden = !on; sb.hidden = !on;
+  if(!on) return;
+  const usable = bridgeUsable();
+  eb.classList.toggle('inert', !usable); sb.classList.toggle('inert', !usable);
+  eb.title = usable ? 'Export standalone HTML' : 'Export — start `glimpse daemon` to enable';
+  sb.title = usable ? 'Share a private link (uploads to ht-ml.app)' : 'Share — start `glimpse daemon` to enable';
+}
+document.getElementById('exportbtn').addEventListener('click', ()=>{ startAction('export', {}); });
+document.getElementById('sharebtn').addEventListener('click', ()=>{
+  if(!current) return;
+  if(!bridgeUsable()){ toast('Start `glimpse daemon` (or `glimpse bridge`) to share from the canvas.'); return; }
+  // Share LEAVES the machine → one-click egress confirm, restating the CLI posture.
+  toast('Share uploads a private copy to ht-ml.app (leaves your machine).', 'Upload', ()=>startAction('share', {}));
 });
 
 function flashItem(slug){
@@ -597,6 +694,7 @@ function connectEvents(){
 // The bridge stamps window.__glimpse_bridge_live over CDP on each poll; we treat
 // a recent stamp as "an agent is listening" and reflect it in the header pill.
 function updateLiveness(){
+  updateActionButtons();   // export/share visibility + inert state track the same bridge liveness
   const pill = document.getElementById('annpill');
   if(!current){ pill.hidden = true; return; }
   pill.hidden = false;
