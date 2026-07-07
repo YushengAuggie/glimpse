@@ -1,18 +1,23 @@
 ---
 name: chrome-cdp
-version: 1.0.0
+version: 1.1.0
 description: |
   Drive a real Chrome via the Chrome DevTools Protocol (CDP). Ensures a
   debuggable Chrome is running (launching it if needed) so the agent can
   navigate, read page content, inspect the DOM, run JavaScript, and take
-  screenshots — without the user typing any launch command. Backed by Glimpse
-  and the chrome-devtools MCP server. Use when asked to "use chrome", "open
-  chrome", "drive my browser", "read the page in chrome", or "/chrome-cdp".
+  screenshots — without the user typing any launch command. Includes a
+  first-class "review a live running app" flow: point Chrome at the app under
+  development and inspect/screenshot the REAL page (what a static-artifact tool
+  cannot do). Backed by Glimpse and the chrome-devtools MCP server. Use when
+  asked to "use chrome", "open chrome", "drive my browser", "read the page in
+  chrome", "review the running app", "screenshot the app", or "/chrome-cdp".
 triggers:
   - chrome cdp
   - drive my browser
   - read the page in chrome
   - use chrome
+  - review the running app
+  - screenshot the app
 ---
 
 # chrome-cdp

@@ -103,7 +103,8 @@ mkdir -p "$GLIMPSE_DIR"
 # Seeded flat into $GLIMPSE_DIR so an installed `glimpse` (whose $SELF_DIR/../lib
 # doesn't exist) resolves them via _lib_file. Every lib/*.mjs is copied — including
 # glimpse-store.mjs, which feed/threads import relatively and so must sit alongside
-# them. Node + Chrome only; no Python in the runtime path. Keep in sync with lib/.
+# them, and glimpse-read.mjs/glimpse-interact.mjs for live-app review. Node + Chrome
+# only; no Python in the runtime path. Keep in sync with lib/.
 for f in "$REPO"/lib/*.mjs; do
   cp "$f" "$GLIMPSE_DIR/$(basename "$f")"
 done

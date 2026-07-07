@@ -30,9 +30,13 @@
 #   glimpse stop                 stop the static server
 #   glimpse chrome               launch a debuggable Chrome only
 #   glimpse audit <slug>         report real-render layout issues (overflow/clipped/overlapping text)
-#   glimpse read <url>           navigate Chrome to a URL and print its text
+#   --- review a live running app (drive Chrome to any URL, inspect + interact) ---
+#   glimpse read [url]           navigate to a URL (or read the current app tab) and print {title,url,text,console,errors}
 #   glimpse shot <out.png> [url] screenshot the current (or given) page
 #   glimpse snapshot [#slug|url] print an accessibility-tree text snapshot (roles + names + uids); #slug → the artifact's own document
+#   glimpse click <selector>     click the first element matching a CSS selector (explicit, state-changing)
+#   glimpse scroll <selector> | --to <px> | --by <px>   scroll the current app page
+#   glimpse wait <selector> | --text <str> [--timeout N]   wait until an element/text appears (default 8s)
 #   glimpse doctor               check dependencies and running state
 #   glimpse help
 #
@@ -629,38 +633,85 @@ cmd_ask(){
   return $rc
 }
 
+# Navigate to a live URL (or read whatever app tab is already open) and print
+# {title,url,text,console,errors} as JSON — the text/console view of a running app.
+# Read-only. With a URL, targets that app's own tab (cdpConnectApp) so it reuses the
+# app tab instead of clobbering the canvas; with no URL, reads the current app tab.
+# Console output + uncaught errors captured during load are the review payoff.
 cmd_read(){
-  local url="${1:?usage: glimpse read <url>}"
+  local url="${1:-}"
   cmd_chrome >/dev/null
-  URL="$url" run_cdp '
-    const url=process.env.URL;
-    const {send,waitEvent,close}=await cdpConnect(x=>x.type==="page");
-    await send("Page.enable"); await send("Runtime.enable");
-    const loaded=waitEvent("Page.loadEventFired",12000).catch(()=>{});
-    await send("Page.navigate",{url});
-    await loaded; await new Promise(r=>setTimeout(r,300));
-    const {result}=await send("Runtime.evaluate",{expression:"JSON.stringify({title:document.title,url:location.href,text:(document.body?document.body.innerText:\"\").slice(0,8000)})",returnByValue:true});
-    console.log(result.value); close();
-  '
+  local f; f="$(_lib_file glimpse-read.mjs)" || die "glimpse-read.mjs not found — reinstall glimpse"
+  URL="$url" run_cdp "$(cat "$f")"
 }
 
 cmd_shot(){
   local out="${1:?usage: glimpse shot <out.png> [url]}" url="${2:-}"
   cmd_chrome >/dev/null
+  # With a URL, navigate the app's OWN tab (cdpConnectApp), never the canvas. With
+  # none, screenshot the current app tab (non-canvas page preferred).
   [ -n "$url" ] && { URL="$url" run_cdp '
     const url=process.env.URL;
-    const {send,waitEvent,close}=await cdpConnect(x=>x.type==="page");
+    const {send,waitEvent,close}=await cdpConnectApp(url);
     await send("Page.enable");
     const loaded=waitEvent("Page.loadEventFired",12000).catch(()=>{});
     await send("Page.navigate",{url}); await loaded; await new Promise(r=>setTimeout(r,400)); close();
   '; }
   OUT="$out" run_cdp '
-    const {send,close}=await cdpConnect(x=>x.type==="page");
+    const {send,close}=await cdpConnectApp("");
     await send("Page.enable");
     const {data}=await send("Page.captureScreenshot",{format:"png"});
     const fs=await import("fs"); fs.writeFileSync(process.env.OUT, Buffer.from(data,"base64"));
     console.log("saved", process.env.OUT); close();
   '
+}
+
+# --- live-app interaction: the only state-changing browser verbs ---------------
+# click / scroll / wait drive the CURRENT app tab (open it first with
+# `glimpse open <url>`). Each shells the shared interaction body through run_cdp
+# (lib/glimpse-interact.mjs) over the one CDP channel — no second browser connection.
+cmd_click(){
+  local selector="${1:-}"
+  [ -n "$selector" ] || die "usage: glimpse click <css-selector>"
+  cmd_chrome >/dev/null
+  local f; f="$(_lib_file glimpse-interact.mjs)" || die "glimpse-interact.mjs not found — reinstall glimpse"
+  ACTION=click SELECTOR="$selector" run_cdp "$(cat "$f")"
+}
+
+cmd_scroll(){
+  local to="" by="" set=0; local -a pos=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --to) to="${2:-}"; set=$((set+1)); shift 2 || die "usage: glimpse scroll <selector> | --to <px> | --by <px>";;
+      --by) by="${2:-}"; set=$((set+1)); shift 2 || die "usage: glimpse scroll <selector> | --to <px> | --by <px>";;
+      *) pos+=("$1"); shift;;
+    esac
+  done
+  local selector="${pos[0]:-}"
+  [ -n "$selector" ] && set=$((set+1))
+  [ "$set" -eq 1 ] || die "usage: glimpse scroll <selector> | --to <px> | --by <px>   (exactly one)"
+  [ -n "$to" ] && { case "$to" in *[!0-9-]*|"") die "--to must be an integer pixel offset";; esac; }
+  [ -n "$by" ] && { case "$by" in *[!0-9-]*|"") die "--by must be an integer pixel delta";; esac; }
+  cmd_chrome >/dev/null
+  local f; f="$(_lib_file glimpse-interact.mjs)" || die "glimpse-interact.mjs not found — reinstall glimpse"
+  ACTION=scroll SELECTOR="$selector" SCROLL_TO="$to" SCROLL_BY="$by" run_cdp "$(cat "$f")"
+}
+
+cmd_wait(){
+  local text="" timeout=8; local -a pos=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --text)    text="${2:-}";    shift 2 || die 'usage: glimpse wait <selector> | --text <str> [--timeout N]';;
+      --timeout) timeout="${2:-}"; shift 2 || die 'usage: glimpse wait <selector> | --text <str> [--timeout N]';;
+      *) pos+=("$1"); shift;;
+    esac
+  done
+  local selector="${pos[0]:-}"
+  [ -n "$selector" ] || [ -n "$text" ] || die 'usage: glimpse wait <selector> | --text <str> [--timeout N]'
+  case "$timeout" in *[!0-9]*|"") die "--timeout must be a number of seconds";; esac
+  cmd_chrome >/dev/null
+  local f; f="$(_lib_file glimpse-interact.mjs)" || die "glimpse-interact.mjs not found — reinstall glimpse"
+  ACTION=wait SELECTOR="$selector" TEXT="$text" TIMEOUT_MS="$((timeout*1000))" run_cdp "$(cat "$f")"
 }
 
 # glimpse poll — ONE blocking call the agent parks on. It waits until there is
@@ -1040,6 +1091,9 @@ case "${1:-help}" in
   read)    shift; cmd_read "$@";;
   shot)    shift; cmd_shot "$@";;
   snapshot) shift; cmd_snapshot "$@";;
+  click)   shift; cmd_click "$@";;
+  scroll)  shift; cmd_scroll "$@";;
+  wait)    shift; cmd_wait "$@";;
   audit)   shift; cmd_audit "$@";;
   doctor)  shift; cmd_doctor "$@";;
   help|-h|--help) usage;;
