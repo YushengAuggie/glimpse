@@ -98,7 +98,13 @@ cp "$REPO/canvas/index.html" "$GLIMPSE_DIR/index.html"
 cp "$REPO/canvas/glimpse-annotate.js" "$GLIMPSE_DIR/glimpse-annotate.js"   # highlight-chat helper (injected at render time)
 cp "$REPO/canvas/glimpse-audit.js" "$GLIMPSE_DIR/glimpse-audit.js"         # render-correctness auditor (injected at render time)
 mkdir -p "$GLIMPSE_DIR"
-cp "$REPO/lib/glimpse_explain.py" "$GLIMPSE_DIR/glimpse_explain.py"   # explain engine (validate + wrap)
+# CLI lib code the dispatcher shells out to (Python ops + the CDP client/bridge).
+# Seeded flat into $GLIMPSE_DIR so an installed `glimpse` (whose $SELF_DIR/../lib
+# doesn't exist) resolves them via _lib_file. Keep in sync with lib/ and bin/glimpse.
+for f in glimpse_explain.py glimpse_feed.py glimpse_threads.py glimpse_server.py \
+         glimpse_chrome_profile.py glimpse-cdp.mjs glimpse-bridge.mjs; do
+  cp "$REPO/lib/$f" "$GLIMPSE_DIR/$f"
+done
 cp "$REPO/canvas/favicon.svg" "$GLIMPSE_DIR/favicon.svg"                   # tab icon
 [ -f "$REPO/app/glimpse_menubar.py" ] && cp "$REPO/app/glimpse_menubar.py" "$GLIMPSE_DIR/glimpse_menubar.py"  # macOS menu-bar app
 for ic in menubar-on.png menubar-off.png; do [ -f "$REPO/assets/$ic" ] && cp "$REPO/assets/$ic" "$GLIMPSE_DIR/$ic"; done  # menu-bar icons
