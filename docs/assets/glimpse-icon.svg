@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>Glimpse</title>
+  <defs>
+    <!-- Clip confining the iris/ring/pupil to the lozenge silhouette -->
+    <clipPath id="lozenge-clip">
+      <path d="M 32,128 C 64,72 192,72 224,128 C 192,184 64,184 32,128 Z"/>
+    </clipPath>
+  </defs>
+
+  <!-- Dark tile background -->
+  <rect width="256" height="256" rx="48" fill="#0f1115"/>
+
+  <!-- Eye lozenge fill — slightly lighter than bg to read as eye-white -->
+  <path d="M 32,128 C 64,72 192,72 224,128 C 192,184 64,184 32,128 Z"
+        fill="#1e2535"/>
+
+  <!-- Iris: flat blue-violet disc -->
+  <circle cx="128" cy="128" r="56" fill="#7aa2f7"
+          clip-path="url(#lozenge-clip)"/>
+
+  <!-- Iris texture ring: flat inner stroke ring -->
+  <circle cx="128" cy="128" r="42" fill="none"
+          stroke="#4a72c7" stroke-width="1.5" opacity="0.6"
+          clip-path="url(#lozenge-clip)"/>
+
+  <!-- Pupil: flat dark void -->
+  <circle cx="128" cy="128" r="28" fill="#0f1115"
+          clip-path="url(#lozenge-clip)"/>
+
+  <!-- Eyelid outline: single clean almond contour at consistent weight -->
+  <path d="M 32,128 C 64,72 192,72 224,128 C 192,184 64,184 32,128 Z"
+        fill="none" stroke="#7aa2f7" stroke-width="3"
+        stroke-linejoin="round"/>
+
+  <!-- Live accent: one solid green pip, inside the rounded tile -->
+  <circle cx="206" cy="206" r="10" fill="#9ece6a"/>
+</svg>

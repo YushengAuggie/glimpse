@@ -11,6 +11,11 @@ feed.json
 # playbook example screenshots — tracked despite *.png (reference for reviewers)
 !examples/screenshots/
 !examples/screenshots/*.png
+# GitHub Pages showcase site assets — tracked despite *.png
+!docs/assets/
+!docs/assets/*.png
+!docs/assets/shots/
+!docs/assets/shots/*.png
 .DS_Store
 __pycache__/
 *.pyc
