@@ -5,7 +5,8 @@ easy to read.
 
 ## Principles
 - **No build step, minimal deps.** The CLI is POSIX-ish bash; the canvas is one
-  HTML file; the only runtime needs are Node, Python 3, and Chrome.
+  HTML file; the only runtime needs are Node (≥22) and Chrome. (Python 3 is
+  optional — only the macOS menu-bar app uses it.)
 - **Local-first & safe by default.** Servers bind to loopback; the CDP browser
   uses a dedicated profile; artifacts run sandboxed. Don't regress these.
 - **Docs match behavior.** If you change a flag or default, update the README
@@ -35,8 +36,7 @@ These checks are **blocking** — a failure blocks the PR:
 | --- | --- | --- |
 | Shell syntax | `bash -n bin/glimpse install.sh scripts/*.sh .githooks/*` | any parse error |
 | Shell lint | `shellcheck -S warning bin/glimpse install.sh scripts/*.sh .githooks/*` | any `warning`+ finding |
-| Python tests | `pytest tests/` | any failing test |
-| Renderer tests | `node --test tests/test_*.cjs tests/test_*.mjs` | any failing test |
+| Unit tests | `node --test tests/test_*.cjs tests/test_*.mjs` | any failing test |
 | Bash smoke tests | `bash tests/test_*.sh` | any failing test |
 | Secret scan | `gitleaks git` (full history) | any leaked secret |
 
@@ -44,14 +44,14 @@ The `test` job runs on both `ubuntu-latest` and `macos-latest`, except the
 shell-lint step, which runs once on Linux (shellcheck is OS-independent and the
 macOS runner doesn't preinstall it); the `secrets` job runs once on Linux too.
 
-**Run the whole gate locally** (Python 3, Node ≥ 22, and
-[shellcheck](https://www.shellcheck.net/) required):
+**Run the whole gate locally** (Node ≥ 22 and
+[shellcheck](https://www.shellcheck.net/) required — glimpse is Node + Chrome only,
+no Python toolchain needed):
 
 ```bash
 bash -n bin/glimpse install.sh scripts/*.sh .githooks/*   # syntax
 shellcheck -S warning bin/glimpse install.sh scripts/*.sh .githooks/*
-uv run --with pytest pytest tests/ -v                     # or: pip install -r requirements-dev.txt && pytest tests/
-node --test tests/test_*.cjs tests/test_*.mjs
+node --test tests/test_*.cjs tests/test_*.mjs             # unit tests, no deps
 for t in tests/test_*.sh; do bash "$t"; done              # CDP tests self-skip
 ```
 
@@ -63,7 +63,10 @@ Notes:
 - shellcheck is gated at `-S warning`, the level the tree passes cleanly today.
   A few info-level `SC2086` findings remain in `bin/glimpse` / `install.sh`;
   tightening to `-S style` is a follow-up once those are quoted.
-- Test-only Python deps live in [`requirements-dev.txt`](requirements-dev.txt).
+- Unit tests use Node's built-in runner (`node:test`) with no external deps.
+  The SSE server test (`tests/test_glimpse_server_sse.mjs`) self-skips unless
+  `GLIMPSE_RUNTIME_TESTS=1` (the hosted macOS runner can't complete its loopback
+  server↔client setup).
 
 ## Secret scanning
 
@@ -78,7 +81,7 @@ This repo ships a guard so nothing sensitive reaches GitHub:
 - Override a false positive with `git commit --no-verify` (and only then).
 
 ## Reporting bugs
-Open an issue with: OS, Chrome/Node/Python versions (`glimpse doctor` output),
+Open an issue with: OS, Chrome/Node versions (`glimpse doctor` output),
 what you ran, and what happened.
 
 ## Security issues

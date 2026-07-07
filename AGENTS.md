@@ -51,38 +51,46 @@ is up.
 behavior — the CLI verbs live in `bin/glimpse` and must not be invented in docs.
 ## Install & doctor conventions
 
-- **`install.sh` is one idempotent command.** It runs a preflight (node ≥22, python3, Chrome) printing `✓`/`✗`/`⚠` with a copy-pasteable, OS-aware fix per line, then installs the CLI + canvas assets regardless. Node and python3 are **required**: if either is missing the installer still installs the CLI (so `glimpse doctor` can re-diagnose) but exits non-zero. Chrome is a **warning only** — it is driven at runtime and doctor re-checks it, so a missing browser never blocks the install. Re-running is always safe.
-- **`glimpse doctor` (`cmd_doctor`) is loud and scriptable.** One line per check with a marker: `✓` good · `✗` broken (fails the run) · `⚠` optional/degraded · `–` informational state. Every `✗`/`⚠` is followed by a `→ <fix>` line. It **exits non-zero** when a *required* check fails (bash, python3, node ≥22, chrome, curl, and — when the launchd daemon is configured — the job load + its resolved node/python3). Live-service state (server/CDP port down, bridge not running, proxy unreachable, api key unset) is informational and never fails the run, since "down before `glimpse open`" is normal.
-- **The classic silent failure is launchd's minimal PATH.** The always-on menu-bar daemon runs `/bin/bash -lc 'source ~/.config/secrets.env; exec glimpse menubar'`; launchd's login shell misses the fnm/nvm setup that only zsh sources, so `node` (and sometimes `python3`) can't be found and CDP calls die quietly. `_ensure_node` prepends `_node_candidates` (stable install dirs) as a workaround; `cmd_doctor`'s `_launchd_resolve` reproduces that exact env to report whether the daemon would find them, and reuses the same `_node_candidates` list so the check never drifts. Pin with `GLIMPSE_NODE` in `~/.config/secrets.env`.
+- **`install.sh` is one idempotent command.** It runs a preflight (node ≥22, Chrome; python3 is an optional macOS-only hint) printing `✓`/`✗`/`⚠` with a copy-pasteable, OS-aware fix per line, then installs the CLI + canvas assets regardless. Node ≥22 is the **only required** runtime: if it is missing the installer still installs the CLI (so `glimpse doctor` can re-diagnose) but exits non-zero. Chrome is a **warning only** — it is driven at runtime and doctor re-checks it, so a missing browser never blocks the install. python3 is **optional** (only the macOS menu-bar app uses it) and never fails the install. Re-running is always safe.
+- **`glimpse doctor` (`cmd_doctor`) is loud and scriptable.** One line per check with a marker: `✓` good · `✗` broken (fails the run) · `⚠` optional/degraded · `–` informational state. Every `✗`/`⚠` is followed by a `→ <fix>` line. It **exits non-zero** when a *required* check fails (bash, node ≥22, chrome, curl, and — when the launchd daemon is configured — the job load + its resolved node). python3 is not a required check; the launchd `python3` resolution is reported as an optional `⚠` (menu-bar app only). Live-service state (server/CDP port down, bridge not running, proxy unreachable, api key unset) is informational and never fails the run, since "down before `glimpse open`" is normal.
+- **The classic silent failure is launchd's minimal PATH.** The always-on menu-bar daemon runs `/bin/bash -lc 'source ~/.config/secrets.env; exec glimpse menubar'`; launchd's login shell misses the fnm/nvm setup that only zsh sources, so `node` (and, for the menu-bar app, `python3`) can't be found and CDP calls die quietly. `_ensure_node` prepends `_node_candidates` (stable install dirs) as a workaround; `cmd_doctor`'s `_launchd_resolve` reproduces that exact env to report whether the daemon would find them, and reuses the same `_node_candidates` list so the check never drifts. Pin with `GLIMPSE_NODE` in `~/.config/secrets.env`.
 - **Scope discipline:** only `install.sh` and `cmd_doctor` (plus shared helpers `_node_candidates` / `_launchd_resolve`) own this behavior. Don't add network calls beyond the dependency version probes already present, and keep loopback/secret-scrub posture intact.
 
 ## Auto-audit on publish + the layout gate
 
 - **`glimpse publish` auto-audits the real render and warns by default.** After the artifact is written + fed, `_publish_autoaudit` drives the existing in-browser auditor (`canvas/glimpse-audit.js`) via the shared `_audit_capture` and surfaces a one-line summary like `⚠ glimpse: 2 layout issues in <slug> — content overflow in div.foo (+40px); … — run: glimpse audit <slug>`. The warning goes to **stderr** so stdout stays the published URL; a **clean artifact prints nothing** (quiet-by-default). It never reimplements audit rules — severity/finding vocabulary stays in `glimpse-audit.js`.
 - **Warn-only stays fast; the gate is opt-in.** Without a gate, the auto-audit only runs when the canvas is already live (`_canvas_live`: both the static server and a debuggable Chrome answer on the loopback ports) — a scripted/headless publish stays a pure file write and never launches Chrome. `--gate` (or `GLIMPSE_AUDIT_GATE=1`) turns an **error-severity** finding into a non-zero exit so an agent/CI can enforce layout quality; because the audit needs a real render, the gate brings the canvas up itself. The publish is **flagged, not rolled back** — the rendered artifact is left in place (the auditor needs it on disk) and the message says so. `--no-audit` (or `GLIMPSE_AUDIT=0`) skips the whole step.
-- **One capture, one renderer — no drift.** `_audit_capture <slug>` is the single CDP navigate+reload+poll path; both the standalone `audit` verb and auto-audit consume its raw `window.__glimpse_audit` JSON. `lib/glimpse_audit_report.py` is the single output renderer (`MODE=full` reproduces `glimpse audit`'s detailed report + compact machine JSON; `MODE=brief` is the publish one-liner) and the single source of the gate exit code (2 iff any error-severity finding). Keep formatting/counting there; keep detection in `glimpse-audit.js`.
+- **One capture, one renderer — no drift.** `_audit_capture <slug>` is the single CDP navigate+reload+poll path; both the standalone `audit` verb and auto-audit consume its raw `window.__glimpse_audit` JSON. `lib/glimpse-audit-report.mjs` is the single output renderer (`MODE=full` reproduces `glimpse audit`'s detailed report + compact machine JSON; `MODE=brief` is the publish one-liner) and the single source of the gate exit code (2 iff any error-severity finding). Keep formatting/counting there; keep detection in `glimpse-audit.js`.
 
 ## `bin/glimpse` is a pure bash dispatcher — no polyglot heredocs
 
-The CLI verbs live in `bin/glimpse`, but the Python and JavaScript they used to
-embed as `<<'PY'` / `<<'JS'` heredocs now live in real files under `lib/`. The
-dispatcher shells out to them; **do not reintroduce polyglot heredoc bodies in
-`bin/glimpse`.** Small inline one-liners (`python3 -c`, `python3 --version`, and
-the per-verb JS bodies passed to `run_cdp`) are fine.
+The CLI verbs live in `bin/glimpse`, but the JavaScript they used to embed as
+`<<'JS'` heredocs (and the ops that used to be `<<'PY'` Python) now live in real
+`.mjs` files under `lib/`. glimpse runs on **Node + Chrome only** — there is no
+Python in the runtime path (only the optional macOS menu-bar app, `app/
+glimpse_menubar.py`, still uses Python/rumps). The dispatcher shells out to the lib
+files with `node`; **do not reintroduce polyglot heredoc bodies in `bin/glimpse`.**
+Small inline one-liners (`node -e`, and the per-verb JS bodies passed to `run_cdp`)
+are fine.
 
 ### `lib/` layout
 
+Every lib file is Node (`.mjs`, Node stdlib only). The ops modules expose their
+functions as ESM `export`s (so `node:test` can unit-test them) behind an
+`import.meta`-guarded CLI `main`.
+
 | File | Invoked by | Interface |
 |------|-----------|-----------|
-| `glimpse_feed.py` | `feed_upsert`, `_feed_op`, `cmd_list` | `python3 … {upsert\|op\|list}`; args via env (`SLUG TITLE TS PENDING NOANNOTATE KIND`, `ACTION SLUGS KEEP SLUG`, `GLIMPSE_DIR`) |
-| `glimpse_threads.py` | `_thread_op`, `cmd_threads`, `cmd__pending` | `python3 … {op\|list\|pending}`; env `ACTION SLUG QUOTE TEXT ANCHOR CLIENT_TURN_ID ARTIFACT_TS TO TS SECRET_PATTERN GLIMPSE_DIR` |
-| `glimpse_server.py` | `cmd_serve` | `python3 … <port> <root>` (argv) — loopback-bound quiet static server |
-| `glimpse_chrome_profile.py` | `cmd_chrome` | `python3 … <profile-dir>` (argv) + env `GLIMPSE_PROFILE_LABEL`; best-effort |
-| `glimpse_explain.py` | `cmd_explain` | `python3 … wrap <title>` (pre-existing) |
-| `glimpse_ask.py` | `cmd_ask` (`--form` only) | `python3 … {validate\|wrap <title>}` — reads a decision-form spec on stdin, renders native accessible controls (see "`glimpse ask --form`" below) |
-| `glimpse_export.py` | `_inline_artifact` (→ `cmd_export`, `cmd_share`) | `python3 … <src.html>` (argv) + env `SECRET_PATTERN` — offline inliner; HTML→stdout, warnings→stderr |
-| `glimpse_share.py` | `cmd_share` | `python3 …`; HTML on **stdin**; env `GLIMPSE_PASSWORD GLIMPSE_HTML_APP_BASE GLIMPSE_HTML_APP_TOKEN` — POSTs to ht-ml.app, prints `{url,site_id,update_key,private}` JSON |
-| `glimpse_audit_report.py` | `cmd_audit`, `_publish_autoaudit` | `python3 …` reads audit JSON on stdin; env `MODE`(full\|brief) `SLUG`; exits 2 iff an error-severity finding |
+| `glimpse-feed.mjs` | `feed_upsert`, `_feed_op`, `cmd_list` | `node … {upsert\|op\|list}`; args via env (`SLUG TITLE TS PENDING NOANNOTATE KIND`, `ACTION SLUGS KEEP SLUG`, `GLIMPSE_DIR`) |
+| `glimpse-threads.mjs` | `_thread_op`, `cmd_threads`, `cmd__pending` | `node … {op\|list\|pending}`; env `ACTION SLUG QUOTE TEXT ANCHOR CLIENT_TURN_ID ARTIFACT_TS TO TS SECRET_PATTERN GLIMPSE_DIR` |
+| `glimpse-store.mjs` | imported by `glimpse-feed.mjs` + `glimpse-threads.mjs` | shared file-store helpers (`withLock`, `readJson`, `writeJsonAtomic`) — O_EXCL lock file + stale-pid takeover replacing the Python `flock`. Not spawned; must ship next to feed/threads so their relative `import` resolves |
+| `glimpse-server.mjs` | `cmd_serve` | `node … <port> <root>` (argv) — loopback-bound quiet static server + `/__glimpse/events` SSE |
+| `glimpse-chrome-profile.mjs` | `cmd_chrome` | `node … <profile-dir>` (argv) + env `GLIMPSE_PROFILE_LABEL`; best-effort |
+| `glimpse-explain.mjs` | `cmd_explain` | `node … {validate\|wrap <title>}` — exports `validate`/`wrapArtifact`/`truncateSnippet`/`SpecError` |
+| `glimpse-ask.mjs` | `cmd_ask` (`--form` only) | `node … {validate\|wrap <title>}` — reads a decision-form spec on stdin, renders native accessible controls (see "`glimpse ask --form`" below) |
+| `glimpse-export.mjs` | `_inline_artifact` (→ `cmd_export`, `cmd_share`) | `node … <src.html>` (argv) + env `SECRET_PATTERN` — offline inliner; HTML→stdout, warnings→stderr; exports `transform`/`scrubSecrets` |
+| `glimpse-share.mjs` | `cmd_share` | `node …`; HTML on **stdin**; env `GLIMPSE_PASSWORD GLIMPSE_HTML_APP_BASE GLIMPSE_HTML_APP_TOKEN` — POSTs to ht-ml.app, prints `{url,site_id,update_key,private}` JSON |
+| `glimpse-audit-report.mjs` | `cmd_audit`, `_publish_autoaudit` | `node …` reads audit JSON on stdin; env `MODE`(full\|brief) `SLUG`; exits 2 iff an error-severity finding |
 | `glimpse-cdp.mjs` | `run_cdp`, `cmd_bridge` | shared CDP client (`cdpConnect`, `fail`) — **spliced** ahead of the body via `node --input-type=module -e "$(cat …)"` |
 | `glimpse-bridge.mjs` | `cmd_bridge` | the highlight-chat bridge loop — spliced after `glimpse-cdp.mjs`; env `GLIMPSE_BIN WAIT PORT GLIMPSE_DIR` (+ daemon `GLIMPSE_ANSWER …`) |
 | `glimpse-poll.mjs` | `cmd_poll` | the single-shot blocking feedback drainer — spliced after `glimpse-cdp.mjs`; env `GLIMPSE_BIN PORT CDP_PORT GLIMPSE_DIR POLL_JSON POLL_TIMEOUT_MS POLL_INTERVAL_MS` |
@@ -104,8 +112,8 @@ must be added to **all three** of `install.sh` (the copy loop into
 `$GLIMPSE_DIR`), `scripts/dev-link.sh` (the `ASSETS` array), and its `_lib_file`
 call in `bin/glimpse`, or an installed `glimpse` won't find it.
 
-Env/arg passing into the extracted scripts is unchanged: inline `VAR=… python3
-"$f" …` exports to the (external) `python3` exactly as the old inline heredoc did.
+Env/arg passing into the extracted scripts is unchanged: inline `VAR=… node
+"$f" …` exports to the (external) `node` exactly as the old inline heredoc did.
 
 ## `glimpse ask --form` — declarative decision forms
 
@@ -115,8 +123,8 @@ select / text / textarea), blocks until the human submits, and prints the
 structured choice as `{"slug","value"}` — the author writes no HTML and wires no
 return plumbing. Without `--form`, `ask` is unchanged (the file is raw HTML).
 
-The spec is validated + rendered by `lib/glimpse_ask.py` (mirrors
-`glimpse_explain.py`: exit `2` on any spec-content error, publishing nothing;
+The spec is validated + rendered by `lib/glimpse-ask.mjs` (mirrors
+`glimpse-explain.mjs`: exit `2` on any spec-content error, publishing nothing;
 `1` stays reserved for the verb's own failures). Shape:
 
 ```jsonc
@@ -174,7 +182,7 @@ address each independently. There is no global "the active artifact" state that 
 feedback — the slug is the key at every hop:
 
 - **Storage (source of truth):** `threads/<slug>.json` — one exclusive-locked,
-  atomic read-modify-write per artifact (`glimpse_threads.py`). `feed.json` holds one
+  atomic read-modify-write per artifact (`glimpse-threads.mjs`). `feed.json` holds one
   entry per slug. Two agents can `publish` / `reply` / `thread` different slugs
   concurrently without contention (per-slug `flock`); a turn id from A's thread cannot
   be answered inside B's (`add_agent` rejects a foreign `TO`).
@@ -200,7 +208,7 @@ read are already per-slug.
 ## Portable output: `export` (offline) & `share` (remote)
 
 Two verbs turn a *published* artifact into a portable copy. Both reuse one
-offline inliner, `lib/glimpse_export.py`, via the `_inline_artifact` helper.
+offline inliner, `lib/glimpse-export.mjs`, via the `_inline_artifact` helper.
 
 - **`glimpse export <slug> [--out <path>]`** writes a single self-contained HTML
   file. All **local** assets (relative `href`/`src` stylesheets, scripts, images,
@@ -215,7 +223,7 @@ offline inliner, `lib/glimpse_export.py`, via the `_inline_artifact` helper.
     is where it deliberately differs from `lavish-axi export`, whose source is a
     user-visible `.lavish/` file.)
 - **`glimpse share <slug> [--public] [--password <pw>]`** builds the same inlined
-  bundle and uploads it to **ht-ml.app** (`lib/glimpse_share.py`, stdlib urllib),
+  bundle and uploads it to **ht-ml.app** (`lib/glimpse-share.mjs`, Node stdlib),
   printing the visitable URL + the secret `update_key`.
   - **PRIVATE by default** — a firm product decision that deliberately **diverges
     from lavish's public-by-default**. With no flag, the page is
@@ -297,10 +305,10 @@ question<TAB>arch<TAB>1751-2-ab<TAB>1751<TAB>text:1<TAB>the cache<TAB>why write-
   machine-readable escape hatch; `glimpse __pending` now includes each turn's `ts`.
 
 The pure format helpers live in a `// >>> glimpse-poll format helpers … // <<<`
-block in `lib/glimpse-poll.mjs` (extracted+eval'd by `tests/test_poll.mjs`). A sibling
-task may fold the Python ops into Node; poll's queue read (`__pending`) and persist
-(`__thread-add-user`) go through the existing flocked writer, so poll's own logic
-(drain loop, delivered cursor, formatting) stays cleanly separable from that move.
+block in `lib/glimpse-poll.mjs` (extracted+eval'd by `tests/test_poll.mjs`). The ops
+are now all Node; poll's queue read (`__pending`) and persist (`__thread-add-user`) go
+through the shared Node file-store writer (`glimpse-store.mjs`), so poll's own logic
+(drain loop, delivered cursor, formatting) stays cleanly separable from that store.
 
 ## `glimpse snapshot` — agent-facing a11y-tree capture
 
@@ -347,7 +355,7 @@ uid=s0 RootWebArea "Snapshot Demo"
 ## Canvas freshness is push (SSE), not polling
 
 The canvas no longer busy-polls for new content. The static server
-(`lib/glimpse_server.py`) is the push side; `canvas/index.html` is the consumer.
+(`lib/glimpse-server.mjs`) is the push side; `canvas/index.html` is the consumer.
 
 - **Server side — one watcher, an SSE endpoint.** A single daemon thread stats
   `feed.json` (mtime+size) and `threads/*.json` (max mtime + file count) every
@@ -382,30 +390,32 @@ The canvas no longer busy-polls for new content. The static server
   **only** while `pendingPins` is non-empty, preserving the 3.5s "pin didn't stick"
   revert without steady-state polling.
 - **Scope for the Node-consolidation task (J):** the push mechanism is confined to
-  `glimpse_server.py` (server) + `connectEvents()` (canvas). Folding the server into
+  `glimpse-server.mjs` (server) + `connectEvents()` (canvas). The server is
   Node means re-implementing the same watcher→SSE contract (`/__glimpse/events`,
   `event: feed`/`event: thread`, initial re-emit, `retry:`+heartbeat); the canvas
   consumer does not change.
 
 ## Tests
 
-- `uv run --with pytest pytest tests/` — Python units (incl. `test_glimpse_export.py`,
-  the inliner; `test_glimpse_threads_multi.py`: two artifacts keep separate threads /
-  pending / replies, and clearing one leaves the other). `test_glimpse_server_sse.py`
-  starts the real server on a loopback port and asserts `/__glimpse/events` pushes a
-  `feed` event on a `feed.json` change and a `thread` event on a `threads/*.json` change
-  (carrying only the signal — no file content), but is **runtime-gated behind
-  `GLIMPSE_RUNTIME_TESTS`** (like the live-CDP tests) and skipped by default: the hosted
-  macOS runner can't complete the loopback server↔client setup ("server did not come
-  up"), a runner-environment limitation — not a product bug (the feature is verified on
-  ubuntu + locally). Run it with `GLIMPSE_RUNTIME_TESTS=1 pytest tests/test_glimpse_server_sse.py`.
-- `node --test tests/*.mjs tests/*.cjs` — renderer/bridge/poll units (no deps); includes
-  `test_snapshot_render.mjs`, which drives the real `lib/glimpse-snapshot.mjs` body
-  with a stubbed CDP channel (no browser) to cover tree-building, node collapsing,
-  iframe grafting, and secret scrubbing, and `test_poll.mjs` (format helpers + origin
-  anti-drift). Note `tests/cdp_assert_render.mjs` is a live-CDP helper caught by the
-  glob; it only passes with a running `glimpse open` and otherwise fails (not a unit
-  regression).
+- `node --test tests/test_*.cjs tests/test_*.mjs` — the whole unit suite (no deps, no
+  browser). Includes the ported lib-ops tests: `test_glimpse_export.mjs` (the inliner),
+  `test_glimpse_threads_multi.mjs` (two artifacts keep separate threads / pending /
+  replies, and clearing one leaves the other), `test_glimpse_explain.mjs`,
+  `test_glimpse_ask.mjs`, and `test_audit_report.mjs` — each drives the real `.mjs`
+  module's exported functions. Also the pure-logic renderer/bridge/poll/snapshot units:
+  `test_snapshot_render.mjs` drives the real `lib/glimpse-snapshot.mjs` body with a
+  stubbed CDP channel (no browser) to cover tree-building, node collapsing, iframe
+  grafting, and secret scrubbing, and `test_poll.mjs` (format helpers + origin
+  anti-drift). `test_glimpse_server_sse.mjs` starts the real Node server on a loopback
+  port and asserts `/__glimpse/events` pushes a `feed` event on a `feed.json` change and
+  a `thread` event on a `threads/*.json` change (carrying only the signal — no file
+  content), but is **runtime-gated behind `GLIMPSE_RUNTIME_TESTS`** (like the live-CDP
+  tests) and skipped by default: the hosted macOS runner can't complete the loopback
+  server↔client setup ("server did not come up"), a runner-environment limitation — not
+  a product bug (the feature is verified on ubuntu + locally). Run it with
+  `GLIMPSE_RUNTIME_TESTS=1 node --test tests/test_glimpse_server_sse.mjs`. Note
+  `tests/cdp_assert_render.mjs` is a live-CDP helper caught by the glob; it only passes
+  with a running `glimpse open` and otherwise fails (not a unit regression).
 - `bash tests/test_explain_cli.sh`, `bash tests/test_node_anchor.sh`,
   `bash tests/test_export_cli.sh`, `bash tests/test_publish_audit.sh` — CLI smoke
   (the export test is offline; it never uploads. the publish-audit test covers the
@@ -422,14 +432,16 @@ The canvas no longer busy-polls for new content. The static server
 
 - **GitHub CI** is `.github/workflows/ci.yml`. The `test` job (ubuntu + macOS)
   is the blocking gate: `bash -n`, `shellcheck -S warning` (no `|| true`),
-  `pytest tests/`, `node --test tests/test_*.cjs tests/test_*.mjs`, and a loop
-  over `bash tests/test_*.sh`. The `secrets` job runs gitleaks over full history.
-  See CONTRIBUTING.md for the local-run recipe.
+  `node --test tests/test_*.cjs tests/test_*.mjs`, and a loop over
+  `bash tests/test_*.sh`. There is **no Python leg** — glimpse runs on Node +
+  Chrome only. The `secrets` job runs gitleaks over full history. See
+  CONTRIBUTING.md for the local-run recipe.
 - **Test taxonomy** under `tests/`:
-  - `test_*.py` — pytest, stdlib-only (imports `lib/glimpse_explain.py`). Dev
-    deps pinned in `requirements-dev.txt` (just `pytest`).
-  - `test_*.cjs` / `test_bridge_origin.mjs` — pure-logic `node:test` files using
-    `dom-shim.cjs`; no browser.
+  - `test_*.mjs` — `node:test` files, Node stdlib only. Some drive a ported lib
+    op's exported functions (`test_glimpse_{export,threads_multi,explain,ask}.mjs`,
+    `test_audit_report.mjs`); others are pure-logic (`test_poll.mjs`,
+    `test_snapshot_render.mjs`, `test_bridge_origin.mjs`).
+  - `test_*.cjs` — pure-logic `node:test` files using `dom-shim.cjs`; no browser.
   - `test_*.sh` — CLI smoke tests against an isolated `GLIMPSE_DIR`.
   - `cdp_assert_*.mjs` — **not** test files; CDP helpers invoked by the CDP shell
     tests. Never sweep them with `node --test` (the `test_*` glob excludes them).
@@ -441,6 +453,6 @@ The canvas no longer busy-polls for new content. The static server
   analysis and the macOS runner doesn't preinstall it. Remaining `SC2086`
   findings in `bin/glimpse` / `install.sh` are info-level; a `-S style`
   tightening is a deliberate follow-up, not a regression.
-- Running pytest locally after editing a test may hit a stale assertion-rewrite
-  cache — `rm -rf tests/__pycache__ .pytest_cache` if results look wrong. CI is
-  a fresh checkout so it's unaffected.
+- The unit runner (`node:test`) has no assertion-rewrite cache, so a local run
+  after editing a test always reflects the current source. CI is a fresh checkout
+  regardless.

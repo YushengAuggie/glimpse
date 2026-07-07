@@ -59,7 +59,7 @@ chat text.
 
 ## The spec contract (validated — get it right)
 
-The engine (`lib/glimpse_explain.py`) validates the spec and **publishes nothing
+The engine (`lib/glimpse-explain.mjs`) validates the spec and **publishes nothing
 on any error** (it exits 2 with a one-line message). Rules, exactly:
 
 - **`scope`** (required) — one of `"change"`, `"feature"`, `"repo"`.
