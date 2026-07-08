@@ -20,9 +20,10 @@ SLUG=arch URL="https://arch1.ht-ml.app/" SITE_ID=arch1 UPDATE_KEY=uk-secret \
   VISIBILITY=private PASSWORD=hunter2 TS=1751000000 \
   node "$REPO/lib/glimpse-shares.mjs" record
 
-# shares.json must exist and be 0600 (holds the update_key + password).
+# shares.json must exist and be 0600 (holds the update_key + password). Read the
+# mode via node so the check is portable across GNU (stat -c) and BSD (stat -f) stat.
 [ -f "$GLIMPSE_DIR/shares.json" ] || { echo "FAIL: shares.json not written"; exit 1; }
-mode="$(stat -f '%Lp' "$GLIMPSE_DIR/shares.json" 2>/dev/null || stat -c '%a' "$GLIMPSE_DIR/shares.json")"
+mode="$(node -e 'process.stdout.write((require("fs").statSync(process.argv[1]).mode & 0o777).toString(8))' "$GLIMPSE_DIR/shares.json")"
 [ "$mode" = "600" ] || { echo "FAIL: shares.json mode $mode (want 600)"; exit 1; }
 
 # List shows it; per-slug shows url + update key + password.
