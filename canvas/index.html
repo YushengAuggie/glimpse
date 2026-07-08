@@ -137,6 +137,55 @@
   .welcome { padding:48px; color:var(--dim); max-width:640px; }
   .welcome h2 { color:var(--text); }
   code { background:var(--panel2); padding:2px 6px; border-radius:5px; font-size:13px; }
+  /* Share dialog — an inline sheet in the canvas shell (no server endpoint). Themed
+     with the SAME tokens as the shell/artifacts so it reads as one product; first-
+     class light AND dark via those vars. Focus-trapped + Esc-close in JS. */
+  .modal { position:fixed; inset:0; z-index:100; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .modal[hidden] { display:none; }
+  .modal-backdrop { position:absolute; inset:0; background:rgba(10,12,20,.44); backdrop-filter:blur(1.5px); }
+  .modal-card { position:relative; z-index:1; width:min(440px,100%); max-height:calc(100vh - 40px); overflow:auto;
+    background:var(--panel); border:1px solid var(--line); border-radius:14px; box-shadow:var(--toast-shadow);
+    padding:20px 22px 18px; min-width:0; }
+  .modal-eyebrow { font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,"Cascadia Mono",monospace; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--accent); margin-bottom:8px; }
+  .modal-card h2 { margin:0 0 6px; font-size:19px; color:var(--text); }
+  .modal-card .sub { margin:0 0 14px; color:var(--dim); font-size:13.5px; }
+  .share-existing { background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:11px 13px; margin-bottom:15px; min-width:0; }
+  .share-existing-label { font-size:12px; color:var(--dim); margin-bottom:3px; }
+  .share-url { display:block; color:var(--accent); font-size:13.5px; overflow-wrap:anywhere; text-decoration:none; margin-bottom:6px; }
+  .share-url:hover { text-decoration:underline; }
+  .share-pw { font-size:13px; color:var(--text); overflow-wrap:anywhere; margin-bottom:8px; }
+  .share-pw code { font-size:12.5px; }
+  .modal-card fieldset { border:0; margin:0 0 14px; padding:0; min-width:0; }
+  .modal-card legend { font-size:12px; color:var(--dim); padding:0; margin-bottom:7px; font-weight:600; }
+  .seg-group { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  .seg { position:relative; display:flex; flex-direction:column; gap:1px; border:1.5px solid var(--line); border-radius:10px;
+    padding:9px 11px; cursor:pointer; background:var(--panel); min-width:0; transition:border-color .12s, background .12s; }
+  .seg input { position:absolute; opacity:0; width:0; height:0; }
+  .seg span { font-size:14px; color:var(--text); font-weight:600; }
+  .seg small { font-size:11.5px; color:var(--dim); }
+  .seg:hover { border-color:var(--accent); }
+  .seg:has(input:checked) { border-color:var(--accent); background:color-mix(in srgb, var(--accent) 10%, var(--panel)); }
+  .seg:has(input:focus-visible) { outline:2px solid var(--accent); outline-offset:2px; }
+  .share-pwrow { margin-bottom:14px; }
+  .share-pwrow.hidden { display:none; }
+  .share-pwrow label { display:block; font-size:12px; color:var(--dim); margin-bottom:6px; font-weight:600; }
+  .share-pwrow label small { font-weight:400; }
+  .share-pwrow input { width:100%; background:var(--panel2); border:1px solid var(--line); border-radius:8px;
+    color:var(--text); padding:8px 10px; font-size:13.5px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .share-pwrow input:focus { outline:none; border-color:var(--accent); }
+  .share-egress { font-size:12.5px; color:var(--dim); background:var(--await-bg); color:var(--await-ink);
+    border-radius:8px; padding:9px 11px; margin:0 0 16px; overflow-wrap:anywhere; }
+  .share-egress b { font-weight:700; }
+  .modal-actions { display:flex; justify-content:flex-end; gap:9px; }
+  .btn-ghost, .btn-primary { font:inherit; font-size:13.5px; font-weight:600; border-radius:8px; padding:8px 15px; cursor:pointer; }
+  .btn-ghost { background:none; border:1px solid var(--line); color:var(--dim); }
+  .btn-ghost:hover { color:var(--text); border-color:var(--accent); }
+  .btn-primary { background:var(--accent); border:1px solid var(--accent); color:#fff; }
+  .btn-primary:hover { filter:brightness(1.06); }
+  .btn-primary:disabled { opacity:.55; cursor:default; }
+  .btn-ghost:focus-visible, .btn-primary:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .actionbtn.shared { color:var(--accent2); border-color:var(--live-line); }
 </style>
 </head>
 <body>
@@ -159,6 +208,43 @@
   </main>
 </div>
 <div id="toast" class="toast" hidden></div>
+<div id="sharedlg" class="modal" hidden>
+  <div class="modal-backdrop" data-close="1"></div>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="sharedlg-title" aria-describedby="sharedlg-egress">
+    <div class="modal-eyebrow">share</div>
+    <h2 id="sharedlg-title">Share this artifact</h2>
+    <p class="sub" id="sharedlg-sub">Publish a portable copy others can open in a browser.</p>
+    <div class="share-existing" id="sharedlg-existing" hidden>
+      <div class="share-existing-label">Already shared →</div>
+      <a class="share-url" id="sharedlg-exurl" href="#" target="_blank" rel="noopener noreferrer"></a>
+      <div class="share-pw" id="sharedlg-expw" hidden></div>
+      <button type="button" class="btn-ghost" id="sharedlg-excopy">Copy link</button>
+    </div>
+    <fieldset id="sharedlg-moderow" hidden>
+      <legend>What to do</legend>
+      <div class="seg-group">
+        <label class="seg"><input type="radio" name="sharemode" value="update" checked><span>Update</span><small>Same link, new render</small></label>
+        <label class="seg"><input type="radio" name="sharemode" value="new"><span>New page</span><small>Fresh link</small></label>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Visibility</legend>
+      <div class="seg-group">
+        <label class="seg"><input type="radio" name="sharevis" value="private" checked><span>Private</span><small>Password-protected</small></label>
+        <label class="seg"><input type="radio" name="sharevis" value="public"><span>Public</span><small>Anyone with the link</small></label>
+      </div>
+    </fieldset>
+    <div class="share-pwrow" id="sharedlg-pwrow">
+      <label for="sharedlg-pw">Password <small>— leave blank to auto-generate a strong one</small></label>
+      <input type="text" id="sharedlg-pw" autocomplete="off" spellcheck="false" placeholder="auto-generate">
+    </div>
+    <p class="share-egress" id="sharedlg-egress">This uploads a copy to <b>ht-ml.app</b> — the artifact <b>leaves your machine</b>. Local assets are inlined; remote refs load over the network.</p>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" id="sharedlg-cancel">Cancel</button>
+      <button type="button" class="btn-primary" id="sharedlg-confirm">Share</button>
+    </div>
+  </div>
+</div>
 <script>
 let feed = [], current = null, lastSig = "", held = false, pollFails = 0;
 let filterText = "", showHidden = false;
@@ -359,6 +445,9 @@ async function show(slug){
   if(window.__glimpse_audit) delete window.__glimpse_audit[slug];   // re-capture THIS artifact's audit fresh; other artifacts' audits stay keyed
   document.getElementById('title').textContent = a.title;
   document.getElementById('held').hidden = !held;
+  closeShareDialog();                   // a stale dialog must not linger across artifacts
+  refreshShareButton();                 // clear/repaint the shared badge for the new slug
+  requestShareInfo(slug);               // learn this artifact's share record (badge + dialog)
   // Sandboxed iframe: allow-scripts WITHOUT allow-same-origin → opaque origin.
   // The artifact can run JS (mermaid etc.) and postMessage UP to us, but cannot
   // reach this shell, fetch siblings, or read the page. Build via DOM, not innerHTML.
@@ -502,6 +591,11 @@ window.addEventListener('message', (e)=>{
 // (below). If no bridge is listening the action can't be serviced, so we gate on the
 // bridge liveness the annotate pill already tracks and surface a hint instead.
 const pendingActions = new Map();   // clientId -> { kind, timer }
+// Per-slug share record cache, populated by the read-only `share-info` action (the
+// bridge reads shares.json — never served, holds the update_key/password — and
+// pushes it back). Lets the shell show an already-shared link WITHOUT re-uploading.
+const shareState = {};              // slug -> {shared, url, visibility, password}
+const shareInfoInflight = new Set();
 function bridgeUsable(){
   const stamp = window.__glimpse_bridge_live || 0;
   const live = (Date.now() - stamp) < 4000;
@@ -515,18 +609,34 @@ function startAction(kind, opts){
   if(!bridgeUsable()){ toast('Start `glimpse daemon` (or `glimpse bridge`) to '+kind+' from the canvas.'); return; }
   const id = GL_EPOCH + '-' + (++glSeq);
   pushOutbox({ id: id, type:'glimpse:action', action: kind, slug: current, opts: opts||{}, clientId: id, ts: Date.now() });
-  showNote(kind==='share' ? 'Sharing…' : 'Exporting…');
+  showNote(kind==='share' ? ((opts&&opts.update)?'Updating…':'Sharing…') : 'Exporting…');
   const timer = setTimeout(()=>{
     if(pendingActions.has(id)){ pendingActions.delete(id);
       toast((kind==='share'?'Share':'Export')+' timed out — is the glimpse daemon still running?'); }
   }, kind==='share' ? 45000 : 20000);   // share uploads to a remote host, so allow longer
   pendingActions.set(id, { kind: kind, timer: timer });
 }
+// Ask the bridge for this slug's stored share record — read-only, never uploads.
+function requestShareInfo(slug){
+  if(!slug || !bridgeUsable() || shareInfoInflight.has(slug)) return;
+  shareInfoInflight.add(slug);
+  const id = GL_EPOCH + '-' + (++glSeq);
+  pushOutbox({ id: id, type:'glimpse:action', action:'share-info', slug: slug, opts:{}, clientId: id, ts: Date.now() });
+  const timer = setTimeout(()=>{ pendingActions.delete(id); shareInfoInflight.delete(slug); }, 8000);
+  pendingActions.set(id, { kind:'share-info', slug: slug, timer: timer });
+}
 function copyToClipboard(text){
   try { if(navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text); } catch(e){}
   try { const ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
     document.body.appendChild(ta); ta.focus(); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
     return Promise.resolve(); } catch(e){ return Promise.reject(e); }
+}
+// A strong random password, minted in-page only for the update path that flips a
+// public page to private with a blank field (a plain new-share leaves it to the CLI).
+function genPassword(){
+  try { const a=new Uint8Array(18); crypto.getRandomValues(a);
+    return btoa(String.fromCharCode.apply(null,a)).replace(/[^A-Za-z0-9]/g,'').slice(0,24) || ('gl-'+Date.now().toString(36)); }
+  catch(e){ return 'gl-'+Date.now().toString(36); }
 }
 // Render an export/share result in the toast (path, or URL + password + a Copy button).
 function showActionToast(res){
@@ -539,10 +649,11 @@ function showActionToast(res){
     d.textContent=(res.kind==='share'?'Share failed: ':'Export failed: ')+(res.error||'unknown error');
     wrap.appendChild(d);
   } else if(res.kind==='share'){
-    const d1=document.createElement('div'); d1.textContent='Shared (private) →'; wrap.appendChild(d1);
+    const pub = res.visibility==='public';
+    const d1=document.createElement('div'); d1.textContent=(res.update?'Updated':'Shared')+(pub?' (public) →':' (private) →'); wrap.appendChild(d1);
     const d2=document.createElement('div'); d2.textContent=res.url||'(no url)'; d2.style.color='var(--accent)'; wrap.appendChild(d2);
-    if(res.password){ const d3=document.createElement('div'); d3.textContent='Password: '+res.password; wrap.appendChild(d3); }
-    copyStr=(res.url||'')+(res.password?('\nPassword: '+res.password):'');
+    if(!pub && res.password){ const d3=document.createElement('div'); d3.textContent='Password: '+res.password; wrap.appendChild(d3); }
+    copyStr=(res.url||'')+((!pub && res.password)?('\nPassword: '+res.password):'');
   } else {
     const d1=document.createElement('div'); d1.textContent='Exported →'; wrap.appendChild(d1);
     const d2=document.createElement('div'); d2.textContent=res.path||'(no path)'; d2.style.color='var(--accent)'; wrap.appendChild(d2);
@@ -557,6 +668,15 @@ function showActionToast(res){
   t.hidden=false;
   t._t=setTimeout(()=>{ t.hidden=true; }, res.ok?15000:8000);
 }
+// Fold a fresh share-info / share result into the per-slug cache + repaint the UI.
+function onShareInfo(res){
+  const slug=res.slug; if(!slug) return;
+  shareInfoInflight.delete(slug);
+  shareState[slug] = res.shared
+    ? { shared:true, url:res.url||'', visibility:res.visibility||'private', password:res.password||'' }
+    : { shared:false };
+  if(slug===current){ refreshShareButton(); if(!document.getElementById('sharedlg').hidden) renderShareDialogState(slug); }
+}
 // Inbound (bridge → shell) result delivery over CDP — NOT a server endpoint. The
 // bridge evaluates this in the shell window; the payload is a JSON string it parses.
 window.__glimpseActionResult = function(s){
@@ -564,8 +684,24 @@ window.__glimpseActionResult = function(s){
   if(!res || typeof res!=='object') return;
   const p = res.clientId ? pendingActions.get(res.clientId) : null;
   if(p){ clearTimeout(p.timer); pendingActions.delete(res.clientId); }
+  if(res.kind==='share-info'){ onShareInfo(res); return; }   // read-only info: cache, no toast
+  if(res.kind==='share' && res.ok){                          // fresh share → refresh cache from the record
+    const slug=res.slug||current;
+    shareState[slug]={ shared:true, url:res.url||'', visibility:res.visibility||'private', password:res.password||'' };
+    if(slug===current) refreshShareButton();
+  }
   showActionToast(res);
 };
+// Reflect the cached shared state on the header Share button (accent when shared).
+function refreshShareButton(){
+  const sb=document.getElementById('sharebtn'); if(!sb) return;
+  const st=shareState[current]||{};
+  sb.classList.toggle('shared', !!st.shared);
+  const usable=bridgeUsable();
+  if(!usable){ sb.title='Share — start `glimpse daemon` to enable'; sb.setAttribute('aria-label','Share a link'); return; }
+  sb.title = st.shared ? 'Shared — manage the link (uploads to ht-ml.app)' : 'Share a copy (uploads to ht-ml.app)';
+  sb.setAttribute('aria-label', st.shared ? 'Manage share link' : 'Share a link');
+}
 // Show the buttons only when an artifact is open; dim them when no agent is listening.
 function updateActionButtons(){
   const eb=document.getElementById('exportbtn'), sb=document.getElementById('sharebtn');
@@ -576,15 +712,109 @@ function updateActionButtons(){
   const usable = bridgeUsable();
   eb.classList.toggle('inert', !usable); sb.classList.toggle('inert', !usable);
   eb.title = usable ? 'Export standalone HTML' : 'Export — start `glimpse daemon` to enable';
-  sb.title = usable ? 'Share a private link (uploads to ht-ml.app)' : 'Share — start `glimpse daemon` to enable';
+  // Learn (once) whether the current artifact is already shared so the badge + dialog are ready.
+  if(usable && !(current in shareState)) requestShareInfo(current);
+  refreshShareButton();
+}
+
+// --- Share dialog (inline sheet; focus-trapped, Esc to close, theme-aware) --------
+let _shareTrapPrev=null;
+function shareFocusables(){
+  const card=document.querySelector('#sharedlg .modal-card');
+  return Array.prototype.filter.call(
+    card.querySelectorAll('button, a[href], input, [tabindex]:not([tabindex="-1"])'),
+    el => el.offsetParent !== null && !el.disabled);
+}
+function shareTrapKey(e){
+  if(e.key==='Escape'){ e.preventDefault(); closeShareDialog(); return; }
+  if(e.key!=='Tab') return;
+  const f=shareFocusables(); if(!f.length) return;
+  const first=f[0], last=f[f.length-1];
+  if(e.shiftKey && document.activeElement===first){ e.preventDefault(); last.focus(); }
+  else if(!e.shiftKey && document.activeElement===last){ e.preventDefault(); first.focus(); }
+}
+function updateShareVisRow(){
+  const vis=(document.querySelector('input[name=sharevis]:checked')||{}).value||'private';
+  document.getElementById('sharedlg-pwrow').classList.toggle('hidden', vis==='public');
+}
+function updateShareConfirmLabel(){
+  const st=shareState[current]||{}; const shared=!!st.shared;
+  const mode = shared ? ((document.querySelector('input[name=sharemode]:checked')||{}).value) : 'new';
+  document.getElementById('sharedlg-confirm').textContent = (shared && mode==='update') ? 'Update' : 'Share';
+}
+function renderShareDialogState(slug){
+  const st=shareState[slug]||{}; const shared=!!st.shared;
+  const ex=document.getElementById('sharedlg-existing');
+  const moderow=document.getElementById('sharedlg-moderow');
+  ex.hidden=!shared; moderow.hidden=!shared;
+  if(shared){
+    const a=document.getElementById('sharedlg-exurl'); a.textContent=st.url||''; a.href=st.url||'#';
+    const pw=document.getElementById('sharedlg-expw');
+    if(st.visibility!=='public' && st.password){ pw.hidden=false; pw.textContent=''; pw.appendChild(document.createTextNode('Password: ')); const c=document.createElement('code'); c.textContent=st.password; pw.appendChild(c); }
+    else pw.hidden=true;
+    const vr=document.querySelector('input[name=sharevis][value="'+(st.visibility==='public'?'public':'private')+'"]'); if(vr) vr.checked=true;
+    const mu=document.querySelector('input[name=sharemode][value="update"]'); if(mu) mu.checked=true;
+    document.getElementById('sharedlg-title').textContent='Share — manage this link';
+    document.getElementById('sharedlg-sub').textContent='Already shared. Update the same page (keeps the link) or create a new one.';
+  } else {
+    document.getElementById('sharedlg-title').textContent='Share this artifact';
+    document.getElementById('sharedlg-sub').textContent='Publish a portable copy others can open in a browser.';
+    const vr=document.querySelector('input[name=sharevis][value="private"]'); if(vr) vr.checked=true;
+  }
+  updateShareVisRow(); updateShareConfirmLabel();
+}
+function openShareDialog(){
+  const slug=current; if(!slug) return;
+  if(!bridgeUsable()){ toast('Start `glimpse daemon` (or `glimpse bridge`) to share from the canvas.'); return; }
+  const dlg=document.getElementById('sharedlg');
+  document.getElementById('sharedlg-pw').value='';
+  renderShareDialogState(slug);
+  requestShareInfo(slug);                 // refresh the record in case the cache is stale
+  _shareTrapPrev=document.activeElement;
+  dlg.hidden=false;
+  const f=shareFocusables(); if(f.length) f[0].focus();
+  document.addEventListener('keydown', shareTrapKey, true);
+}
+function closeShareDialog(){
+  const dlg=document.getElementById('sharedlg'); if(dlg.hidden) return;
+  dlg.hidden=true;
+  document.removeEventListener('keydown', shareTrapKey, true);
+  if(_shareTrapPrev && _shareTrapPrev.focus){ try{ _shareTrapPrev.focus(); }catch(e){} }
+  _shareTrapPrev=null;
+}
+function shareDialogConfirm(){
+  const slug=current; if(!slug) return;
+  const st=shareState[slug]||{}; const shared=!!st.shared;
+  const mode = shared ? ((document.querySelector('input[name=sharemode]:checked')||{}).value) : 'new';
+  const vis  = (document.querySelector('input[name=sharevis]:checked')||{}).value || 'private';
+  const update = shared && mode==='update';
+  const opts={};
+  if(update) opts.update=true;
+  if(vis==='public'){ opts.public=true; }
+  else {
+    let pw=(document.getElementById('sharedlg-pw').value||'').trim();
+    if(!pw && update){
+      // Keep the same password when the page was already private; mint one when the
+      // page is going public→private (a blank + reuse would otherwise stay public).
+      pw = (st.visibility==='private' && st.password) ? st.password : genPassword();
+    }
+    if(pw) opts.password=pw;   // blank + new share → let the CLI mint a strong one
+  }
+  closeShareDialog();
+  startAction('share', opts);
 }
 document.getElementById('exportbtn').addEventListener('click', ()=>{ startAction('export', {}); });
-document.getElementById('sharebtn').addEventListener('click', ()=>{
-  if(!current) return;
-  if(!bridgeUsable()){ toast('Start `glimpse daemon` (or `glimpse bridge`) to share from the canvas.'); return; }
-  // Share LEAVES the machine → one-click egress confirm, restating the CLI posture.
-  toast('Share uploads a private copy to ht-ml.app (leaves your machine).', 'Upload', ()=>startAction('share', {}));
+document.getElementById('sharebtn').addEventListener('click', openShareDialog);
+document.getElementById('sharedlg-cancel').addEventListener('click', closeShareDialog);
+document.getElementById('sharedlg-confirm').addEventListener('click', shareDialogConfirm);
+document.querySelector('#sharedlg .modal-backdrop').addEventListener('click', closeShareDialog);
+document.getElementById('sharedlg-excopy').addEventListener('click', (e)=>{
+  const st=shareState[current]||{}; const b=e.currentTarget;
+  const str=(st.url||'')+((st.visibility!=='public'&&st.password)?('\nPassword: '+st.password):'');
+  copyToClipboard(str).then(()=>{ b.textContent='Copied'; setTimeout(()=>{ b.textContent='Copy link'; },1500); }, ()=>{ b.textContent='Copy failed'; });
 });
+Array.prototype.forEach.call(document.querySelectorAll('input[name=sharevis]'), r=>r.addEventListener('change', updateShareVisRow));
+Array.prototype.forEach.call(document.querySelectorAll('input[name=sharemode]'), r=>r.addEventListener('change', updateShareConfirmLabel));
 
 function flashItem(slug){
   const el = document.querySelector('.item[data-slug="'+cssEsc(slug)+'"]');

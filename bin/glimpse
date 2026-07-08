@@ -14,7 +14,9 @@
 #                                --form: `file` is a declarative form spec (JSON, stdin if
 #                                omitted) rendered to native radio/checkbox/select/text controls.
 #   glimpse export <slug> [--out <path>]   write a single portable HTML file (local assets inlined; remote refs kept)
-#   glimpse share <slug> [--public] [--password <pw>]   upload a portable copy to ht-ml.app; PRIVATE (password) by default
+#   glimpse share <slug> [--public] [--password <pw>] [--update]   upload a portable copy to ht-ml.app;
+#                                PRIVATE (password) by default. --update re-uploads to the SAME page (URL kept)
+#   glimpse shares [<slug>] [--json]   list shared artifacts, or show one's url + update key + password (local; no re-upload)
 #   glimpse list [--json]        list artifacts (pinned first; --json for a compact machine record)
 #   glimpse rm <slug>...         delete artifacts (from the feed + disk)
 #   glimpse clear --all | --keep N   prune artifacts (pinned are always kept)
@@ -584,29 +586,62 @@ cmd_export(){
   echo "exported → $dest  (open it in any browser; no glimpse server needed)"
 }
 
+# Resolve the shares-store module (records every successful share to shares.json).
+_shares_module(){ _lib_file glimpse-shares.mjs; }
+
+# Print the stored share record for a slug as one-line JSON (empty if none). Never
+# fails the caller — a missing record is a normal "not shared yet" state.
+_share_record(){
+  local slug="$1" mod
+  mod="$(_shares_module)" || return 1
+  GLIMPSE_DIR="$GLIMPSE_DIR" SLUG="$slug" SHARES_JSON=1 node "$mod" get 2>/dev/null || true
+}
+
+# Extract one field from a share-result / record JSON blob on stdin.
+_json_field(){ node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const o=JSON.parse(s);process.stdout.write(String((o&&o["'"$1"'"])??""))}catch(e){}})'; }
+
 cmd_share(){
-  local public=0 password="" pw_set=0; local -a pos=()
+  local public=0 password="" pw_set=0 update=0; local -a pos=()
   while [ $# -gt 0 ]; do
     case "$1" in
       --public)   public=1; shift;;
-      --password) password="${2:-}"; pw_set=1; shift 2 || die "usage: glimpse share <slug> [--public] [--password <pw>]";;
+      --password) password="${2:-}"; pw_set=1; shift 2 || die "usage: glimpse share <slug> [--public] [--password <pw>] [--update]";;
+      --update)   update=1; shift;;
       *) pos+=("$1"); shift;;
     esac
   done
   local slug="${pos[0]:-}"
-  [ -n "$slug" ] || die "usage: glimpse share <slug> [--public] [--password <pw>]"
+  [ -n "$slug" ] || die "usage: glimpse share <slug> [--public] [--password <pw>] [--update]"
   _validate_slug "$slug"
   [ -f "$ARTIFACTS/${slug}.html" ] || die "no artifact '$slug' — publish it first. try: glimpse list"
   require_node
   local share; share="$(_lib_file glimpse-share.mjs)" || die "share engine not found (lib/glimpse-share.mjs) — reinstall glimpse"
   [ "$public" = 1 ] && [ "$pw_set" = 1 ] && die "--public and --password are mutually exclusive"
 
+  # --update re-uploads to the SAME ht-ml.app page (URL preserved) using the stored
+  # update_key — the "manage the page later" flow. Load the prior record first.
+  local up_site="" up_key="" up_url="" prev_vis="" prev_pw="" reuse=0
+  if [ "$update" = 1 ]; then
+    local rec; rec="$(_share_record "$slug")"
+    [ -n "$rec" ] && [ "$rec" != "null" ] || die "no prior share for '$slug' — run 'glimpse share $slug' first (see 'glimpse shares')"
+    up_site="$(printf '%s' "$rec" | _json_field site_id)"
+    up_key="$(printf '%s'  "$rec" | _json_field update_key)"
+    up_url="$(printf '%s'  "$rec" | _json_field url)"
+    prev_vis="$(printf '%s' "$rec" | _json_field visibility)"
+    prev_pw="$(printf '%s'  "$rec" | _json_field password)"
+    [ -n "$up_site" ] && [ -n "$up_key" ] || die "the stored share record for '$slug' is missing its update key — share without --update"
+    # No explicit visibility flag on an update ⇒ keep the page as it was.
+    [ "$public" = 0 ] && [ "$pw_set" = 0 ] && reuse=1
+  fi
+
   # PRIVATE by default — a firm product decision that deliberately diverges from
   # lavish's public-by-default: with no flag, publish a password-protected page.
   # Use --password if given, else mint a strong random one and print it. --public
-  # opts into a fully open page.
+  # opts into a fully open page. On --update with no flag, reuse the prior state.
   local gen=0
-  if [ "$public" = 1 ]; then
+  if [ "$reuse" = 1 ]; then
+    if [ "$prev_vis" = "public" ]; then public=1; password=""; else public=0; password="$prev_pw"; fi
+  elif [ "$public" = 1 ]; then
     password=""
   elif [ "$pw_set" = 1 ]; then
     [ -n "$password" ] || die "--password needs a non-empty value (or use --public for an open page)"
@@ -619,7 +654,8 @@ cmd_share(){
   # unmistakable that the artifact leaves the machine for a third-party host,
   # before the upload happens. Concise — not a nag.
   {
-    echo "glimpse share: uploading '$slug' to ht-ml.app — a third-party public host. The"
+    local verb; verb="$([ "$update" = 1 ] && echo updating || echo uploading)"
+    echo "glimpse share: $verb '$slug' to ht-ml.app — a third-party public host. The"
     echo "               artifact leaves your machine; local assets are inlined, remote refs"
     if [ "$public" = 1 ]; then
       echo "               load over the network. The page will be PUBLIC — anyone with the link can view."
@@ -629,13 +665,29 @@ cmd_share(){
   } >&2
 
   # Build the self-contained bundle offline, then hand it to the uploader on stdin.
+  # On --update, pass the stored site id + key so it PUTs to the same page.
   local result
-  result="$(_inline_artifact "$slug" | GLIMPSE_PASSWORD="$password" node "$share")" \
+  result="$(_inline_artifact "$slug" \
+    | GLIMPSE_PASSWORD="$password" \
+      GLIMPSE_UPDATE_SITE_ID="$up_site" GLIMPSE_UPDATE_KEY="$up_key" GLIMPSE_UPDATE_URL="$up_url" \
+      node "$share")" \
     || die "share failed (see the error above)"
 
-  local url key
-  url="$(printf '%s' "$result" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{process.stdout.write(JSON.parse(s).url)})')"
-  key="$(printf '%s' "$result" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{process.stdout.write(JSON.parse(s).update_key||"")})')"
+  local url site_id key
+  url="$(printf '%s' "$result" | _json_field url)"
+  site_id="$(printf '%s' "$result" | _json_field site_id)"
+  key="$(printf '%s' "$result" | _json_field update_key)"
+
+  # Persist the record so the link (url + secret update_key + password) is
+  # retrievable later via `glimpse shares` and the canvas — for both CLI and UI
+  # paths. The password lives only locally (it is already on this machine).
+  local mod vis; mod="$(_shares_module)" || mod=""
+  vis="$([ "$public" = 1 ] && echo public || echo private)"
+  if [ -n "$mod" ] && [ -n "$url" ]; then
+    GLIMPSE_DIR="$GLIMPSE_DIR" SLUG="$slug" URL="$url" SITE_ID="$site_id" \
+      UPDATE_KEY="$key" VISIBILITY="$vis" PASSWORD="$password" TS="$(date +%s)" \
+      node "$mod" record 2>/dev/null || true
+  fi
 
   echo "shared → $url"
   if [ "$public" = 1 ]; then
@@ -645,6 +697,40 @@ cmd_share(){
     echo "  password:   $password$([ "$gen" = 1 ] && echo '   (generated — save it; the page cannot be viewed without it)')"
   fi
   [ -n "$key" ] && echo "  update key: $key   (secret — keep it to update or manage the page later)"
+  echo "  retrieve later: glimpse shares $slug   ·   update in place: glimpse share $slug --update"
+}
+
+# List shared artifacts, or show one slug's full record (url + update key +
+# password). Reads the local shares.json — never re-uploads. --json for machines.
+cmd_shares(){
+  local as_json=0; local -a pos=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --json) as_json=1; shift;;
+      *) pos+=("$1"); shift;;
+    esac
+  done
+  require_node
+  local mod; mod="$(_shares_module)" || die "shares engine not found (lib/glimpse-shares.mjs) — reinstall glimpse"
+  local slug="${pos[0]:-}"
+  if [ -z "$slug" ]; then
+    GLIMPSE_DIR="$GLIMPSE_DIR" SHARES_JSON="$([ "$as_json" = 1 ] && echo 1)" node "$mod" list
+    return
+  fi
+  _validate_slug "$slug"
+  local rec; rec="$(GLIMPSE_DIR="$GLIMPSE_DIR" SLUG="$slug" SHARES_JSON=1 node "$mod" get)" \
+    || die "'$slug' has not been shared — run: glimpse share $slug"
+  if [ "$as_json" = 1 ]; then printf '%s\n' "$rec"; return; fi
+  local url vis key pw
+  url="$(printf '%s' "$rec" | _json_field url)"
+  vis="$(printf '%s' "$rec" | _json_field visibility)"
+  key="$(printf '%s' "$rec" | _json_field update_key)"
+  pw="$(printf '%s'  "$rec" | _json_field password)"
+  echo "shared → $url"
+  echo "  visibility: $([ "$vis" = public ] && echo 'PUBLIC — anyone with the link can view' || echo 'PRIVATE — needs the password below')"
+  [ "$vis" != public ] && [ -n "$pw" ] && echo "  password:   $pw"
+  [ -n "$key" ] && echo "  update key: $key   (secret — keep it to update the page later)"
+  echo "  update in place: glimpse share $slug --update"
 }
 
 # Resolve the explain engine (validator + wrapper). Mirrors _seed_asset's search:
@@ -1178,6 +1264,7 @@ case "${1:-help}" in
   ask)     shift; cmd_ask "$@";;
   export)  shift; cmd_export "$@";;
   share)   shift; cmd_share "$@";;
+  shares)  shift; cmd_shares "$@";;
   list|ls) shift; cmd_list "$@";;
   rm)      shift; cmd_rm "$@";;
   clear)   shift; cmd_clear "$@";;

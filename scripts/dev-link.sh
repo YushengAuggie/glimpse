@@ -32,6 +32,7 @@ ASSETS=(
   "lib/glimpse-chrome-profile.mjs|glimpse-chrome-profile.mjs"
   "lib/glimpse-export.mjs|glimpse-export.mjs"
   "lib/glimpse-share.mjs|glimpse-share.mjs"
+  "lib/glimpse-shares.mjs|glimpse-shares.mjs"
   "lib/glimpse-audit-report.mjs|glimpse-audit-report.mjs"
   "lib/glimpse-store.mjs|glimpse-store.mjs"
   "lib/glimpse-cdp.mjs|glimpse-cdp.mjs"

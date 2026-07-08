@@ -29,8 +29,8 @@ const helperSrc = extractBlock(
   "// >>> glimpse-action parse helpers",
   "// <<< glimpse-action parse helpers"
 );
-const { parseExportPath, parseShareResult } = new Function(
-  helperSrc + "\nreturn { parseExportPath, parseShareResult };"
+const { parseExportPath, parseShareResult, shareArgs } = new Function(
+  helperSrc + "\nreturn { parseExportPath, parseShareResult, shareArgs };"
 )();
 
 test("parseExportPath pulls the file path out of `glimpse export` stdout", () => {
@@ -61,12 +61,27 @@ test("parseShareResult leaves password empty for a public page", () => {
   assert.strictEqual(r.password, "");
 });
 
+test("shareArgs builds the CLI argv from the dialog's choice", () => {
+  // Empty opts → private-by-default (the CLI mints a password); no flags.
+  assert.deepEqual(shareArgs("arch", {}), ["share", "arch"]);
+  assert.deepEqual(shareArgs("arch", undefined), ["share", "arch"]);
+  // Public → --public; password ignored once public is chosen.
+  assert.deepEqual(shareArgs("arch", { public: true }), ["share", "arch", "--public"]);
+  // Private with an explicit password.
+  assert.deepEqual(shareArgs("arch", { password: "pw" }), ["share", "arch", "--password", "pw"]);
+  // Update-in-place, keeping prior visibility.
+  assert.deepEqual(shareArgs("arch", { update: true }), ["share", "arch", "--update"]);
+  // Update + change visibility to public.
+  assert.deepEqual(shareArgs("arch", { update: true, public: true }), ["share", "arch", "--update", "--public"]);
+});
+
 test("the bridge drain loop routes glimpse:action to runAction, not the question path", () => {
   // The action branch must sit before persistUser and hand off to runAction + deliver.
   assert.match(BRIDGE, /if\(m\.type==="glimpse:action"\)\{[\s\S]*?runAction\(m\)[\s\S]*?deliverActionResult\(c, res\)/);
-  // runAction runs the REAL verbs (no reimplementation) and stays private-by-default.
+  // runAction runs the REAL verbs (no reimplementation): export, share (via shareArgs), and the read-only share-info.
   assert.match(BRIDGE, /execFileSync\("bash",\[BIN,"export",slug\]/);
-  assert.match(BRIDGE, /execFileSync\("bash",\[BIN,"share",slug\]/);
+  assert.match(BRIDGE, /execFileSync\("bash",\[BIN,\.\.\.shareArgs\(slug,m\.opts\)\]/);
+  assert.match(BRIDGE, /execFileSync\("bash",\[BIN,"shares",slug,"--json"\]/);
   // The result is pushed back over the same CDP connection via a shell-side hook.
   assert.match(BRIDGE, /window\.__glimpseActionResult&&window\.__glimpseActionResult\(/);
 });

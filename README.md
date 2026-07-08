@@ -323,6 +323,9 @@ glimpse export arch                      # → ./arch.export.html (self-containe
 glimpse share  arch                      # upload a copy to ht-ml.app; prints the URL + a secret update_key
 glimpse share  arch --public             # opt into a fully open page
 glimpse share  arch --password hunter2   # set your own view password
+glimpse share  arch --update             # re-upload to the SAME page (URL kept), reusing the stored key
+glimpse shares                           # list shared artifacts (slug · visibility · when · url)
+glimpse shares arch                      # recover arch's url + update key + password (local; no re-upload)
 ```
 
 - **`export`** writes one self-contained HTML file that opens with no server and
@@ -331,6 +334,14 @@ glimpse share  arch --password hunter2   # set your own view password
   default** — with no flag the page is password-protected (a strong random
   password is minted and printed); `--public` opts out. It prints a plain "this
   leaves your machine to a third-party public host" notice before every upload.
+  `--public`/`--password` are also selectable from the canvas **Share dialog**.
+- Every successful share is recorded to `~/.glimpse/shares.json` (kept local — it
+  holds the secret update_key + password), so **`glimpse shares`** lists them and
+  **`glimpse shares <slug>`** recovers a link later without re-uploading.
+  **`share <slug> --update`** re-uploads to the *same* ht-ml.app page (URL kept)
+  via the stored update key — the "manage the page later" flow. In the canvas, an
+  already-shared artifact's Share button turns to a **manage** view: it surfaces
+  the existing link with a copy button and offers Update vs a fresh share.
 
 ---
 
@@ -418,7 +429,9 @@ glimpse explain <slug> <title> [spec.json]   publish an interactive code explain
 glimpse ask <slug> <title> [file] [--form] [--timeout N]   publish interactive, block for a response (prints {slug,value} JSON)
                                      --form: `file` is a declarative JSON form spec → native controls
 glimpse export <slug> [--out <path>] write a single portable HTML file (local assets inlined; remote refs kept)
-glimpse share  <slug> [--public] [--password <pw>]   upload a portable copy to ht-ml.app; PRIVATE by default
+glimpse share  <slug> [--public] [--password <pw>] [--update]   upload a portable copy to ht-ml.app;
+                                     PRIVATE by default; --update re-uploads to the SAME page (URL kept)
+glimpse shares [<slug>] [--json]     list shared artifacts, or recover one's url + update key + password
 glimpse list [--json]                list artifacts (pinned first; --json for a machine record)
 glimpse rm <slug>...                 delete artifacts (feed + disk)
 glimpse clear --all | --keep N       prune artifacts (pinned always kept)
