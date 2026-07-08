@@ -294,14 +294,28 @@
     color:#fff;background:color-mix(in srgb,var(--accent) 88%,#000);padding:6px 9px;border-radius:7px;
     opacity:0;transform:translateY(-3px);transition:opacity .15s ease,transform .15s ease;pointer-events:none;}
   .stage:hover .stage-hint,.stage:focus-visible .stage-hint{opacity:1;transform:none;}
+  /* Carousel prev/next controls — siblings of the stage button (can't nest buttons),
+     overlaid on the stage edges. Revealed on panel hover; always shown on focus. */
+  .stage-panel{position:relative;min-width:0;}
+  .stage-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:3;
+    width:40px;height:40px;border-radius:50%;display:grid;place-items:center;cursor:pointer;
+    border:1px solid var(--line);background:color-mix(in srgb,var(--bg-elev) 90%,transparent);
+    -webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);color:var(--ink);font-size:22px;line-height:1;
+    box-shadow:var(--shadow-sm);opacity:0;transition:opacity .15s ease,background .12s ease,color .12s ease,border-color .12s ease;}
+  .stage-nav.prev{left:12px;} .stage-nav.next{right:12px;}
+  .stage-panel:hover .stage-nav{opacity:1;}
+  .stage-nav:hover{background:var(--accent-soft);color:var(--accent-ink);border-color:color-mix(in srgb,var(--accent) 40%,var(--line));}
+  .stage-nav:focus-visible{opacity:1;outline:2px solid var(--accent);outline-offset:2px;}
   /* Caption under the stage — eyebrow label + one line; updates with the selection. */
   .stage-cap{display:flex;flex-wrap:wrap;gap:5px 10px;align-items:baseline;min-width:0;}
   .stage-cap .k{font:600 12px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent);flex:none;}
   .stage-cap .d{color:var(--ink-2);font-size:14px;min-width:0;}
-  /* Thumbnail strip (tablist): all artifacts in a row; scrolls on narrow screens. */
-  .strip{display:flex;gap:10px;min-width:0;overflow-x:auto;padding:5px;margin:-5px;
-    scroll-snap-type:x proximity;scrollbar-width:thin;-webkit-overflow-scrolling:touch;}
-  .thumb{flex:0 0 132px;min-width:0;position:relative;margin:0;padding:0;aspect-ratio:16/10;cursor:pointer;scroll-snap-align:start;
+  /* Thumbnail strip (tablist): all artifacts in one row, centered + aligned under
+     the stage. `safe center` keeps it centered when it fits and falls back to
+     start-alignment (no clipped/unreachable leading thumb) when it must scroll. */
+  .strip{display:flex;gap:12px;min-width:0;justify-content:safe center;overflow-x:auto;padding:6px;margin:0 auto;
+    max-width:100%;scroll-snap-type:x proximity;scrollbar-width:thin;-webkit-overflow-scrolling:touch;}
+  .thumb{flex:0 0 140px;min-width:0;position:relative;margin:0;padding:0;aspect-ratio:16/10;cursor:pointer;scroll-snap-align:start;
     background:var(--bg-sunk);border:1px solid var(--line);border-radius:10px;overflow:hidden;box-shadow:var(--shadow-sm);
     transition:border-color .12s ease,box-shadow .12s ease,transform .12s ease;}
   .thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top center;display:block;}
@@ -596,6 +610,8 @@
           </span>
           <span class="stage-hint" aria-hidden="true">View full</span>
         </button>
+        <button type="button" class="stage-nav prev" id="pbPrev" aria-label="Previous artifact" aria-controls="pbPanel">‹</button>
+        <button type="button" class="stage-nav next" id="pbNext" aria-label="Next artifact" aria-controls="pbPanel">›</button>
       </div>
       <div class="stage-cap"><span class="k" id="pbCapK">Diagram</span><span class="d" id="pbCapD">Flows, state, and architecture</span></div>
       <!-- Thumbnail strip: pick an artifact to feature. -->
@@ -852,9 +868,9 @@
         imgL=document.getElementById('lbLight'),
         imgD=document.getElementById('lbDark'),
         closeBtn=document.getElementById('lbClose'),
-        opener=null;
-    function openFrom(src,restore){
-      opener=restore||null;
+        opener=null,onCloseCb=null;
+    function openFrom(src,restore,onClose){
+      opener=restore||null;onCloseCb=onClose||null;
       var label=src.getAttribute('data-label')||'',
           d=src.getAttribute('data-desc')||'',
           alt=src.getAttribute('data-alt')||label;
@@ -872,6 +888,7 @@
       document.removeEventListener('keydown',onKey,true);
       if(opener&&opener.focus)opener.focus();
       opener=null;
+      if(onCloseCb){var cb=onCloseCb;onCloseCb=null;cb();}
     }
     function onKey(e){
       if(e.key==='Escape'){e.preventDefault();close();return;}
@@ -885,19 +902,27 @@
     return {openFrom:openFrom};
   })();
 
-  /* Playbook viewer: a thumbnail strip (tablist, roving tabindex, arrow keys)
-     drives one large featured stage. Selecting a thumb swaps the stage image +
-     caption + ARIA; the stage opens the full render in the lightbox above. */
+  /* Playbook viewer: a thumbnail strip (tablist, roving tabindex, arrow keys) +
+     prev/next controls drive one large featured stage that also AUTO-ADVANCES
+     as a carousel. Selecting a thumb swaps the stage image + caption + ARIA; the
+     stage opens the full render in the lightbox above.
+     Autoplay contract (accessible carousel): ~5s per slide, looping; paused while
+     the viewer is hovered, holds keyboard focus, or the lightbox is open, and
+     restarted (a fresh interval, never a yanked slide) after any manual pick;
+     disabled entirely under prefers-reduced-motion. */
   (function(){
-    var strip=document.querySelector('.strip[role="tablist"]'),
+    var viewer=document.querySelector('.viewer'),
+        strip=document.querySelector('.strip[role="tablist"]'),
         stage=document.getElementById('pbStage'),
         panel=document.getElementById('pbPanel');
-    if(!strip||!stage||!panel) return;
+    if(!viewer||!strip||!stage||!panel) return;
     var tabs=Array.prototype.slice.call(strip.querySelectorAll('[role="tab"]')),
         stageL=document.getElementById('pbStageLight'),
         stageD=document.getElementById('pbStageDark'),
         capK=document.getElementById('pbCapK'),
         capD=document.getElementById('pbCapD'),
+        prev=document.getElementById('pbPrev'),
+        next=document.getElementById('pbNext'),
         current=tabs[0];
     function select(tab,focusIt){
       if(!tab) return;
@@ -917,22 +942,61 @@
       stage.setAttribute('aria-label','View the '+label+' playbook artifact full render');
       if(focusIt){tab.focus(); tab.scrollIntoView({block:'nearest',inline:'nearest'});}
     }
+
+    /* ---- Autoplay ---- */
+    var INTERVAL=5000, timer=null,
+        reduced=matchMedia('(prefers-reduced-motion: reduce)'),
+        hovering=false, focusWithin=false, lightboxOpen=false;
+    function canAuto(){ return !reduced.matches && !hovering && !focusWithin && !lightboxOpen; }
+    function stop(){ if(timer){clearInterval(timer);timer=null;} }
+    function start(){
+      stop();
+      if(!canAuto()) return;
+      timer=setInterval(function(){
+        if(!canAuto()){ stop(); return; }
+        var i=tabs.indexOf(current);
+        select(tabs[(i+1)%tabs.length],false); /* advance = select the next one */
+      },INTERVAL);
+    }
+    function restart(){ stop(); start(); } /* fresh full interval after a manual pick */
+    /* index-delta move used by the prev/next controls */
+    function go(delta){ var i=tabs.indexOf(current); select(tabs[(i+delta+tabs.length)%tabs.length],false); }
+
+    /* Pause on hover, on keyboard focus within the viewer, and while the lightbox
+       is open; resume once hover/focus leaves. */
+    viewer.addEventListener('pointerenter',function(){ hovering=true; stop(); });
+    viewer.addEventListener('pointerleave',function(){ hovering=false; start(); });
+    viewer.addEventListener('focusin',function(){ focusWithin=true; stop(); });
+    viewer.addEventListener('focusout',function(e){
+      if(!viewer.contains(e.relatedTarget)){ focusWithin=false; start(); }
+    });
+    reduced.addEventListener('change',function(){ reduced.matches?stop():start(); });
+
     tabs.forEach(function(tab){
-      tab.addEventListener('click',function(){select(tab,false);});
+      tab.addEventListener('click',function(){ select(tab,false); restart(); });
     });
     strip.addEventListener('keydown',function(e){
       var i=tabs.indexOf(document.activeElement); if(i<0)i=tabs.indexOf(current);
-      var next=null;
-      if(e.key==='ArrowRight'||e.key==='ArrowDown')next=tabs[(i+1)%tabs.length];
-      else if(e.key==='ArrowLeft'||e.key==='ArrowUp')next=tabs[(i-1+tabs.length)%tabs.length];
-      else if(e.key==='Home')next=tabs[0];
-      else if(e.key==='End')next=tabs[tabs.length-1];
-      if(next){e.preventDefault();select(next,true);}
+      var target=null;
+      if(e.key==='ArrowRight'||e.key==='ArrowDown')target=tabs[(i+1)%tabs.length];
+      else if(e.key==='ArrowLeft'||e.key==='ArrowUp')target=tabs[(i-1+tabs.length)%tabs.length];
+      else if(e.key==='Home')target=tabs[0];
+      else if(e.key==='End')target=tabs[tabs.length-1];
+      if(target){e.preventDefault();select(target,true);restart();}
     });
-    /* The stage opens the full render for the current selection; focus returns to it. */
+    if(prev)prev.addEventListener('click',function(){ go(-1); restart(); });
+    if(next)next.addEventListener('click',function(){ go(1); restart(); });
+
+    /* The stage opens the full render for the current selection; autoplay pauses
+       while it's open and resumes when it closes (subject to hover/focus). */
     if(pbLightbox){
-      stage.addEventListener('click',function(){pbLightbox.openFrom(current,stage);});
+      stage.addEventListener('click',function(){
+        lightboxOpen=true; stop();
+        pbLightbox.openFrom(current,stage,function(){ lightboxOpen=false; start(); });
+      });
     }
+
+    start();
   })();
 </script>
 </body>

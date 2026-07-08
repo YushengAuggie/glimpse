@@ -644,11 +644,21 @@ renders identically opened directly from disk and via Pages.
   (`examples/screenshots/<name>-{light,dark}.png`). Relative paths (`assets/…`) are
   required so project Pages (base path `/glimpse/`) resolves them; never use
   root-absolute `/assets`.
-- **Theme-aware gallery.** Each playbook card holds a `.light`+`.dark` `<img>`
+- **Theme-aware playbook viewer (a carousel).** The gallery is a featured
+  `.stage` + centered `.strip` tablist of thumbs, and the stage **auto-advances**
+  as a carousel. Every image (stage, thumbs, lightbox) holds a `.light`+`.dark`
   pair; CSS shows the one matching the active theme (`prefers-color-scheme` +
-  `:root[data-theme]`). The gallery imgs are intentionally **not** `loading=lazy`
-  — a full-page screenshot (design review / social preview) must capture them, and
-  they are the centerpiece; a lazy gallery screenshots blank below the fold.
+  `:root[data-theme]`). The imgs are intentionally **not** `loading=lazy` — a
+  full-page screenshot (design review / social preview) must capture them.
+  Autoplay is one `setInterval` that just calls `select(next)`; its
+  accessibility contract (preserve it when touching the viewer script): ~5s per
+  slide + loop, **paused** while the viewer is hovered / holds keyboard focus /
+  the lightbox is open, restarted (fresh interval) after any manual pick, and
+  **disabled entirely under `prefers-reduced-motion`** (arrows/thumbs still work).
+  Prev/next are `.stage-nav` buttons — siblings of the `.stage` button, not
+  nested (no nested `<button>`); the strip uses `justify-content:safe center` so
+  it centers when it fits and start-aligns (no clipped leading thumb) when it
+  must scroll on narrow widths.
 - **Structure: hero → 3 differentiator pillars → gallery → quickstart → CLI table.**
   The page leads on the moat and collapses capabilities into three pillars —
   (1) drives & inspects real apps over CDP, (2) live two-way review, (3) local &
