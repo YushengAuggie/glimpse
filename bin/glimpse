@@ -576,7 +576,21 @@ cmd_export(){
   # Default to the current directory: the artifact source lives in a hidden managed
   # data dir ($GLIMPSE_DIR/artifacts), so writing "next to the source" would bury
   # the file where the user can't find it. --out overrides.
-  local dest="${out:-$PWD/${slug}.export.html}"
+  #
+  # Guard the non-interactive case: when invoked from the daemon/bridge the cwd is
+  # inherited (typically "/"), so a bare $PWD default would resolve to "//<slug>…"
+  # and try to write to the read-only filesystem root. If no --out was given and
+  # $PWD is "/" (or not a writable directory), fall back to a managed, always-
+  # writable dir ($GLIMPSE_DIR/exports) instead of failing on the root.
+  local dest="$out"
+  if [ -z "$dest" ]; then
+    if [ "$PWD" = "/" ] || [ ! -d "$PWD" ] || [ ! -w "$PWD" ]; then
+      mkdir -p "$GLIMPSE_DIR/exports" 2>/dev/null
+      dest="$GLIMPSE_DIR/exports/${slug}.export.html"
+    else
+      dest="$PWD/${slug}.export.html"
+    fi
+  fi
   local ddir; ddir="$(dirname "$dest")"
   [ -d "$ddir" ] || die "output directory does not exist: $ddir"
   local tmp="$dest.glimpse-tmp.$$"
@@ -698,6 +712,15 @@ cmd_share(){
   fi
   [ -n "$key" ] && echo "  update key: $key   (secret — keep it to update or manage the page later)"
   echo "  retrieve later: glimpse shares $slug   ·   update in place: glimpse share $slug --update"
+  # ht-ml.app applies a changed password at its edge asynchronously: a new password
+  # can take up to ~a minute to become active, and the PREVIOUS password may keep
+  # working briefly until its cached auth grant expires. Flag this only when an
+  # update actually changed the password, so "it didn't take" reads as expected lag,
+  # not a failure. (Content updates apply immediately; only the auth layer lags.)
+  if [ "$update" = 1 ] && [ "$public" = 0 ] && [ "$reuse" = 0 ]; then
+    echo "  note: the new password can take up to ~a minute to activate on ht-ml.app;" >&2
+    echo "        the previous password may keep working briefly while its cache expires." >&2
+  fi
 }
 
 # List shared artifacts, or show one slug's full record (url + update key +

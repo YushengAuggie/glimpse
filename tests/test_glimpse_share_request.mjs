@@ -22,6 +22,24 @@ test("create (no update env): POST /sites, password only when set", () => {
   assert.equal(priv.body.password, "pw");
 });
 
+test("a CUSTOM password reaches body.password verbatim on both create and update", () => {
+  // The dialog's custom-password value must survive the whole chain into the request
+  // body unchanged — on a new private share (POST) and on a re-key (PUT). This locks
+  // the "custom password doesn't take" report to a real client contract.
+  const CUSTOM = "My-Custom_Pw.42!";
+  const create = planRequest({ GLIMPSE_PASSWORD: CUSTOM }, HTML, BASE);
+  assert.equal(create.method, "POST");
+  assert.equal(create.body.password, CUSTOM);
+
+  const update = planRequest(
+    { GLIMPSE_UPDATE_SITE_ID: "s1", GLIMPSE_UPDATE_KEY: "K", GLIMPSE_PASSWORD: CUSTOM },
+    HTML,
+    BASE,
+  );
+  assert.equal(update.method, "PUT");
+  assert.equal(update.body.password, CUSTOM); // re-keys the same page
+});
+
 test("create with optional bearer token sets Authorization (create only)", () => {
   const p = planRequest({ GLIMPSE_HTML_APP_TOKEN: "tok" }, HTML, BASE);
   assert.equal(p.headers.Authorization, "Bearer tok");

@@ -268,6 +268,14 @@ offline inliner, `lib/glimpse-export.mjs`, via the `_inline_artifact` helper.
     artifacts/`, so "next to source" would bury the file. `--out` overrides. (This
     is where it deliberately differs from `lavish-axi export`, whose source is a
     user-visible `.lavish/` file.)
+  - **UI/daemon exports never inherit `$PWD`.** The canvas Export button runs through
+    the bridge, which shells `glimpse export` with the **daemon's cwd (usually `/`)**;
+    a bare `$PWD` default would resolve to `//<slug>.export.html` and fail on the
+    read-only filesystem root. The bridge passes an explicit `--out
+    "$GLIMPSE_DIR/exports/<slug>.export.html"` (creating the dir), and `cmd_export`
+    itself falls back to `$GLIMPSE_DIR/exports` when no `--out` is given and `$PWD` is
+    `/` or not writable — so a scripted/headless export can never target the FS root.
+    The interactive `$PWD` default is unchanged. The result toast shows the real path.
 - **`glimpse share <slug> [--public] [--password <pw>] [--update]`** builds the
   same inlined bundle and uploads it to **ht-ml.app** (`lib/glimpse-share.mjs`,
   Node stdlib), printing the visitable URL + the secret `update_key`.
@@ -281,6 +289,19 @@ offline inliner, `lib/glimpse-export.mjs`, via the `_inline_artifact` helper.
     flow — see the `html` skill's PUT contract). With no visibility flag it keeps
     the prior public/private state; `--public`/`--password` change it (on update
     the password field is ALWAYS sent — value sets it, `""` clears → public).
+  - **Sharp edge — ht-ml.app applies a CHANGED password asynchronously at its edge.**
+    The whole client chain (dialog `#sharedlg-pw` → `opts.password` → `shareArgs
+    --password` → `cmd_share` → `planRequest` `body.password`) is provably correct and
+    a NEW private share enforces its custom password immediately (verified live:
+    no-cookie 401 / wrong 401 / correct 200). But on `--update` the new password can
+    take **up to ~a minute** to activate, and the **previous password lingers** in
+    ht-ml.app's edge auth-cache (a PUT purges the HTML cache immediately but not the
+    per-password auth grant) — both are server-side, not a glimpse bug and not fixable
+    via the documented API (no cache-purge/delete endpoint). So a "custom password
+    doesn't take" report on an update is expected propagation lag. `cmd_share` prints a
+    note to **stderr** (and the bridge attaches a `note` the toast renders) ONLY when an
+    update actually changes the password, to set that expectation. Don't "fix" this by
+    reshaping the request — it is already byte-identical to a working manual `curl` PUT.
   - Prints a concise **"this leaves your machine to a third-party public host"
     notice to stderr before every upload** (glimpse otherwise markets itself as
     local & serverless, so the egress must be unmistakable).

@@ -73,15 +73,35 @@ test("shareArgs builds the CLI argv from the dialog's choice", () => {
   assert.deepEqual(shareArgs("arch", { update: true }), ["share", "arch", "--update"]);
   // Update + change visibility to public.
   assert.deepEqual(shareArgs("arch", { update: true, public: true }), ["share", "arch", "--update", "--public"]);
+  // Update + CHANGE the password to a custom value (item 3): both flags must ride
+  // through so the dialog's "type a new password" update actually re-keys the page.
+  assert.deepEqual(shareArgs("arch", { update: true, password: "new#Pw!" }),
+    ["share", "arch", "--update", "--password", "new#Pw!"]);
+  // A custom password with special chars survives verbatim as one discrete arg.
+  assert.deepEqual(shareArgs("arch", { password: "p w/&=?" }),
+    ["share", "arch", "--password", "p w/&=?"]);
+});
+
+test("runAction attaches a propagation note only when an update changes the password", () => {
+  // ht-ml.app applies a changed password at its edge asynchronously; the toast must
+  // set that expectation so a "wrong password" test right after Update reads as lag,
+  // not failure. The note fires on update+private+password, and NOT on a new share.
+  assert.match(BRIDGE, /opts\.update && !opts\.public && r\.password/);
+  assert.match(BRIDGE, /\.\.\.\(note\?\{note\}:\{\}\)/);
 });
 
 test("the bridge drain loop routes glimpse:action to runAction, not the question path", () => {
   // The action branch must sit before persistUser and hand off to runAction + deliver.
   assert.match(BRIDGE, /if\(m\.type==="glimpse:action"\)\{[\s\S]*?runAction\(m\)[\s\S]*?deliverActionResult\(c, res\)/);
   // runAction runs the REAL verbs (no reimplementation): export, share (via shareArgs), and the read-only share-info.
-  assert.match(BRIDGE, /execFileSync\("bash",\[BIN,"export",slug\]/);
+  assert.match(BRIDGE, /execFileSync\("bash",\[BIN,\.\.\.exportArgs\]/);
   assert.match(BRIDGE, /execFileSync\("bash",\[BIN,\.\.\.shareArgs\(slug,m\.opts\)\]/);
   assert.match(BRIDGE, /execFileSync\("bash",\[BIN,"shares",slug,"--json"\]/);
+  // BUG-1 guard: a UI/daemon-initiated export inherits the daemon's cwd ("/"), so it
+  // must pass an explicit --out under $GLIMPSE_DIR/exports rather than defaulting to
+  // $PWD → "//<slug>.export.html" on a read-only root. Assert the bridge builds that.
+  assert.match(BRIDGE, /const exdir=join\(DIR,"exports"\);\s*mkdirSync\(exdir,\{recursive:true\}\)/);
+  assert.match(BRIDGE, /exportArgs=outPath\?\["export",slug,"--out",outPath\]:\["export",slug\]/);
   // The result is pushed back over the same CDP connection via a shell-side hook.
   assert.match(BRIDGE, /window\.__glimpseActionResult&&window\.__glimpseActionResult\(/);
 });
