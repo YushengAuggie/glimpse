@@ -496,6 +496,25 @@ prefers a **non-canvas** page (the app under review) over the canvas tab (canvas
 `127.0.0.1:$PORT`/`localhost:$PORT`), then falls back to any page. `read`, `shot`,
 `snapshot`, and `interact` all route through it — no second browser connection.
 
+**Tabs are closed by whoever OPENED them — one-shot verbs don't leak.** `cdpConnect`
+returns a `created` flag (true only when no target matched and it had to open a fresh
+tab) plus `closeTab()` (closes the browser TAB via `/json/close/<id>`; plain `close()`
+still drops only the WebSocket). The one-shot review verbs (`read`/`shot`/`snapshot`)
+call `if(created) await closeTab()` after capturing, so reviewing a not-yet-open URL
+never leaves a tab behind. A tab from `glimpse open` (or any reused tab) is
+`created:false` and is **kept** — that's the persistent review workflow. Canvas verbs
+(`open`/`bridge`/`poll`) use `cdpConnect` directly and never auto-close (the canvas
+persists). Before this, nothing ever closed a tab, so every review of a fresh URL
+leaked a renderer into the shared Chrome (memory ran away as tabs piled up). Regression
+guard: `tests/test_tab_gc_cdp.sh` (runtime-gated) asserts one-shot verbs return the tab
+count to baseline while `open`+`shot` keeps the tab.
+
+**`glimpse gc [--all]` prunes leftover tabs** in the canvas Chrome — a manual safety
+net for tabs accumulated before the fix or orphaned by a crash. Default closes only
+`about:blank`/`about:srcdoc` strays; `--all` also closes every **non-canvas** page tab
+(the canvas tab is always kept). It never launches Chrome (nothing to gc if the debug
+port is down).
+
 **Security posture (unchanged):** names/text/console/element text are secret-scrubbed
 against `SECRET_PATTERN` (same posture as thread turns / snapshot), so a token that
 slipped into the page or a log line is never surfaced. `chrome-cdp` skill (v1.1.0)
