@@ -276,39 +276,51 @@
   .callout.good{border-left-color:var(--good);background:var(--good-soft);}
   .callout p{margin:0;color:var(--ink-2);font-size:14px;line-height:1.6;}
 
-  /* ---- Playbook gallery ---------------------------------------------------- */
-  /* ~2-up on desktop, 1-up on mobile — big enough to read a real detail. */
-  .gallery{display:grid;gap:20px;grid-template-columns:repeat(auto-fit,minmax(min(480px,100%),1fr));justify-content:center;}
-  .gallery > *{min-width:0;}
-  /* Each card is a button: click opens the full render in a lightbox. */
-  .shot{display:flex;flex-direction:column;width:100%;min-width:0;text-align:left;font:inherit;color:inherit;padding:0;cursor:zoom-in;
-    border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:var(--bg-elev);box-shadow:var(--shadow-sm);
-    transition:border-color .15s ease,box-shadow .15s ease,transform .12s ease;}
-  .shot:hover{border-color:color-mix(in srgb,var(--accent) 45%,var(--line));box-shadow:var(--shadow);transform:translateY(-2px);}
-  .shot:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
-  /* Top-anchored, over-sized crop: shows each artifact's title + first rows at a
-     legible scale (not the whole page miniaturized). Full render lives in the lightbox. */
-  .shot-imgs{position:relative;height:300px;background:var(--bg-sunk);overflow:hidden;}
-  .shot-imgs img{position:absolute;top:0;left:50%;transform:translateX(-50%);width:150%;max-width:none;height:auto;display:block;}
+  /* ---- Playbook viewer (featured stage + thumbnail strip) ------------------ */
+  /* One large, readable render at a time; a thumbnail strip swaps the selection.
+     Count-agnostic — 5, 7, or 8 artifacts all read as intentional, never an orphan. */
+  .viewer{display:flex;flex-direction:column;gap:16px;min-width:0;}
+  /* Featured stage: the biggest, clearest preview. Click opens the full render in the lightbox. */
+  .stage{position:relative;display:block;width:100%;min-width:0;margin:0;padding:0;text-align:left;font:inherit;color:inherit;
+    aspect-ratio:16/10;cursor:zoom-in;background:var(--bg-sunk);
+    border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow-sm);
+    transition:border-color .15s ease,box-shadow .15s ease;}
+  .stage:hover{border-color:color-mix(in srgb,var(--accent) 45%,var(--line));box-shadow:var(--shadow);}
+  .stage:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  .stage-imgs{position:absolute;inset:0;}
+  .stage-imgs img{width:100%;height:100%;object-fit:contain;padding:16px;box-sizing:border-box;display:block;}
   /* "View full" affordance on hover/focus. */
-  .shot-imgs::after{content:"View full";position:absolute;top:10px;right:10px;font:600 10px/1 var(--mono);letter-spacing:.09em;
-    text-transform:uppercase;color:#fff;background:color-mix(in srgb,var(--accent) 88%,#000);padding:6px 9px;border-radius:7px;
+  .stage-hint{position:absolute;top:12px;right:12px;font:600 10px/1 var(--mono);letter-spacing:.09em;text-transform:uppercase;
+    color:#fff;background:color-mix(in srgb,var(--accent) 88%,#000);padding:6px 9px;border-radius:7px;
     opacity:0;transform:translateY(-3px);transition:opacity .15s ease,transform .15s ease;pointer-events:none;}
-  .shot:hover .shot-imgs::after,.shot:focus-visible .shot-imgs::after{opacity:1;transform:none;}
-  .shot-cap{padding:14px 16px;border-top:1px solid var(--line-2);display:flex;flex-wrap:wrap;gap:5px 8px;}
-  .shot-cap .k{flex-basis:100%;font:600 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent);}
-  .shot-cap .d{color:var(--ink-2);font-size:13.5px;min-width:0;}
+  .stage:hover .stage-hint,.stage:focus-visible .stage-hint{opacity:1;transform:none;}
+  /* Caption under the stage — eyebrow label + one line; updates with the selection. */
+  .stage-cap{display:flex;flex-wrap:wrap;gap:5px 10px;align-items:baseline;min-width:0;}
+  .stage-cap .k{font:600 12px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent);flex:none;}
+  .stage-cap .d{color:var(--ink-2);font-size:14px;min-width:0;}
+  /* Thumbnail strip (tablist): all artifacts in a row; scrolls on narrow screens. */
+  .strip{display:flex;gap:10px;min-width:0;overflow-x:auto;padding:5px;margin:-5px;
+    scroll-snap-type:x proximity;scrollbar-width:thin;-webkit-overflow-scrolling:touch;}
+  .thumb{flex:0 0 132px;min-width:0;position:relative;margin:0;padding:0;aspect-ratio:16/10;cursor:pointer;scroll-snap-align:start;
+    background:var(--bg-sunk);border:1px solid var(--line);border-radius:10px;overflow:hidden;box-shadow:var(--shadow-sm);
+    transition:border-color .12s ease,box-shadow .12s ease,transform .12s ease;}
+  .thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top center;display:block;}
+  .thumb:hover{transform:translateY(-2px);border-color:color-mix(in srgb,var(--accent) 40%,var(--line));}
+  .thumb:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  .thumb[aria-selected="true"]{border-color:var(--accent);
+    box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 32%,transparent),var(--shadow-sm);}
 
-  /* Theme-aware swap: show the screenshot matching the active theme (cards + lightbox) */
-  .shot-imgs .dark,.lb-scroll .dark{display:none;} .shot-imgs .light,.lb-scroll .light{display:block;}
+  /* Theme-aware swap: show the screenshot matching the active theme (stage + thumbs + lightbox) */
+  .stage-imgs .dark,.thumb .dark,.lb-scroll .dark{display:none;}
+  .stage-imgs .light,.thumb .light,.lb-scroll .light{display:block;}
   @media (prefers-color-scheme: dark){
-    :root[data-theme="auto"] .shot-imgs .light,:root[data-theme="auto"] .lb-scroll .light{display:none;}
-    :root[data-theme="auto"] .shot-imgs .dark,:root[data-theme="auto"] .lb-scroll .dark{display:block;}
+    :root[data-theme="auto"] .stage-imgs .light,:root[data-theme="auto"] .thumb .light,:root[data-theme="auto"] .lb-scroll .light{display:none;}
+    :root[data-theme="auto"] .stage-imgs .dark,:root[data-theme="auto"] .thumb .dark,:root[data-theme="auto"] .lb-scroll .dark{display:block;}
   }
-  :root[data-theme="dark"] .shot-imgs .light,:root[data-theme="dark"] .lb-scroll .light{display:none;}
-  :root[data-theme="dark"] .shot-imgs .dark,:root[data-theme="dark"] .lb-scroll .dark{display:block;}
-  :root[data-theme="light"] .shot-imgs .light,:root[data-theme="light"] .lb-scroll .light{display:block;}
-  :root[data-theme="light"] .shot-imgs .dark,:root[data-theme="light"] .lb-scroll .dark{display:none;}
+  :root[data-theme="dark"] .stage-imgs .light,:root[data-theme="dark"] .thumb .light,:root[data-theme="dark"] .lb-scroll .light{display:none;}
+  :root[data-theme="dark"] .stage-imgs .dark,:root[data-theme="dark"] .thumb .dark,:root[data-theme="dark"] .lb-scroll .dark{display:block;}
+  :root[data-theme="light"] .stage-imgs .light,:root[data-theme="light"] .thumb .light,:root[data-theme="light"] .lb-scroll .light{display:block;}
+  :root[data-theme="light"] .stage-imgs .dark,:root[data-theme="light"] .thumb .dark,:root[data-theme="light"] .lb-scroll .dark{display:none;}
 
   /* ---- Lightbox (full-render viewer) --------------------------------------- */
   .lightbox{position:fixed;inset:0;z-index:100;display:none;padding:clamp(16px,4vw,48px);}
@@ -574,70 +586,70 @@
         playbooks that turn plans, diagrams, tables, and diffs into clean, readable artifacts, in light and
         dark. <b>Every render below follows your theme.</b></p>
     </div>
-    <div class="gallery">
-      <button type="button" class="shot" data-label="Diagram" data-desc="Flows, state, and architecture"
-        data-light="assets/shots/diagram-light.png" data-dark="assets/shots/diagram-dark.png"
-        data-alt="Diagram playbook artifact — a request-flow Mermaid graph with component cards." aria-label="View the Diagram playbook artifact full-size">
-        <span class="shot-imgs">
-          <img class="light" src="assets/shots/diagram-light.png" alt="Diagram playbook artifact, light mode — a request-flow Mermaid graph with component cards.">
-          <img class="dark" src="assets/shots/diagram-dark.png" alt="Diagram playbook artifact, dark mode — a request-flow Mermaid graph with component cards.">
-        </span>
-        <span class="shot-cap"><span class="k">Diagram</span><span class="d">Flows, state, and architecture</span></span>
-      </button>
-      <button type="button" class="shot" data-label="Plan" data-desc="A technical plan before implementation"
-        data-light="assets/shots/plan-light.png" data-dark="assets/shots/plan-dark.png"
-        data-alt="Plan playbook artifact — a technical plan before implementation." aria-label="View the Plan playbook artifact full-size">
-        <span class="shot-imgs">
-          <img class="light" src="assets/shots/plan-light.png" alt="Plan playbook artifact, light mode.">
-          <img class="dark" src="assets/shots/plan-dark.png" alt="Plan playbook artifact, dark mode.">
-        </span>
-        <span class="shot-cap"><span class="k">Plan</span><span class="d">A technical plan before implementation</span></span>
-      </button>
-      <button type="button" class="shot" data-label="Code" data-desc="Source, patches & before/after diffs"
-        data-light="assets/shots/code-light.png" data-dark="assets/shots/code-dark.png"
-        data-alt="Code playbook artifact — source, patches and before/after diffs." aria-label="View the Code playbook artifact full-size">
-        <span class="shot-imgs">
-          <img class="light" src="assets/shots/code-light.png" alt="Code playbook artifact, light mode.">
-          <img class="dark" src="assets/shots/code-dark.png" alt="Code playbook artifact, dark mode.">
-        </span>
-        <span class="shot-cap"><span class="k">Code</span><span class="d">Source, patches &amp; before/after diffs</span></span>
-      </button>
-      <button type="button" class="shot" data-label="Table" data-desc="Dense records, scan-friendly"
-        data-light="assets/shots/table-light.png" data-dark="assets/shots/table-dark.png"
-        data-alt="Table playbook artifact — dense records, scan-friendly." aria-label="View the Table playbook artifact full-size">
-        <span class="shot-imgs">
-          <img class="light" src="assets/shots/table-light.png" alt="Table playbook artifact, light mode.">
-          <img class="dark" src="assets/shots/table-dark.png" alt="Table playbook artifact, dark mode.">
-        </span>
-        <span class="shot-cap"><span class="k">Table</span><span class="d">Dense records, scan-friendly</span></span>
-      </button>
-      <button type="button" class="shot" data-label="Comparison" data-desc="Options, tradeoffs, current vs target"
-        data-light="assets/shots/comparison-light.png" data-dark="assets/shots/comparison-dark.png"
-        data-alt="Comparison playbook artifact — options, tradeoffs, current vs target." aria-label="View the Comparison playbook artifact full-size">
-        <span class="shot-imgs">
-          <img class="light" src="assets/shots/comparison-light.png" alt="Comparison playbook artifact, light mode.">
-          <img class="dark" src="assets/shots/comparison-dark.png" alt="Comparison playbook artifact, dark mode.">
-        </span>
-        <span class="shot-cap"><span class="k">Comparison</span><span class="d">Options, tradeoffs, current vs target</span></span>
-      </button>
-      <button type="button" class="shot" data-label="Input" data-desc="Native, accessible decision forms"
-        data-light="assets/shots/input-light.png" data-dark="assets/shots/input-dark.png"
-        data-alt="Input playbook artifact — a native, accessible decision form." aria-label="View the Input playbook artifact full-size">
-        <span class="shot-imgs">
-          <img class="light" src="assets/shots/input-light.png" alt="Input playbook artifact, light mode — an accessible decision form.">
-          <img class="dark" src="assets/shots/input-dark.png" alt="Input playbook artifact, dark mode — an accessible decision form.">
-        </span>
-        <span class="shot-cap"><span class="k">Input</span><span class="d">Native, accessible decision forms</span></span>
-      </button>
-      <button type="button" class="shot" data-label="Slides" data-desc="A paced, one-idea-per-screen deck"
-        data-light="assets/shots/slides-light.png" data-dark="assets/shots/slides-dark.png"
-        data-alt="Slides playbook artifact — a paced, one-idea-per-screen deck." aria-label="View the Slides playbook artifact full-size">
-        <span class="shot-imgs">
-          <img class="light" src="assets/shots/slides-light.png" alt="Slides playbook artifact, light mode — a paced presentation deck.">
-          <img class="dark" src="assets/shots/slides-dark.png" alt="Slides playbook artifact, dark mode — a paced presentation deck.">
-        </span>
-        <span class="shot-cap"><span class="k">Slides</span><span class="d">A paced, one-idea-per-screen deck</span></span>
-      </button>
+    <div class="viewer">
+      <!-- Featured stage: the currently-selected artifact, large. Click opens the full render. -->
+      <div class="stage-panel" role="tabpanel" id="pbPanel" aria-labelledby="pbTab-diagram">
+        <button type="button" class="stage" id="pbStage" aria-label="View the Diagram playbook artifact full render">
+          <span class="stage-imgs">
+            <img class="light" id="pbStageLight" src="assets/shots/diagram-light.png" alt="Diagram playbook artifact, light mode — a request-flow Mermaid graph with component cards.">
+            <img class="dark" id="pbStageDark" src="assets/shots/diagram-dark.png" alt="Diagram playbook artifact, dark mode — a request-flow Mermaid graph with component cards.">
+          </span>
+          <span class="stage-hint" aria-hidden="true">View full</span>
+        </button>
+      </div>
+      <div class="stage-cap"><span class="k" id="pbCapK">Diagram</span><span class="d" id="pbCapD">Flows, state, and architecture</span></div>
+      <!-- Thumbnail strip: pick an artifact to feature. -->
+      <div class="strip" role="tablist" aria-label="Playbook artifacts">
+        <button type="button" role="tab" id="pbTab-diagram" class="thumb" aria-selected="true" aria-controls="pbPanel" tabindex="0"
+          aria-label="Diagram — flows, state, and architecture"
+          data-label="Diagram" data-desc="Flows, state, and architecture"
+          data-light="assets/shots/diagram-light.png" data-dark="assets/shots/diagram-dark.png"
+          data-alt="Diagram playbook artifact — a request-flow Mermaid graph with component cards.">
+          <img class="light" src="assets/shots/diagram-light.png" alt=""><img class="dark" src="assets/shots/diagram-dark.png" alt="">
+        </button>
+        <button type="button" role="tab" id="pbTab-plan" class="thumb" aria-selected="false" aria-controls="pbPanel" tabindex="-1"
+          aria-label="Plan — a technical plan before implementation"
+          data-label="Plan" data-desc="A technical plan before implementation"
+          data-light="assets/shots/plan-light.png" data-dark="assets/shots/plan-dark.png"
+          data-alt="Plan playbook artifact — a technical plan before implementation.">
+          <img class="light" src="assets/shots/plan-light.png" alt=""><img class="dark" src="assets/shots/plan-dark.png" alt="">
+        </button>
+        <button type="button" role="tab" id="pbTab-code" class="thumb" aria-selected="false" aria-controls="pbPanel" tabindex="-1"
+          aria-label="Code — source, patches and before/after diffs"
+          data-label="Code" data-desc="Source, patches &amp; before/after diffs"
+          data-light="assets/shots/code-light.png" data-dark="assets/shots/code-dark.png"
+          data-alt="Code playbook artifact — source, patches and before/after diffs.">
+          <img class="light" src="assets/shots/code-light.png" alt=""><img class="dark" src="assets/shots/code-dark.png" alt="">
+        </button>
+        <button type="button" role="tab" id="pbTab-table" class="thumb" aria-selected="false" aria-controls="pbPanel" tabindex="-1"
+          aria-label="Table — dense records, scan-friendly"
+          data-label="Table" data-desc="Dense records, scan-friendly"
+          data-light="assets/shots/table-light.png" data-dark="assets/shots/table-dark.png"
+          data-alt="Table playbook artifact — dense records, scan-friendly.">
+          <img class="light" src="assets/shots/table-light.png" alt=""><img class="dark" src="assets/shots/table-dark.png" alt="">
+        </button>
+        <button type="button" role="tab" id="pbTab-comparison" class="thumb" aria-selected="false" aria-controls="pbPanel" tabindex="-1"
+          aria-label="Comparison — options, tradeoffs, current vs target"
+          data-label="Comparison" data-desc="Options, tradeoffs, current vs target"
+          data-light="assets/shots/comparison-light.png" data-dark="assets/shots/comparison-dark.png"
+          data-alt="Comparison playbook artifact — options, tradeoffs, current vs target.">
+          <img class="light" src="assets/shots/comparison-light.png" alt=""><img class="dark" src="assets/shots/comparison-dark.png" alt="">
+        </button>
+        <button type="button" role="tab" id="pbTab-input" class="thumb" aria-selected="false" aria-controls="pbPanel" tabindex="-1"
+          aria-label="Input — native, accessible decision forms"
+          data-label="Input" data-desc="Native, accessible decision forms"
+          data-light="assets/shots/input-light.png" data-dark="assets/shots/input-dark.png"
+          data-alt="Input playbook artifact — a native, accessible decision form.">
+          <img class="light" src="assets/shots/input-light.png" alt=""><img class="dark" src="assets/shots/input-dark.png" alt="">
+        </button>
+        <button type="button" role="tab" id="pbTab-slides" class="thumb" aria-selected="false" aria-controls="pbPanel" tabindex="-1"
+          aria-label="Slides — a paced, one-idea-per-screen deck"
+          data-label="Slides" data-desc="A paced, one-idea-per-screen deck"
+          data-light="assets/shots/slides-light.png" data-dark="assets/shots/slides-dark.png"
+          data-alt="Slides playbook artifact — a paced, one-idea-per-screen deck.">
+          <img class="light" src="assets/shots/slides-light.png" alt=""><img class="dark" src="assets/shots/slides-dark.png" alt="">
+        </button>
+      </div>
     </div>
   </div>
 </section>
@@ -829,26 +841,26 @@
     });
   })();
 
-  /* Playbook lightbox: click a card to view the full render. Theme-correct
-     (same light/dark swap), scrollable, focus-trapped, Esc/backdrop/✕ close,
-     and focus returns to the originating card. */
-  (function(){
+  /* Playbook lightbox: view the featured render full-size. Theme-correct (same
+     light/dark swap), scrollable, focus-trapped, Esc/backdrop/✕ close, and focus
+     returns to whatever opened it. */
+  var pbLightbox=(function(){
     var lb=document.getElementById('lightbox');
-    if(!lb) return;
+    if(!lb) return null;
     var title=document.getElementById('lbTitle'),
         desc=document.getElementById('lbDesc'),
         imgL=document.getElementById('lbLight'),
         imgD=document.getElementById('lbDark'),
         closeBtn=document.getElementById('lbClose'),
         opener=null;
-    function open(card){
-      opener=card;
-      var label=card.getAttribute('data-label')||'',
-          d=card.getAttribute('data-desc')||'',
-          alt=card.getAttribute('data-alt')||label;
+    function openFrom(src,restore){
+      opener=restore||null;
+      var label=src.getAttribute('data-label')||'',
+          d=src.getAttribute('data-desc')||'',
+          alt=src.getAttribute('data-alt')||label;
       title.textContent=label; desc.textContent=d;
-      imgL.src=card.getAttribute('data-light'); imgL.alt=alt+' (light)';
-      imgD.src=card.getAttribute('data-dark'); imgD.alt=alt+' (dark)';
+      imgL.src=src.getAttribute('data-light'); imgL.alt=alt+' (light)';
+      imgD.src=src.getAttribute('data-dark'); imgD.alt=alt+' (dark)';
       lb.setAttribute('open','');
       document.body.style.overflow='hidden';
       closeBtn.focus();
@@ -867,12 +879,60 @@
         e.preventDefault();closeBtn.focus();
       }
     }
-    Array.prototype.forEach.call(document.querySelectorAll('.gallery .shot'),function(card){
-      card.addEventListener('click',function(){open(card);});
-    });
     Array.prototype.forEach.call(lb.querySelectorAll('[data-lb-close]'),function(el){
       el.addEventListener('click',close);
     });
+    return {openFrom:openFrom};
+  })();
+
+  /* Playbook viewer: a thumbnail strip (tablist, roving tabindex, arrow keys)
+     drives one large featured stage. Selecting a thumb swaps the stage image +
+     caption + ARIA; the stage opens the full render in the lightbox above. */
+  (function(){
+    var strip=document.querySelector('.strip[role="tablist"]'),
+        stage=document.getElementById('pbStage'),
+        panel=document.getElementById('pbPanel');
+    if(!strip||!stage||!panel) return;
+    var tabs=Array.prototype.slice.call(strip.querySelectorAll('[role="tab"]')),
+        stageL=document.getElementById('pbStageLight'),
+        stageD=document.getElementById('pbStageDark'),
+        capK=document.getElementById('pbCapK'),
+        capD=document.getElementById('pbCapD'),
+        current=tabs[0];
+    function select(tab,focusIt){
+      if(!tab) return;
+      current=tab;
+      tabs.forEach(function(t){
+        var on=t===tab;
+        t.setAttribute('aria-selected',on?'true':'false');
+        t.tabIndex=on?0:-1;
+      });
+      var label=tab.getAttribute('data-label')||'',
+          d=tab.getAttribute('data-desc')||'',
+          alt=tab.getAttribute('data-alt')||label;
+      stageL.src=tab.getAttribute('data-light'); stageL.alt=alt+' (light)';
+      stageD.src=tab.getAttribute('data-dark'); stageD.alt=alt+' (dark)';
+      capK.textContent=label; capD.textContent=d;
+      panel.setAttribute('aria-labelledby',tab.id);
+      stage.setAttribute('aria-label','View the '+label+' playbook artifact full render');
+      if(focusIt){tab.focus(); tab.scrollIntoView({block:'nearest',inline:'nearest'});}
+    }
+    tabs.forEach(function(tab){
+      tab.addEventListener('click',function(){select(tab,false);});
+    });
+    strip.addEventListener('keydown',function(e){
+      var i=tabs.indexOf(document.activeElement); if(i<0)i=tabs.indexOf(current);
+      var next=null;
+      if(e.key==='ArrowRight'||e.key==='ArrowDown')next=tabs[(i+1)%tabs.length];
+      else if(e.key==='ArrowLeft'||e.key==='ArrowUp')next=tabs[(i-1+tabs.length)%tabs.length];
+      else if(e.key==='Home')next=tabs[0];
+      else if(e.key==='End')next=tabs[tabs.length-1];
+      if(next){e.preventDefault();select(next,true);}
+    });
+    /* The stage opens the full render for the current selection; focus returns to it. */
+    if(pbLightbox){
+      stage.addEventListener('click',function(){pbLightbox.openFrom(current,stage);});
+    }
   })();
 </script>
 </body>
