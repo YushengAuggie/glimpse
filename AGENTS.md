@@ -134,7 +134,8 @@ functions as ESM `export`s (so `node:test` can unit-test them) behind an
 | `glimpse-explain.mjs` | `cmd_explain` | `node … {validate\|wrap <title>}` — exports `validate`/`wrapArtifact`/`truncateSnippet`/`SpecError` |
 | `glimpse-ask.mjs` | `cmd_ask` (`--form` only) | `node … {validate\|wrap <title>}` — reads a decision-form spec on stdin, renders native accessible controls (see "`glimpse ask --form`" below) |
 | `glimpse-export.mjs` | `_inline_artifact` (→ `cmd_export`, `cmd_share`) | `node … <src.html>` (argv) + env `SECRET_PATTERN` — offline inliner; HTML→stdout, warnings→stderr; exports `transform`/`scrubSecrets` |
-| `glimpse-share.mjs` | `cmd_share` | `node …`; HTML on **stdin**; env `GLIMPSE_PASSWORD GLIMPSE_HTML_APP_BASE GLIMPSE_HTML_APP_TOKEN` — POSTs to ht-ml.app, prints `{url,site_id,update_key,private}` JSON |
+| `glimpse-share.mjs` | `cmd_share` | `node …`; HTML on **stdin**; env `GLIMPSE_PASSWORD GLIMPSE_HTML_APP_BASE GLIMPSE_HTML_APP_TOKEN` + update env `GLIMPSE_UPDATE_SITE_ID GLIMPSE_UPDATE_KEY GLIMPSE_UPDATE_URL` — POST to create OR **PUT to update-in-place** when the update env is set; prints `{url,site_id,update_key,private}` JSON. Exports pure `planRequest`/`shapeResult` (POST-vs-PUT + password semantics) behind an `import.meta` CLI guard |
+| `glimpse-shares.mjs` | `cmd_share` (record), `cmd_shares` (get/list) | `node … {record\|get\|list}`; env `GLIMPSE_DIR SLUG URL SITE_ID UPDATE_KEY VISIBILITY PASSWORD TS SHARES_JSON` — locked read-modify-write on `shares.json` (imports `glimpse-store.mjs`, so ships next to it); exports `recordShare`/`getShare`/`listShares`/`readShares` |
 | `glimpse-audit-report.mjs` | `cmd_audit`, `_publish_autoaudit` | `node …` reads audit JSON on stdin; env `MODE`(full\|brief) `SLUG`; exits 2 iff an error-severity finding |
 | `glimpse-cdp.mjs` | `run_cdp`, `cmd_bridge` | shared CDP client (`cdpConnect`, `fail`) — **spliced** ahead of the body via `node --input-type=module -e "$(cat …)"` |
 | `glimpse-bridge.mjs` | `cmd_bridge` | the highlight-chat bridge loop — spliced after `glimpse-cdp.mjs`; env `GLIMPSE_BIN WAIT PORT GLIMPSE_DIR` (+ daemon `GLIMPSE_ANSWER …`) |
@@ -267,17 +268,43 @@ offline inliner, `lib/glimpse-export.mjs`, via the `_inline_artifact` helper.
     artifacts/`, so "next to source" would bury the file. `--out` overrides. (This
     is where it deliberately differs from `lavish-axi export`, whose source is a
     user-visible `.lavish/` file.)
-- **`glimpse share <slug> [--public] [--password <pw>]`** builds the same inlined
-  bundle and uploads it to **ht-ml.app** (`lib/glimpse-share.mjs`, Node stdlib),
-  printing the visitable URL + the secret `update_key`.
+- **`glimpse share <slug> [--public] [--password <pw>] [--update]`** builds the
+  same inlined bundle and uploads it to **ht-ml.app** (`lib/glimpse-share.mjs`,
+  Node stdlib), printing the visitable URL + the secret `update_key`.
   - **PRIVATE by default** — a firm product decision that deliberately **diverges
     from lavish's public-by-default**. With no flag, the page is
     password-protected: `--password <pw>` sets it, otherwise a strong random one
-    is minted (`secrets.token_urlsafe`) and printed. `--public` opts into a fully
+    is minted (Node `crypto.randomBytes`) and printed. `--public` opts into a fully
     open page. `--public` + `--password` is rejected.
+  - **`--update` re-uploads to the SAME page (URL preserved)** via a PUT to
+    `/sites/<id>` authed with the stored `update_key` (the "manage the page later"
+    flow — see the `html` skill's PUT contract). With no visibility flag it keeps
+    the prior public/private state; `--public`/`--password` change it (on update
+    the password field is ALWAYS sent — value sets it, `""` clears → public).
   - Prints a concise **"this leaves your machine to a third-party public host"
     notice to stderr before every upload** (glimpse otherwise markets itself as
     local & serverless, so the egress must be unmistakable).
+
+- **Persist + retrieve (`shares.json`).** Every successful share (CLI *and* the
+  canvas path) records `{url, site_id, update_key, visibility, password?, ts}` to
+  `~/.glimpse/shares.json`, keyed by slug, via `lib/glimpse-shares.mjs` (same
+  locked writer as feed/threads). The file is **`0600` and never served** — it
+  holds the secret update_key + password, so it must NOT be added to the static
+  server. `glimpse shares` lists records; `glimpse shares <slug> [--json]` recovers
+  one without re-uploading. The password is stored locally on purpose (it is
+  already on the machine) so a private link stays recoverable.
+
+- **Canvas Share dialog (`canvas/index.html`).** The header Share button opens an
+  inline focus-trapped, Esc-close, theme-aware sheet (shell tokens; light+dark via
+  `__applyTheme`) — the dialog **is** the egress confirm. It offers Public/Private
+  (Private pre-selected) + a password field (private only; blank ⇒ CLI generates),
+  sends the choice over the existing pull-only `glimpse:action` `share` outbox
+  entry as `opts:{public?,password?,update?}` (the bridge's `shareArgs` maps it to
+  CLI flags — never a new inbound endpoint). An **already-shared** artifact's
+  button turns accent and the dialog becomes a *manage* view: the existing link +
+  copy button (+ password for private), and an Update/New-page choice. The shared
+  state is learned via a **read-only `share-info` action** (bridge runs `glimpse
+  shares <slug> --json` and pushes the record back over CDP) — never a re-upload.
 
 **Naming resolution (the collision):** glimpse already had `publish`/`cmd_publish`
 = publish to the *local* canvas. The remote share is a **separate verb, `share`**
@@ -293,7 +320,10 @@ uploaded, so a secret that slipped into an artifact or a local asset is never
 baked into a portable file that leaves the machine. `share`'s only network egress
 is ht-ml.app, and its endpoint host is **anchored** (`host == "ht-ml.app" ||
 host.endswith(".ht-ml.app")`) — a `GLIMPSE_HTML_APP_BASE` override can't point it
-elsewhere. There is no delete endpoint on ht-ml.app; a shared page persists.
+elsewhere (create AND update). There is no delete endpoint on ht-ml.app; a shared
+page persists (but `--update` can overwrite it). `shares.json` holds the secret
+`update_key` + password, so it is `0600` and **never served** — the canvas learns
+share state only over the pull-only bridge (`share-info`), never an HTTP endpoint.
 
 ## Highlight-chat feedback: `poll` (one blocking call) vs `bridge` (a stream)
 
@@ -499,8 +529,11 @@ The canvas no longer busy-polls for new content. The static server
   browser). Includes the ported lib-ops tests: `test_glimpse_export.mjs` (the inliner),
   `test_glimpse_threads_multi.mjs` (two artifacts keep separate threads / pending /
   replies, and clearing one leaves the other), `test_glimpse_explain.mjs`,
-  `test_glimpse_ask.mjs`, and `test_audit_report.mjs` — each drives the real `.mjs`
-  module's exported functions. Also the pure-logic renderer/bridge/poll/snapshot units:
+  `test_glimpse_ask.mjs`, `test_audit_report.mjs`, `test_glimpse_shares.mjs` (the
+  shares-store round-trip: record→get/list, `0600`, upsert, public omits password),
+  and `test_glimpse_share_request.mjs` (the pure `planRequest`/`shapeResult` helpers
+  — POST-create vs PUT-update + password semantics, no network) — each drives the
+  real `.mjs` module's exported functions. Also the pure-logic renderer/bridge/poll/snapshot units:
   `test_snapshot_render.mjs` drives the real `lib/glimpse-snapshot.mjs` body with a
   stubbed CDP channel (no browser) to cover tree-building, node collapsing, iframe
   grafting, and secret scrubbing; `test_read_render.mjs` / `test_interact_render.mjs`

@@ -353,6 +353,10 @@ glimpse export arch                      # → ./arch.export.html (self-containe
 glimpse share  arch                      # upload to ht-ml.app; prints URL + secret update_key
 glimpse share  arch --public             # opt into a fully open page
 glimpse share  arch --password hunter2   # set your own view password
+glimpse share  arch --update             # re-upload to the SAME page (URL kept), reusing the stored key
+glimpse shares                           # list shared artifacts (slug · visibility · when · url)
+glimpse shares arch                      # recover arch's url + update key + password (local; no re-upload)
+glimpse shares --json                    # machine-readable list
 ```
 
 - **`export`** writes one self-contained HTML file that opens with no server and no
@@ -361,8 +365,20 @@ glimpse share  arch --password hunter2   # set your own view password
   default**: with no flag the page is password-protected (a strong random password
   is minted and printed); `--public` opts out. `--public` + `--password` is
   rejected. It prints a "this leaves your machine to a third-party public host"
-  notice before every upload. ht-ml.app has no delete endpoint — a shared page
-  persists.
+  notice before every upload. Public/private + password are also selectable from
+  the canvas **Share dialog** (the dialog *is* the egress confirm).
+- **`shares` — persist & recover.** Every successful share (CLI *or* canvas) is
+  recorded to `~/.glimpse/shares.json`, keyed by slug: `{url, site_id, update_key,
+  visibility, password?, ts}`. The file stays local and `0600` (it holds the secret
+  update_key + password) — it is never served. `glimpse shares` lists them;
+  `glimpse shares <slug>` recovers a link without re-uploading. In the canvas, an
+  already-shared artifact's Share button becomes a **manage** view — the existing
+  link with a copy button, plus Update vs a fresh share.
+- **`share --update` — manage the page later.** Re-uploads the current render to
+  the *same* ht-ml.app page (URL preserved) using the stored `update_key` (a PUT).
+  With no visibility flag it keeps the prior public/private setting; add `--public`
+  or `--password` to change it. ht-ml.app has no delete endpoint — a shared page
+  persists (but you can overwrite it with `--update`).
 
 ## Configuration
 
