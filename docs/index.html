@@ -112,7 +112,18 @@
   .btn-primary{background:var(--accent);color:#fff;box-shadow:0 8px 20px -10px color-mix(in srgb,var(--accent) 70%,transparent);}
   :root[data-theme="dark"] .btn-primary, :root[data-theme="auto"] .btn-primary{color:#0e0f16;}
   @media (prefers-color-scheme: light){ :root[data-theme="auto"] .btn-primary{color:#fff;} }
+  /* Dark: the pale accent needs a ring + glow so the primary action wins its cluster. */
+  :root[data-theme="dark"] .btn-primary, :root[data-theme="auto"] .btn-primary{
+    box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 60%,transparent),
+      0 10px 30px -8px color-mix(in srgb,var(--accent) 60%,transparent);}
+  @media (prefers-color-scheme: light){ :root[data-theme="auto"] .btn-primary{
+    box-shadow:0 8px 20px -10px color-mix(in srgb,var(--accent) 70%,transparent);} }
   .btn-primary:hover{filter:brightness(1.06);box-shadow:0 12px 26px -10px color-mix(in srgb,var(--accent) 75%,transparent);}
+  :root[data-theme="dark"] .btn-primary:hover, :root[data-theme="auto"] .btn-primary:hover{
+    box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 75%,transparent),
+      0 14px 36px -8px color-mix(in srgb,var(--accent) 70%,transparent);}
+  @media (prefers-color-scheme: light){ :root[data-theme="auto"] .btn-primary:hover{
+    box-shadow:0 12px 26px -10px color-mix(in srgb,var(--accent) 75%,transparent);} }
   .btn-ghost{background:var(--bg-elev);color:var(--ink);border-color:var(--line);box-shadow:var(--shadow-sm);}
   .btn-ghost:hover{border-color:var(--accent);color:var(--accent-ink);}
   .btn svg{width:17px;height:17px;flex:none;}
@@ -180,6 +191,7 @@
   .stat .k{font:600 10.5px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);}
   .stat .v{font-size:clamp(18px,2.6vw,22px);font-weight:760;margin-top:6px;color:var(--ink);letter-spacing:-.02em;}
   .stat .v .up{font-size:12px;font-weight:650;color:var(--good);margin-left:6px;}
+  .stat .v .dn{font-size:12px;font-weight:650;color:var(--ink-3);margin-left:6px;}
   .chart{display:flex;align-items:flex-end;gap:clamp(6px,1.4vw,11px);height:76px;padding:14px 16px;background:var(--bg-elev);
     border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-sm);margin-bottom:18px;}
   .chart i{flex:1;min-width:0;border-radius:5px 5px 0 0;
@@ -211,7 +223,7 @@
   .section-head.center{text-align:center;display:flex;flex-direction:column;align-items:center;}
 
   /* ---- Pillars (differentiator splits) ------------------------------------- */
-  .pillar-split{display:grid;gap:clamp(26px,4vw,56px);align-items:center;
+  .pillar-split{display:grid;gap:clamp(26px,4vw,56px);align-items:start;
     grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr));}
   .pillar-split > *{min-width:0;}
   .pillar-split + .pillar-split{margin-top:clamp(52px,8vw,86px);}
@@ -270,8 +282,10 @@
   .shot{border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:var(--bg-elev);box-shadow:var(--shadow-sm);
     transition:border-color .15s ease,box-shadow .15s ease,transform .12s ease;}
   .shot:hover{border-color:color-mix(in srgb,var(--accent) 45%,var(--line));box-shadow:var(--shadow);transform:translateY(-2px);}
+  /* Contain the full artifact on a padded sunk surface so each render stays
+     legible as a real page (not a cropped grey rectangle). Shots are ~16/10. */
   .shot-imgs{position:relative;aspect-ratio:16/10;background:var(--bg-sunk);overflow:hidden;}
-  .shot-imgs img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top center;}
+  .shot-imgs img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:center;padding:12px;}
   /* Theme-aware swap: show the screenshot matching the active theme */
   .shot-imgs .dark{display:none;} .shot-imgs .light{display:block;}
   @media (prefers-color-scheme: dark){
@@ -308,6 +322,9 @@
   td.desc{color:var(--ink-2);}
   .grp-row td{background:color-mix(in srgb,var(--accent-soft) 60%,var(--bg-elev));
     font:600 11px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent-ink);padding:9px 18px;}
+  /* Full-width section (edges match the page); cap the table so rows stay readable. */
+  #cli .table-wrap{max-width:900px;}
+  #cli td.desc{max-width:520px;}
 
   /* ---- Final CTA ----------------------------------------------------------- */
   .cta-band{background:linear-gradient(135deg,var(--bg-elev),var(--bg-tint));
@@ -322,9 +339,9 @@
   .foot-brand{display:flex;align-items:center;gap:10px;font-weight:700;color:var(--ink-2);}
   .foot-brand img{width:24px;height:24px;border-radius:6px;}
   .foot-links{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:14px;}
-  .foot-links a{color:var(--ink-3);}
+  .foot-links a{color:var(--ink-2);}
   .foot-links a:hover{color:var(--ink);}
-  .foot-note{font-size:13px;margin-top:16px;color:var(--ink-3);}
+  .foot-note{font-size:13px;margin-top:16px;color:var(--ink-2);}
 
   @media (prefers-reduced-motion:reduce){ *{transition:none!important;animation:none!important;scroll-behavior:auto!important;} }
 </style>
@@ -354,10 +371,10 @@
 <section class="hero">
   <div class="wrap">
     <div class="hero-badge"><span class="pip"></span>Local · real Chrome over CDP · two-way</div>
-    <h1>Your AI agent gets a <span class="grad">real browser</span>.</h1>
-    <p class="hero-lede">Glimpse renders your agent's work as live HTML, lets it <b>drive and inspect
-      your running app</b> over the Chrome DevTools Protocol, and lets you <b>highlight anything to
-      talk back</b>. It's a two-way visual canvas — and it all runs on your machine.</p>
+    <h1>Your AI coding agent gets a <span class="grad">real browser</span>.</h1>
+    <p class="hero-lede">Glimpse renders your agent's work as live HTML and <b>drives your running app
+      through a real Chrome</b>. Your agent inspects the real page; you <b>highlight anything on screen
+      to talk back</b>. It all runs on your machine.</p>
     <div class="hero-cta">
       <a class="btn btn-primary" href="#quickstart">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="8 6 3 12 8 18"/><polyline points="16 6 21 12 16 18"/></svg>
@@ -400,7 +417,7 @@
           <div class="stat-row">
             <div class="stat"><div class="k">Orders</div><div class="v">1,284<span class="up">▲ 12%</span></div></div>
             <div class="stat"><div class="k">Revenue</div><div class="v">$48.2k<span class="up">▲ 8%</span></div></div>
-            <div class="stat"><div class="k">Refunds</div><div class="v">17</div></div>
+            <div class="stat"><div class="k">Refunds</div><div class="v">17<span class="dn">▼ 3%</span></div></div>
           </div>
           <div class="chart" aria-hidden="true">
             <i style="height:38%"></i><i style="height:54%"></i><i style="height:46%"></i>
@@ -429,22 +446,22 @@
     <div class="section-head center">
       <div class="eyebrow center">Why Glimpse</div>
       <h2 class="section-title">Three things a terminal can't do.</h2>
-      <p class="section-lede">Glimpse fixes the rendering surface, not the model — and turns the one Chrome
-        it needs into a moat: your agent can drive real apps, and you can answer back in place.</p>
+      <p class="section-lede">A terminal can't show your agent what it built, let it drive a real app, or
+        let you point at the screen and reply. A real Chrome can.</p>
     </div>
 
-    <!-- Pillar 1 — the CDP moat (lead) -->
+    <!-- Pillar 1 — real Chrome over CDP (lead) -->
     <div class="pillar-split">
       <div>
-        <div class="pillar-num"><span class="b">1</span>The moat · real Chrome over CDP</div>
-        <h2 class="section-title">It doesn't just render — it drives your live app.</h2>
-        <p class="section-lede">Because Glimpse renders through a real Chrome over the Chrome DevTools
-          Protocol, that one connection does double duty. Your agent can open your running app and
-          inspect the real page — the thing a static-artifact tool can never see.</p>
+        <div class="pillar-num"><span class="b">1</span>Real Chrome over CDP</div>
+        <h2 class="section-title">It doesn't just render. It drives your live app.</h2>
+        <p class="section-lede">Glimpse renders through a real Chrome, so the same connection also opens
+          your running app. Your agent inspects the live page: state, console, network and all, which a
+          static-artifact tool never sees.</p>
         <ul class="feature-list">
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>Inspect, read-only:</b> <code>read</code> a page's text + console + uncaught errors, capture a <code>shot</code>, or take an a11y-tree <code>snapshot</code>.</span></li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>Interact:</b> <code>click</code>, <code>scroll</code>, and <code>wait</code> for elements — the only intentionally state-changing verbs, never a side effect of reading.</span></li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>A dedicated profile:</b> the CDP Chrome doesn't see your everyday logins or tabs — only what you load into it.</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>Interact:</b> <code>click</code>, <code>scroll</code>, and <code>wait</code> for elements. These are the only intentionally state-changing verbs, never a side effect of reading.</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>A dedicated profile:</b> the CDP Chrome doesn't see your everyday logins or tabs, only what you load into it.</span></li>
         </ul>
       </div>
       <div class="terminal" role="img" aria-label="Terminal commands for driving a live app over CDP">
@@ -469,8 +486,8 @@
         <div class="chat-doc">
           <h4>How the round-trip works</h4>
           <p>When you ask, the question is captured with a
-            <mark>text-quote anchor<span class="pin">1</span></mark> — the exact words plus a little
-            surrounding context — so the highlight can be re-found even after the document re-renders.</p>
+            <mark>text-quote anchor<span class="pin">1</span></mark>: the exact words plus a little
+            surrounding context, so the highlight can be re-found even after the document re-renders.</p>
         </div>
         <div class="chat-thread">
           <div class="chat-turn q"><span class="who">You</span><span class="bubble">Why anchor to the selection, not store DOM offsets?</span></div>
@@ -480,13 +497,13 @@
       <div>
         <div class="pillar-num"><span class="b">2</span>Two-way · durable threads</div>
         <h2 class="section-title">Highlight anything. Ask in place. It sticks.</h2>
-        <p class="section-lede">Feedback isn't a chat log that scrolls away. Select any passage and ask —
+        <p class="section-lede">Feedback isn't a chat log that scrolls away. Select any passage and ask:
           the answer threads in the margin, anchored to your highlight and saved per document, so it
           survives refreshes, restarts, and fresh sessions.</p>
         <ul class="feature-list">
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span><b><code>glimpse poll</code></b> is one blocking call an agent parks on — it waits for feedback, prints a token-efficient record, and returns.</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span><b><code>glimpse poll</code></b> is one blocking call an agent parks on. It waits for feedback, prints a token-efficient record, and returns.</span></li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span><b><code>glimpse ask</code></b> flips it around: the agent publishes an interactive form and blocks until you approve, pick, or note.</span></li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>No inbound endpoint.</b> The bridge <i>pulls</i> questions over the CDP channel that's already open — nothing new listens on the network.</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>No inbound endpoint.</b> The bridge <i>pulls</i> questions over the CDP channel that's already open. Nothing new listens on the network.</span></li>
         </ul>
       </div>
     </div>
@@ -495,23 +512,23 @@
     <div class="pillar-split">
       <div>
         <div class="pillar-num"><span class="b">3</span>Local · private · serverless</div>
-        <h2 class="section-title">A personal screen between you and one agent.</h2>
-        <p class="section-lede">Everything runs on your machine — a static file server and a Chrome window,
-          both on loopback. No account, no hosted server, no telemetry. And a tiny macOS menu-bar daemon
-          keeps the canvas answering even with no live session.</p>
+        <h2 class="section-title">Private by default. Nothing leaves your machine.</h2>
+        <p class="section-lede">Everything runs on your machine: a static file server and a Chrome window,
+          both on loopback. No account, no hosted server, no telemetry. An optional macOS menu-bar daemon
+          can keep answering even when you're not at the keyboard.</p>
         <ul class="feature-list">
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg><span><b>Sandboxed artifacts:</b> each renders in an <code>allow-scripts</code>-only iframe (opaque origin), so artifact JS can't reach the shell or a sibling.</span></li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg><span><b>Egress is loud, never silent:</b> feedback is treated as untrusted data and secret-scrubbed; <code>share</code> prints a notice before anything leaves your machine.</span></li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg><span><b>Always-on, optional:</b> <code>glimpse daemon</code> auto-answers via an Anthropic-compatible proxy — Q&amp;A only, no tools, writes nothing but the answer.</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg><span><b>Always-on, optional:</b> <code>glimpse daemon</code> auto-answers via an Anthropic-compatible proxy: Q&amp;A only, no tools, writes nothing but the answer.</span></li>
         </ul>
       </div>
       <div class="trust-card">
         <div class="shield"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg></div>
         <h2 class="section-title" style="font-size:19px;">Local &amp; private by design</h2>
         <p class="section-lede" style="font-size:15px;">No walls of terminal text, and no data you didn't send.
-          The one part that can call out — the optional daemon — is explicit about exactly what it sends.</p>
+          The one part that can call out, the optional daemon, is explicit about exactly what it sends.</p>
         <div class="callout good">
-          <p>Read the model, not just the marketing: the data flow, alternatives, and full threat model are in
+          <p>Don't take our word for it: the data flow, alternatives, and full threat model are in
             <a href="https://github.com/YushengAuggie/glimpse/blob/main/docs/DESIGN.md" rel="noopener">docs/DESIGN.md</a> and
             <a href="https://github.com/YushengAuggie/glimpse/blob/main/SECURITY.md" rel="noopener">SECURITY.md</a>.</p>
         </div>
@@ -526,9 +543,9 @@
     <div class="section-head center">
       <div class="eyebrow center">Authoring playbooks</div>
       <h2 class="section-title">What a published artifact looks like.</h2>
-      <p class="section-lede">Glimpse ships a set of authoring playbooks — the friendliness &amp; quality layer.
-        First-class light <i>and</i> dark mode, indigo accent, monospace eyebrows, no overflow at any
-        nesting level. These are real example renders — <b>they follow your theme</b>.</p>
+      <p class="section-lede">Your agent's output doesn't have to be a wall of text. Glimpse ships authoring
+        playbooks that turn plans, diagrams, tables, and diffs into clean, readable artifacts, in light and
+        dark. <b>Every render below follows your theme.</b></p>
     </div>
     <div class="gallery">
       <figure class="shot">
@@ -536,7 +553,7 @@
           <img class="light" src="assets/shots/diagram-light.png" alt="Diagram playbook artifact, light mode — a request-flow Mermaid graph with component cards.">
           <img class="dark" src="assets/shots/diagram-dark.png" alt="Diagram playbook artifact, dark mode — a request-flow Mermaid graph with component cards.">
         </div>
-        <figcaption class="shot-cap"><span class="k">Diagram</span><span class="d">Flows, state &amp; architecture, re-themed live</span></figcaption>
+        <figcaption class="shot-cap"><span class="k">Diagram</span><span class="d">Flows, state, and architecture</span></figcaption>
       </figure>
       <figure class="shot">
         <div class="shot-imgs">
@@ -573,6 +590,13 @@
         </div>
         <figcaption class="shot-cap"><span class="k">Input</span><span class="d">Native, accessible decision forms</span></figcaption>
       </figure>
+      <figure class="shot">
+        <div class="shot-imgs">
+          <img class="light" src="assets/shots/slides-light.png" alt="Slides playbook artifact, light mode — a paced presentation deck.">
+          <img class="dark" src="assets/shots/slides-dark.png" alt="Slides playbook artifact, dark mode — a paced presentation deck.">
+        </div>
+        <figcaption class="shot-cap"><span class="k">Slides</span><span class="d">A paced, one-idea-per-screen deck</span></figcaption>
+      </figure>
     </div>
   </div>
 </section>
@@ -602,7 +626,7 @@
       <div class="step">
         <div class="n">3</div>
         <h3>Publish &amp; talk back</h3>
-        <p>Publish an example, then <b>select a sentence and ask</b> — run <code>glimpse poll</code> to receive it and <code>glimpse reply</code> to answer.</p>
+        <p>Publish an example, then <b>select a sentence and ask</b>. Run <code>glimpse poll</code> to receive it and <code>glimpse reply</code> to answer.</p>
       </div>
     </div>
 
@@ -634,7 +658,7 @@
 
 <!-- ===== CLI reference ===== -->
 <section id="cli">
-  <div class="wrap narrow">
+  <div class="wrap">
     <div class="section-head">
       <div class="eyebrow">CLI reference</div>
       <h2 class="section-title">Every verb, grouped.</h2>
@@ -652,7 +676,7 @@
           <tr><td><code>glimpse ask &lt;slug&gt; &lt;title&gt; [file] --form</code></td><td class="desc">Publish interactive, block for a structured response (JSON).</td></tr>
 
           <tr class="grp-row"><td colspan="2">Converse</td></tr>
-          <tr><td><code>glimpse poll [--json] [--timeout N]</code></td><td class="desc">Block until there's human feedback, print it, return — one call an agent parks on.</td></tr>
+          <tr><td><code>glimpse poll [--json] [--timeout N]</code></td><td class="desc">Block until there's human feedback, print it, return. One call an agent parks on.</td></tr>
           <tr><td><code>glimpse reply &lt;slug&gt; "answer" --to &lt;id&gt;</code></td><td class="desc">Answer a highlighted question, pinned to its anchor.</td></tr>
           <tr><td><code>glimpse thread[s] [--json|--clear]</code></td><td class="desc">Print one conversation thread, or list all of them.</td></tr>
           <tr><td><code>glimpse daemon</code></td><td class="desc">Always-on: bridge + auto-answer via the API proxy.</td></tr>
@@ -668,7 +692,7 @@
           <tr><td><code>glimpse export &lt;slug&gt; [--out path]</code></td><td class="desc">Write a single self-contained offline HTML file.</td></tr>
           <tr><td><code>glimpse share &lt;slug&gt; [--public]</code></td><td class="desc">Upload a portable copy (private &amp; password-protected by default).</td></tr>
           <tr><td><code>glimpse list · rm · clear · pin</code></td><td class="desc">Keep the sidebar tidy (pinned artifacts are always kept).</td></tr>
-          <tr><td><code>glimpse doctor</code></td><td class="desc">Check dependencies and running state — loud and scriptable.</td></tr>
+          <tr><td><code>glimpse doctor</code></td><td class="desc">Check dependencies and running state; loud and scriptable.</td></tr>
         </tbody>
       </table>
     </div>
@@ -682,7 +706,7 @@
       <div class="eyebrow center">Get started</div>
       <h2>Give your agent a real browser.</h2>
       <p>Clone the repo, run one install script, and your next agent session can render its work,
-        drive your live app, and hear you highlight back — all on your machine.</p>
+        drive your live app, and take the feedback you point at on screen. All on your machine.</p>
       <div class="hero-cta">
         <a class="btn btn-primary" href="https://github.com/YushengAuggie/glimpse" rel="noopener">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.7.5.5 5.7.5 12a11.5 11.5 0 0 0 7.9 10.9c.6.1.8-.2.8-.6v-2c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.7 1.3 3.4 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.4 11.4 0 0 1 6 0C17.3 4.6 18.3 5 18.3 5c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .4.2.7.8.6A11.5 11.5 0 0 0 23.5 12C23.5 5.7 18.3.5 12 .5Z"/></svg>
