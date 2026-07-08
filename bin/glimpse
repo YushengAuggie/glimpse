@@ -41,6 +41,7 @@
 #   glimpse click <selector>     click the first element matching a CSS selector (explicit, state-changing)
 #   glimpse scroll <selector> | --to <px> | --by <px>   scroll the current app page
 #   glimpse wait <selector> | --text <str> [--timeout N]   wait until an element/text appears (default 8s)
+#   glimpse gc [--all]           close leftover tabs in the canvas Chrome (default: about:blank/srcdoc strays; --all: every non-canvas tab)
 #   glimpse doctor               check dependencies and running state
 #   glimpse help
 #
@@ -863,7 +864,7 @@ cmd_shot(){
   # before capture guards against a backgrounded tab yielding a blank frame.
   OUT="$out" URL="$url" run_cdp '
     const url=process.env.URL||"";
-    const {send,waitEvent,close}=await cdpConnectApp(url);
+    const {send,waitEvent,close,created,closeTab}=await cdpConnectApp(url);
     await send("Page.enable");
     if(url){
       const loaded=waitEvent("Page.loadEventFired",12000).catch(()=>{});
@@ -872,7 +873,9 @@ cmd_shot(){
     try{ await send("Page.bringToFront"); }catch(_){}
     const {data}=await send("Page.captureScreenshot",{format:"png"});
     const fs=await import("fs"); fs.writeFileSync(process.env.OUT, Buffer.from(data,"base64"));
-    console.log("saved", process.env.OUT); close();
+    console.log("saved", process.env.OUT);
+    // Close the throwaway tab we opened; a reused app tab just drops the socket.
+    if(created){ await closeTab(); } else { close(); }
   '
 }
 
@@ -997,6 +1000,43 @@ cmd_snapshot(){
   cmd_chrome >/dev/null
   local snap; snap="$(_lib_file glimpse-snapshot.mjs)" || die "glimpse-snapshot.mjs not found — reinstall glimpse"
   URL="$url" run_cdp "$(cat "$snap")"
+}
+
+# glimpse gc — close leftover tabs in the canvas Chrome. One-shot review verbs now
+# clean up the throwaway tab they open (see lib/glimpse-cdp.mjs closeTab), but this
+# reclaims tabs already accumulated (e.g. before the fix, or crash-orphaned) and is
+# a manual safety net. Conservative by default: closes only about:blank/about:srcdoc
+# strays. `--all` also closes every non-canvas page tab (the canvas tab is ALWAYS
+# kept). Never launches Chrome — if the debug port is down there is nothing to gc.
+cmd_gc(){
+  local all=0
+  case "${1:-}" in
+    --all) all=1;;
+    "") ;;
+    *) die "usage: glimpse gc [--all]";;
+  esac
+  if ! curl -fsS "http://127.0.0.1:${CDP_PORT}/json/version" >/dev/null 2>&1; then
+    echo "glimpse: Chrome not running on :$CDP_PORT — nothing to gc"; return 0
+  fi
+  require_node
+  CDP_PORT="$CDP_PORT" PORT="$PORT" GC_ALL="$all" node --input-type=module -e '
+    const base=`http://127.0.0.1:${process.env.CDP_PORT}`;
+    const port=process.env.PORT||"";
+    const all=process.env.GC_ALL==="1";
+    const hostOf=(u)=>{ try{ return new URL(u).host; }catch{ return ""; } };
+    const isCanvas=(u)=>{ const h=hostOf(u); return !!port && (h===`127.0.0.1:${port}`||h===`localhost:${port}`); };
+    const stray=(u)=> u==="about:blank"||u==="about:srcdoc"||u===""||u==="chrome://newtab/";
+    const targets=await fetch(`${base}/json`).then(r=>r.json()).catch(()=>[]);
+    const pages=targets.filter(t=>t.type==="page");
+    const victims=pages.filter(t=> all ? !isCanvas(t.url) : stray(t.url));
+    let n=0;
+    for(const t of victims){
+      try{ await fetch(`${base}/json/close/${t.id}`); n++; console.log("closed", t.url||"(blank)"); }
+      catch(e){ console.error("skip", t.id, (e&&e.message)||e); }
+    }
+    const hint = all ? "" : " (about:blank/srcdoc only; use --all to also close non-canvas tabs)";
+    console.log(`glimpse gc: closed ${n} tab(s), ${pages.length-n} kept${hint}`);
+  '
 }
 
 cmd_bridge(){
@@ -1311,6 +1351,7 @@ case "${1:-help}" in
   click)   shift; cmd_click "$@";;
   scroll)  shift; cmd_scroll "$@";;
   wait)    shift; cmd_wait "$@";;
+  gc)      shift; cmd_gc "$@";;
   audit)   shift; cmd_audit "$@";;
   doctor)  shift; cmd_doctor "$@";;
   help|-h|--help) usage;;
