@@ -35,12 +35,38 @@ need(h.includes("https://cdn.tailwindcss.com"), "remote CDN ref must be preserve
 console.log("export-ok");
 JS
 
+# BUG-1: a UI/daemon-style export inherits the daemon's cwd ("/"). With no --out it
+# used to default to $PWD → "//demo.export.html" and fail on the read-only root. It
+# must now fall back to a managed, always-writable dir ($GLIMPSE_DIR/exports).
+rootout="$( cd / && "$REPO/bin/glimpse" export demo 2>&1 )"
+echo "$rootout" | grep -q "exported → $GLIMPSE_DIR/exports/demo.export.html" \
+  || { echo "FAIL: export from cwd=/ must land in \$GLIMPSE_DIR/exports, got: $rootout"; exit 1; }
+echo "$rootout" | grep -q "//demo.export.html" && { echo "FAIL: export must never target the filesystem root"; exit 1; }
+[ -f "$GLIMPSE_DIR/exports/demo.export.html" ] || { echo "FAIL: managed export file not written"; exit 1; }
+# --out from cwd=/ is still honored verbatim (no fallback when the user names a path).
+( cd / && "$REPO/bin/glimpse" export demo --out "$OUTDIR/explicit.html" >/dev/null )
+[ -f "$OUTDIR/explicit.html" ] || { echo "FAIL: --out must be honored from any cwd"; exit 1; }
+
 # unknown slug fails clearly
 if "$REPO/bin/glimpse" export nope 2>/dev/null; then echo "FAIL: export of missing slug should error"; exit 1; fi
 
 # share: --public and --password are mutually exclusive (dies before any network)
 if "$REPO/bin/glimpse" share demo --public --password hunter2 2>/dev/null; then
   echo "FAIL: share --public --password should error"; exit 1; fi
+
+# share: --password with an empty value is rejected before any network egress.
+if "$REPO/bin/glimpse" share demo --password "" 2>/dev/null; then
+  echo "FAIL: share --password '' should error"; exit 1; fi
+
+# share branch: a CUSTOM password takes the private path (notice says PRIVATE), never
+# the generated one. Offline (non-ht-ml host) so the branch is proven without egress.
+custpw="$(GLIMPSE_HTML_APP_BASE='https://not-ht-ml.example.com/v1' \
+  "$REPO/bin/glimpse" share demo --password "my-custom-pw" 2>&1 1>/dev/null || true)"
+echo "$custpw" | grep -qi "PRIVATE" || { echo "FAIL: custom-password share must be PRIVATE"; exit 1; }
+# default (no flags) is ALSO private-by-default.
+defpw="$(GLIMPSE_HTML_APP_BASE='https://not-ht-ml.example.com/v1' \
+  "$REPO/bin/glimpse" share demo 2>&1 1>/dev/null || true)"
+echo "$defpw" | grep -qi "PRIVATE" || { echo "FAIL: default share must be PRIVATE"; exit 1; }
 
 # share prints the leaves-your-machine privacy notice (to stderr). Force the
 # uploader to refuse offline by pointing it at a non-ht-ml.app host, so this test

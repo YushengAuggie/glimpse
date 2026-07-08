@@ -653,6 +653,7 @@ function showActionToast(res){
     const d1=document.createElement('div'); d1.textContent=(res.update?'Updated':'Shared')+(pub?' (public) →':' (private) →'); wrap.appendChild(d1);
     const d2=document.createElement('div'); d2.textContent=res.url||'(no url)'; d2.style.color='var(--accent)'; wrap.appendChild(d2);
     if(!pub && res.password){ const d3=document.createElement('div'); d3.textContent='Password: '+res.password; wrap.appendChild(d3); }
+    if(res.note){ const d4=document.createElement('div'); d4.textContent=res.note; d4.style.cssText='font-size:11px; opacity:.75;'; wrap.appendChild(d4); }
     copyStr=(res.url||'')+((!pub && res.password)?('\nPassword: '+res.password):'');
   } else {
     const d1=document.createElement('div'); d1.textContent='Exported →'; wrap.appendChild(d1);
