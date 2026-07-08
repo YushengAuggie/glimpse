@@ -277,28 +277,55 @@
   .callout p{margin:0;color:var(--ink-2);font-size:14px;line-height:1.6;}
 
   /* ---- Playbook gallery ---------------------------------------------------- */
-  .gallery{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));}
+  /* ~2-up on desktop, 1-up on mobile — big enough to read a real detail. */
+  .gallery{display:grid;gap:20px;grid-template-columns:repeat(auto-fit,minmax(min(480px,100%),1fr));justify-content:center;}
   .gallery > *{min-width:0;}
-  .shot{border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:var(--bg-elev);box-shadow:var(--shadow-sm);
+  /* Each card is a button: click opens the full render in a lightbox. */
+  .shot{display:flex;flex-direction:column;width:100%;min-width:0;text-align:left;font:inherit;color:inherit;padding:0;cursor:zoom-in;
+    border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:var(--bg-elev);box-shadow:var(--shadow-sm);
     transition:border-color .15s ease,box-shadow .15s ease,transform .12s ease;}
   .shot:hover{border-color:color-mix(in srgb,var(--accent) 45%,var(--line));box-shadow:var(--shadow);transform:translateY(-2px);}
-  /* Contain the full artifact on a padded sunk surface so each render stays
-     legible as a real page (not a cropped grey rectangle). Shots are ~16/10. */
-  .shot-imgs{position:relative;aspect-ratio:16/10;background:var(--bg-sunk);overflow:hidden;}
-  .shot-imgs img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:center;padding:12px;}
-  /* Theme-aware swap: show the screenshot matching the active theme */
-  .shot-imgs .dark{display:none;} .shot-imgs .light{display:block;}
-  @media (prefers-color-scheme: dark){
-    :root[data-theme="auto"] .shot-imgs .light{display:none;}
-    :root[data-theme="auto"] .shot-imgs .dark{display:block;}
-  }
-  :root[data-theme="dark"] .shot-imgs .light{display:none;}
-  :root[data-theme="dark"] .shot-imgs .dark{display:block;}
-  :root[data-theme="light"] .shot-imgs .light{display:block;}
-  :root[data-theme="light"] .shot-imgs .dark{display:none;}
+  .shot:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  /* Top-anchored, over-sized crop: shows each artifact's title + first rows at a
+     legible scale (not the whole page miniaturized). Full render lives in the lightbox. */
+  .shot-imgs{position:relative;height:300px;background:var(--bg-sunk);overflow:hidden;}
+  .shot-imgs img{position:absolute;top:0;left:50%;transform:translateX(-50%);width:150%;max-width:none;height:auto;display:block;}
+  /* "View full" affordance on hover/focus. */
+  .shot-imgs::after{content:"View full";position:absolute;top:10px;right:10px;font:600 10px/1 var(--mono);letter-spacing:.09em;
+    text-transform:uppercase;color:#fff;background:color-mix(in srgb,var(--accent) 88%,#000);padding:6px 9px;border-radius:7px;
+    opacity:0;transform:translateY(-3px);transition:opacity .15s ease,transform .15s ease;pointer-events:none;}
+  .shot:hover .shot-imgs::after,.shot:focus-visible .shot-imgs::after{opacity:1;transform:none;}
   .shot-cap{padding:14px 16px;border-top:1px solid var(--line-2);display:flex;flex-wrap:wrap;gap:5px 8px;}
   .shot-cap .k{flex-basis:100%;font:600 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent);}
   .shot-cap .d{color:var(--ink-2);font-size:13.5px;min-width:0;}
+
+  /* Theme-aware swap: show the screenshot matching the active theme (cards + lightbox) */
+  .shot-imgs .dark,.lb-scroll .dark{display:none;} .shot-imgs .light,.lb-scroll .light{display:block;}
+  @media (prefers-color-scheme: dark){
+    :root[data-theme="auto"] .shot-imgs .light,:root[data-theme="auto"] .lb-scroll .light{display:none;}
+    :root[data-theme="auto"] .shot-imgs .dark,:root[data-theme="auto"] .lb-scroll .dark{display:block;}
+  }
+  :root[data-theme="dark"] .shot-imgs .light,:root[data-theme="dark"] .lb-scroll .light{display:none;}
+  :root[data-theme="dark"] .shot-imgs .dark,:root[data-theme="dark"] .lb-scroll .dark{display:block;}
+  :root[data-theme="light"] .shot-imgs .light,:root[data-theme="light"] .lb-scroll .light{display:block;}
+  :root[data-theme="light"] .shot-imgs .dark,:root[data-theme="light"] .lb-scroll .dark{display:none;}
+
+  /* ---- Lightbox (full-render viewer) --------------------------------------- */
+  .lightbox{position:fixed;inset:0;z-index:100;display:none;padding:clamp(16px,4vw,48px);}
+  .lightbox[open]{display:grid;place-items:center;}
+  .lb-backdrop{position:absolute;inset:0;background:color-mix(in srgb,var(--ink) 62%,transparent);backdrop-filter:blur(3px);}
+  .lb-panel{position:relative;z-index:1;display:flex;flex-direction:column;min-width:0;width:min(1100px,100%);max-height:90vh;
+    background:var(--bg-elev);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;}
+  .lb-bar{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line-2);min-width:0;}
+  .lb-bar .k{font:600 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent);flex:none;}
+  .lb-bar .d{color:var(--ink-2);font-size:13.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
+  .lb-close{flex:none;margin-left:auto;width:32px;height:32px;border-radius:8px;border:1px solid var(--line);background:var(--bg-sunk);
+    color:var(--ink-2);font-size:15px;line-height:1;cursor:pointer;display:grid;place-items:center;
+    transition:background .12s ease,color .12s ease,border-color .12s ease;}
+  .lb-close:hover{background:var(--accent-soft);color:var(--accent-ink);border-color:color-mix(in srgb,var(--accent) 40%,var(--line));}
+  .lb-close:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  .lb-scroll{overflow:auto;background:var(--bg-sunk);min-width:0;}
+  .lb-scroll img{display:block;width:100%;height:auto;}
 
   /* ---- Steps (quickstart) -------------------------------------------------- */
   .steps{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr));margin-bottom:26px;}
@@ -548,55 +575,69 @@
         dark. <b>Every render below follows your theme.</b></p>
     </div>
     <div class="gallery">
-      <figure class="shot">
-        <div class="shot-imgs">
+      <button type="button" class="shot" data-label="Diagram" data-desc="Flows, state, and architecture"
+        data-light="assets/shots/diagram-light.png" data-dark="assets/shots/diagram-dark.png"
+        data-alt="Diagram playbook artifact — a request-flow Mermaid graph with component cards." aria-label="View the Diagram playbook artifact full-size">
+        <span class="shot-imgs">
           <img class="light" src="assets/shots/diagram-light.png" alt="Diagram playbook artifact, light mode — a request-flow Mermaid graph with component cards.">
           <img class="dark" src="assets/shots/diagram-dark.png" alt="Diagram playbook artifact, dark mode — a request-flow Mermaid graph with component cards.">
-        </div>
-        <figcaption class="shot-cap"><span class="k">Diagram</span><span class="d">Flows, state, and architecture</span></figcaption>
-      </figure>
-      <figure class="shot">
-        <div class="shot-imgs">
+        </span>
+        <span class="shot-cap"><span class="k">Diagram</span><span class="d">Flows, state, and architecture</span></span>
+      </button>
+      <button type="button" class="shot" data-label="Plan" data-desc="A technical plan before implementation"
+        data-light="assets/shots/plan-light.png" data-dark="assets/shots/plan-dark.png"
+        data-alt="Plan playbook artifact — a technical plan before implementation." aria-label="View the Plan playbook artifact full-size">
+        <span class="shot-imgs">
           <img class="light" src="assets/shots/plan-light.png" alt="Plan playbook artifact, light mode.">
           <img class="dark" src="assets/shots/plan-dark.png" alt="Plan playbook artifact, dark mode.">
-        </div>
-        <figcaption class="shot-cap"><span class="k">Plan</span><span class="d">A technical plan before implementation</span></figcaption>
-      </figure>
-      <figure class="shot">
-        <div class="shot-imgs">
+        </span>
+        <span class="shot-cap"><span class="k">Plan</span><span class="d">A technical plan before implementation</span></span>
+      </button>
+      <button type="button" class="shot" data-label="Code" data-desc="Source, patches & before/after diffs"
+        data-light="assets/shots/code-light.png" data-dark="assets/shots/code-dark.png"
+        data-alt="Code playbook artifact — source, patches and before/after diffs." aria-label="View the Code playbook artifact full-size">
+        <span class="shot-imgs">
           <img class="light" src="assets/shots/code-light.png" alt="Code playbook artifact, light mode.">
           <img class="dark" src="assets/shots/code-dark.png" alt="Code playbook artifact, dark mode.">
-        </div>
-        <figcaption class="shot-cap"><span class="k">Code</span><span class="d">Source, patches &amp; before/after diffs</span></figcaption>
-      </figure>
-      <figure class="shot">
-        <div class="shot-imgs">
+        </span>
+        <span class="shot-cap"><span class="k">Code</span><span class="d">Source, patches &amp; before/after diffs</span></span>
+      </button>
+      <button type="button" class="shot" data-label="Table" data-desc="Dense records, scan-friendly"
+        data-light="assets/shots/table-light.png" data-dark="assets/shots/table-dark.png"
+        data-alt="Table playbook artifact — dense records, scan-friendly." aria-label="View the Table playbook artifact full-size">
+        <span class="shot-imgs">
           <img class="light" src="assets/shots/table-light.png" alt="Table playbook artifact, light mode.">
           <img class="dark" src="assets/shots/table-dark.png" alt="Table playbook artifact, dark mode.">
-        </div>
-        <figcaption class="shot-cap"><span class="k">Table</span><span class="d">Dense records, scan-friendly</span></figcaption>
-      </figure>
-      <figure class="shot">
-        <div class="shot-imgs">
+        </span>
+        <span class="shot-cap"><span class="k">Table</span><span class="d">Dense records, scan-friendly</span></span>
+      </button>
+      <button type="button" class="shot" data-label="Comparison" data-desc="Options, tradeoffs, current vs target"
+        data-light="assets/shots/comparison-light.png" data-dark="assets/shots/comparison-dark.png"
+        data-alt="Comparison playbook artifact — options, tradeoffs, current vs target." aria-label="View the Comparison playbook artifact full-size">
+        <span class="shot-imgs">
           <img class="light" src="assets/shots/comparison-light.png" alt="Comparison playbook artifact, light mode.">
           <img class="dark" src="assets/shots/comparison-dark.png" alt="Comparison playbook artifact, dark mode.">
-        </div>
-        <figcaption class="shot-cap"><span class="k">Comparison</span><span class="d">Options, tradeoffs, current vs target</span></figcaption>
-      </figure>
-      <figure class="shot">
-        <div class="shot-imgs">
+        </span>
+        <span class="shot-cap"><span class="k">Comparison</span><span class="d">Options, tradeoffs, current vs target</span></span>
+      </button>
+      <button type="button" class="shot" data-label="Input" data-desc="Native, accessible decision forms"
+        data-light="assets/shots/input-light.png" data-dark="assets/shots/input-dark.png"
+        data-alt="Input playbook artifact — a native, accessible decision form." aria-label="View the Input playbook artifact full-size">
+        <span class="shot-imgs">
           <img class="light" src="assets/shots/input-light.png" alt="Input playbook artifact, light mode — an accessible decision form.">
           <img class="dark" src="assets/shots/input-dark.png" alt="Input playbook artifact, dark mode — an accessible decision form.">
-        </div>
-        <figcaption class="shot-cap"><span class="k">Input</span><span class="d">Native, accessible decision forms</span></figcaption>
-      </figure>
-      <figure class="shot">
-        <div class="shot-imgs">
+        </span>
+        <span class="shot-cap"><span class="k">Input</span><span class="d">Native, accessible decision forms</span></span>
+      </button>
+      <button type="button" class="shot" data-label="Slides" data-desc="A paced, one-idea-per-screen deck"
+        data-light="assets/shots/slides-light.png" data-dark="assets/shots/slides-dark.png"
+        data-alt="Slides playbook artifact — a paced, one-idea-per-screen deck." aria-label="View the Slides playbook artifact full-size">
+        <span class="shot-imgs">
           <img class="light" src="assets/shots/slides-light.png" alt="Slides playbook artifact, light mode — a paced presentation deck.">
           <img class="dark" src="assets/shots/slides-dark.png" alt="Slides playbook artifact, dark mode — a paced presentation deck.">
-        </div>
-        <figcaption class="shot-cap"><span class="k">Slides</span><span class="d">A paced, one-idea-per-screen deck</span></figcaption>
-      </figure>
+        </span>
+        <span class="shot-cap"><span class="k">Slides</span><span class="d">A paced, one-idea-per-screen deck</span></span>
+      </button>
     </div>
   </div>
 </section>
@@ -735,6 +776,22 @@
   </div>
 </footer>
 
+<!-- ===== Playbook lightbox (full-render viewer) ===== -->
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-labelledby="lbTitle" aria-describedby="lbDesc">
+  <div class="lb-backdrop" data-lb-close></div>
+  <div class="lb-panel">
+    <div class="lb-bar">
+      <span class="k" id="lbTitle"></span>
+      <span class="d" id="lbDesc"></span>
+      <button type="button" class="lb-close" id="lbClose" data-lb-close aria-label="Close full-size view">✕</button>
+    </div>
+    <div class="lb-scroll">
+      <img class="light" id="lbLight" alt="">
+      <img class="dark" id="lbDark" alt="">
+    </div>
+  </div>
+</div>
+
 <script>
   /* Theme: honor OS by default, let the user override, remember the choice.
      Single entry point (window.__applyTheme) so the label can never drift. */
@@ -769,6 +826,52 @@
       var done=function(){var o=lbl.textContent;lbl.textContent='Copied ✓';setTimeout(function(){lbl.textContent=o;},1600);};
       if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(CMD).then(done,function(){});}
       else{try{var ta=document.createElement('textarea');ta.value=CMD;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);done();}catch(e){}}
+    });
+  })();
+
+  /* Playbook lightbox: click a card to view the full render. Theme-correct
+     (same light/dark swap), scrollable, focus-trapped, Esc/backdrop/✕ close,
+     and focus returns to the originating card. */
+  (function(){
+    var lb=document.getElementById('lightbox');
+    if(!lb) return;
+    var title=document.getElementById('lbTitle'),
+        desc=document.getElementById('lbDesc'),
+        imgL=document.getElementById('lbLight'),
+        imgD=document.getElementById('lbDark'),
+        closeBtn=document.getElementById('lbClose'),
+        opener=null;
+    function open(card){
+      opener=card;
+      var label=card.getAttribute('data-label')||'',
+          d=card.getAttribute('data-desc')||'',
+          alt=card.getAttribute('data-alt')||label;
+      title.textContent=label; desc.textContent=d;
+      imgL.src=card.getAttribute('data-light'); imgL.alt=alt+' (light)';
+      imgD.src=card.getAttribute('data-dark'); imgD.alt=alt+' (dark)';
+      lb.setAttribute('open','');
+      document.body.style.overflow='hidden';
+      closeBtn.focus();
+      document.addEventListener('keydown',onKey,true);
+    }
+    function close(){
+      lb.removeAttribute('open');
+      document.body.style.overflow='';
+      document.removeEventListener('keydown',onKey,true);
+      if(opener&&opener.focus)opener.focus();
+      opener=null;
+    }
+    function onKey(e){
+      if(e.key==='Escape'){e.preventDefault();close();return;}
+      if(e.key==='Tab'){ /* trap focus: only the close button is tabbable */
+        e.preventDefault();closeBtn.focus();
+      }
+    }
+    Array.prototype.forEach.call(document.querySelectorAll('.gallery .shot'),function(card){
+      card.addEventListener('click',function(){open(card);});
+    });
+    Array.prototype.forEach.call(lb.querySelectorAll('[data-lb-close]'),function(el){
+      el.addEventListener('click',close);
     });
   })();
 </script>
