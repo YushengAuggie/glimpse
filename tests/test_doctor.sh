@@ -33,4 +33,23 @@ echo "$out" | grep -Eq "node .*too old"        || { echo "FAIL: node not flagged
 echo "$out" | grep -Eq "brew install node|nodejs.org" || { echo "FAIL: no node fix printed"; echo "$out"; exit 1; }
 echo "ok-exit-nonzero"
 
+# 3. Canvas tab-count check is INFORMATIONAL and placed right after the cdp-port check.
+#    Behaviour depends on live CDP state (the live warn path is covered, opt-in, by
+#    tests/test_doctor_tabs_cdp.sh). Here — with no debuggable Chrome, the hosted-CI
+#    default — the existing cdp-port note already covers "down", so there must be NO
+#    extra tabs line and NO duplicated down message. On a dev box where CDP happens to
+#    be up, a labelled tabs line must instead report the count.
+out="$("$REPO/bin/glimpse" doctor 2>&1 || true)"
+if echo "$out" | grep -q "no debuggable Chrome on"; then
+  if echo "$out" | grep -q "open in canvas Chrome"; then
+    echo "FAIL: tabs line printed while CDP is down (down note already covers it)"; echo "$out"; exit 1; fi
+  [ "$(echo "$out" | grep -c "no debuggable Chrome on")" -eq 1 ] || {
+    echo "FAIL: cdp-down message duplicated"; echo "$out"; exit 1; }
+  echo "ok-tabs-absent-when-cdp-down"
+else
+  echo "$out" | grep -Eq "tabs +[0-9]+ open in canvas Chrome" || {
+    echo "FAIL: no tabs count line while CDP is up"; echo "$out"; exit 1; }
+  echo "ok-tabs-present-when-cdp-up"
+fi
+
 echo "ALL OK"

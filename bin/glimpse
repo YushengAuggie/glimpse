@@ -1173,6 +1173,25 @@ cmd_doctor(){
   else _dnote server "down on :$PORT — start with: glimpse serve  (or: glimpse open)"; fi
 
   if curl -fsS "http://127.0.0.1:${CDP_PORT}/json/version" >/dev/null 2>&1; then _dok "cdp port" "debuggable Chrome on :$CDP_PORT"
+    # Tab count is INFORMATIONAL state (never fails the run — _dnote/_dwarn only, never
+    # _dbad): a leftover-tab pile is the signal behind the fix/cdp-tab-leak history +
+    # `glimpse gc`. The canvas tab plus a couple of app/review tabs is normal, so warn
+    # only past 8 "page" targets — high enough not to false-alarm on ordinary use, low
+    # enough to surface a real leak. Parse with node (same type==="page" filter as gc);
+    # a malformed/empty /json is treated as 0, and the whole thing can't abort the run.
+    local tabs=""
+    # -m 3: a CDP port that accepts the connection but stalls on /json (broken proxy,
+    # or Chrome wedged under the very tab-leak pressure this check targets) must not
+    # hang doctor — bound it like the proxy check below. Timeout → empty → treated as 0.
+    tabs="$(curl -fsS -m 3 "http://127.0.0.1:${CDP_PORT}/json" 2>/dev/null \
+      | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let n=0;try{n=JSON.parse(s).filter(t=>t&&t.type==="page").length}catch{n=0}console.log(n)})' 2>/dev/null || true)"
+    case "$tabs" in *[!0-9]*|"") tabs=0;; esac
+    if [ "$tabs" -gt 8 ]; then _dwarn tabs "$tabs open in canvas Chrome — leftover tabs waste memory"
+      # The count includes non-canvas content/app tabs, which only `gc --all` closes;
+      # lead with that so the remedy actually clears what triggered the warning (plain
+      # `gc` closes just about:blank/srcdoc strays and could leave the count high).
+      _dfix "glimpse gc --all   (or: glimpse gc to close only about:blank strays)"
+    else _dnote tabs "$tabs open in canvas Chrome"; fi
   else _dnote "cdp port" "no debuggable Chrome on :$CDP_PORT — start with: glimpse chrome  (or: glimpse open)"; fi
 
   # --- always-on daemon (macOS launchd) --------------------------------------
