@@ -98,6 +98,14 @@
   pre code{background:none;color:inherit;padding:0;overflow-wrap:normal;}
   pre .c{color:var(--code-dim);}
 
+  /* Mermaid renders a TRANSPARENT svg inside its host element — so the dark
+     `pre` background above must NOT bleed through, or diagram text (esp. the
+     sequence-diagram arrow labels, which have no node fill behind them) goes
+     dark-on-dark and unreadable. Keep the diagram on the page surface. */
+  .diagram{overflow:auto;text-align:center;}
+  .diagram svg{max-width:100%;height:auto;}
+  pre.mermaid{background:transparent;color:var(--ink);padding:0;overflow:auto;}
+
   /* Tables live in a scroll container so they can't force page-level overflow. */
   .table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius-sm);margin:14px 0;}
   table{border-collapse:collapse;width:100%;font-size:14.5px;}

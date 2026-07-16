@@ -52,6 +52,12 @@ const WARN = {
   overflowPx: 3,
   severity: "warning",
 };
+const INVISIBLE = {
+  selector: "svg text.messageText",
+  kind: "invisible-text",
+  ratio: 1.2,
+  severity: "error",
+};
 
 // --- brief mode (publish auto-audit) ----------------------------------------
 
@@ -104,6 +110,12 @@ test("brief warning only findings do not gate", () => {
   assert.equal(code, 0); // but no error → gate stays clean
 });
 
+test("brief renders invisible-text with its contrast ratio and gates", () => {
+  const { code, out } = run(audit([INVISIBLE]), "brief");
+  assert.equal(code, 2); // error-severity → gate trips
+  assert.ok(out.includes("text nearly invisible in svg text.messageText  (1.2:1)"));
+});
+
 // --- full mode (standalone `glimpse audit`) ---------------------------------
 
 test("full header and finding lines", () => {
@@ -128,6 +140,13 @@ test("full emits compact machine json last", () => {
   assert.equal(obj.viewportWidth, 1000);
   assert.equal(obj.findings.length, 2);
   assert.ok(!last.includes(" ")); // compact, no spaces
+  assert.equal(code, 2);
+});
+
+test("full renders invisible-text ratio in the detail line", () => {
+  const { code, out } = run(audit([INVISIBLE]), "full");
+  const lines = out.split("\n");
+  assert.equal(lines[1], "  [error] invisible-text  svg text.messageText  (1.2:1)");
   assert.equal(code, 2);
 });
 

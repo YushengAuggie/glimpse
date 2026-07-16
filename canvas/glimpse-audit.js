@@ -19,7 +19,13 @@
   var ERROR_OVERFLOW_PX = 4;      // overflow beyond this is an error, not a sub-pixel nit
   var MAX_ELEMENTS = 1500;        // cap the element walk for perf on huge artifacts
   var MAX_TEXT_LEAVES = 220;      // overlap check is pairwise; bound it
+  var MAX_CONTRAST_CHECKS = 220;  // bound the extra SVG-text contrast pass
   var MAX_FINDINGS = 40;
+  // Contrast thresholds target *invisibility*, not WCAG-AA (4.5) — we flag text
+  // you genuinely can't read (dark-on-dark mermaid labels), not merely low-
+  // emphasis text, to keep false positives near zero.
+  var INVISIBLE_RATIO = 1.5;      // below this → error (effectively unreadable)
+  var LOW_CONTRAST_RATIO = 2.0;   // [1.5, 2.0) → warning; ≥ 2.0 → no finding
 
   /* ---- pure helpers (tested in Node) -------------------------------------- */
   function severityFor(overflowPx) { return overflowPx > ERROR_OVERFLOW_PX ? "error" : "warning"; }
@@ -65,6 +71,66 @@
     return { selector: selA + " ∩ " + selB, kind: "overlapping-text", overflowPx: Math.round(inter), severity: "error" };
   }
 
+  // Parse a CSS color string (as getComputedStyle returns it: "rgb(r, g, b)" /
+  // "rgba(r, g, b, a)", also bare hex) into {r,g,b,a}. Returns null if unparseable
+  // or a keyword like "transparent"/"none" we shouldn't score against.
+  function parseColor(str) {
+    if (!str) return null;
+    str = ("" + str).trim().toLowerCase();
+    if (str === "transparent" || str === "none") return null;
+    var m = str.match(/^rgba?\(([^)]+)\)$/);
+    if (m) {
+      var p = m[1].split(",").map(function (x) { return x.trim(); });
+      var r = parseFloat(p[0]), g = parseFloat(p[1]), b = parseFloat(p[2]);
+      var a = p.length > 3 ? parseFloat(p[3]) : 1;
+      if (isNaN(r) || isNaN(g) || isNaN(b)) return null;
+      return { r: r, g: g, b: b, a: isNaN(a) ? 1 : a };
+    }
+    var hx = str.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/);
+    if (hx) {
+      var h = hx[1];
+      if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+      return { r: parseInt(h.slice(0, 2), 16), g: parseInt(h.slice(2, 4), 16), b: parseInt(h.slice(4, 6), 16), a: 1 };
+    }
+    return null;
+  }
+
+  // WCAG relative luminance of an {r,g,b} in 0..255.
+  function relLuminance(c) {
+    var f = function (v) {
+      v = v / 255;
+      return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b);
+  }
+
+  // WCAG contrast ratio (1..21). `fg` may be semi-transparent — composite it
+  // over `bg` first so faint text over a dark box scores as dark, not as its
+  // nominal color.
+  function contrastRatio(fg, bg) {
+    if (!fg || !bg) return null;
+    if (fg.a != null && fg.a < 1) {
+      var a = fg.a;
+      fg = { r: fg.r * a + bg.r * (1 - a), g: fg.g * a + bg.g * (1 - a), b: fg.b * a + bg.b * (1 - a) };
+    }
+    var l1 = relLuminance(fg), l2 = relLuminance(bg);
+    var hi = Math.max(l1, l2), lo = Math.min(l1, l2);
+    return (hi + 0.05) / (lo + 0.05);
+  }
+
+  // Score one text element's color against its effective background.
+  // m: {selector, color, bg} as CSS strings. Returns a finding or null.
+  function contrastFinding(m) {
+    var fg = parseColor(m.color), bg = parseColor(m.bg);
+    var ratio = contrastRatio(fg, bg);
+    if (ratio == null || ratio >= LOW_CONTRAST_RATIO) return null;
+    return {
+      selector: m.selector, kind: "invisible-text",
+      ratio: Math.round(ratio * 10) / 10,
+      severity: ratio < INVISIBLE_RATIO ? "error" : "warning",
+    };
+  }
+
   /* ---- browser entry ------------------------------------------------------ */
   if (typeof window !== "undefined" && typeof document !== "undefined") {
     var CFG = window.__GLIMPSE__ || {};
@@ -108,6 +174,37 @@
         return false;
       }
 
+      // Effective background BEHIND an element: nearest ancestor with a
+      // background-color that is at least half-opaque. Falls back to white — the
+      // canvas iframe's default surface. This is what makes the dark-`pre`-bleed
+      // detectable: a mermaid label's nearest opaque bg is the dark code box.
+      function effectiveBg(el) {
+        for (var n = el; n && n.nodeType === 1; n = n.parentElement) {
+          var c = parseColor(getComputedStyle(n).backgroundColor);
+          if (c && c.a >= 0.5) return "rgb(" + c.r + "," + c.g + "," + c.b + ")";
+        }
+        return "rgb(255,255,255)";
+      }
+      // Does an SVG <text> sit on top of a filled node/actor/note shape? If so its
+      // contrast is against that fill (which we don't measure) — skip it, so we
+      // only score transparent-background text (sequence arrow labels: the exact
+      // dark-on-dark failure mode) and never false-flag filled flowchart nodes.
+      var SHAPE_TAGS = { rect: 1, circle: 1, ellipse: 1, polygon: 1, path: 1 };
+      function sitsOnFilledShape(textEl) {
+        var g = textEl.parentNode, hops = 0;
+        while (g && g.nodeType === 1 && hops < 3) {
+          for (var c = g.firstElementChild; c; c = c.nextElementSibling) {
+            if (c === textEl) continue;
+            if (SHAPE_TAGS[(c.tagName || "").toLowerCase()]) {
+              var fill = parseColor(getComputedStyle(c).fill);
+              if (fill && fill.a >= 0.5) return true;
+            }
+          }
+          g = g.parentNode; hops++;
+        }
+        return false;
+      }
+
       function auditLayout() {
         var vw = document.documentElement.clientWidth;
         var findings = [], seen = {};
@@ -134,7 +231,11 @@
             scrollHeight: el.scrollHeight, clientHeight: el.clientHeight,
             overflowX: cs.overflowX, overflowY: cs.overflowY
           }));
-          if (hasOwnText(el) && leaves.length < MAX_TEXT_LEAVES) leaves.push({ el: el, rect: rect });
+          if (hasOwnText(el)) {
+            if (leaves.length < MAX_TEXT_LEAVES) leaves.push({ el: el, rect: rect });
+            // HTML text contrast: is this element's own text readable on its bg?
+            push(contrastFinding({ selector: selectorFor(el), color: cs.color, bg: effectiveBg(el) }));
+          }
         }
         // overlapping text — bounded pairwise among text-bearing leaves
         for (var a = 0; a < leaves.length; a++) {
@@ -144,6 +245,20 @@
             if (findings.length >= MAX_FINDINGS) break;
           }
           if (findings.length >= MAX_FINDINGS) break;
+        }
+        // SVG text contrast (mermaid) — sequence arrow labels have no node fill
+        // behind them, so a dark-`pre`-bleed makes them dark-on-dark. Bounded pass;
+        // skip labels that sit on a filled shape (flowchart nodes / actors / notes).
+        var svgText = document.querySelectorAll("svg text, svg tspan");
+        for (var s = 0; s < svgText.length && s < MAX_CONTRAST_CHECKS && findings.length < MAX_FINDINGS; s++) {
+          var te = svgText[s];
+          if (inOwnUI(te)) continue;
+          if (!te.textContent || !te.textContent.trim()) continue;
+          var tr = te.getBoundingClientRect();
+          if (tr.width <= 0 || tr.height <= 0) continue;
+          if (sitsOnFilledShape(te)) continue;
+          var tcs = getComputedStyle(te);
+          push(contrastFinding({ selector: selectorFor(te), color: tcs.fill || tcs.color, bg: effectiveBg(te) }));
         }
         return { viewportWidth: vw, findings: findings };
       }
@@ -188,6 +303,9 @@
   }
 
   if (typeof module !== "undefined" && module.exports) {
-    module.exports = { severityFor, pageOverflowFinding, elementOverflowFinding, intersectionArea, rectArea, overlapFinding, ERROR_OVERFLOW_PX };
+    module.exports = {
+      severityFor, pageOverflowFinding, elementOverflowFinding, intersectionArea, rectArea, overlapFinding, ERROR_OVERFLOW_PX,
+      parseColor, relLuminance, contrastRatio, contrastFinding, INVISIBLE_RATIO, LOW_CONTRAST_RATIO,
+    };
   }
 })();

@@ -32,6 +32,12 @@ review-artifact playbooks in sibling tooling.
    TO). Mermaid bakes its theme at `initialize()` — re-init + re-run on change via
    the `window.__onThemeChange` hook, using custom `theme:'base'` `themeVariables`
    matched to the palette (not stock `neutral`/`dark`, which read as generic).
+   Two Mermaid contrast traps the auditor now catches (`invisible-text`): a global
+   dark `pre{background}` bleeds through the transparent Mermaid SVG, so keep
+   `pre.mermaid{background:transparent}` (in `base.html`); and **sequence diagrams
+   read text from `signalTextColor`/`actorTextColor`/`noteTextColor`, not
+   `primaryTextColor`** — set those explicitly or sequence labels go dark-on-dark
+   (see the `diagram` playbook snippet).
 3. **No horizontal overflow at any nesting level:** flex/grid children need
    `min-width:0`, tracks use `minmax(min(240px,100%),1fr)`; long tokens/URLs/paths
    `overflow-wrap:anywhere`; tables in `.table-wrap{overflow-x:auto}`;
@@ -75,7 +81,7 @@ shell theme in. Contract locked by `tests/test_canvas_theme.mjs`.
 
 ## Auto-audit on publish + the layout gate
 
-- **`glimpse publish` auto-audits the real render and warns by default.** After the artifact is written + fed, `_publish_autoaudit` drives the existing in-browser auditor (`canvas/glimpse-audit.js`) via the shared `_audit_capture` and surfaces a one-line summary like `⚠ glimpse: 2 layout issues in <slug> — content overflow in div.foo (+40px); … — run: glimpse audit <slug>`. The warning goes to **stderr** so stdout stays the published URL; a **clean artifact prints nothing** (quiet-by-default). It never reimplements audit rules — severity/finding vocabulary stays in `glimpse-audit.js`.
+- **`glimpse publish` auto-audits the real render and warns by default.** After the artifact is written + fed, `_publish_autoaudit` drives the existing in-browser auditor (`canvas/glimpse-audit.js`) via the shared `_audit_capture` and surfaces a one-line summary like `⚠ glimpse: 2 layout issues in <slug> — content overflow in div.foo (+40px); … — run: glimpse audit <slug>`. The warning goes to **stderr** so stdout stays the published URL; a **clean artifact prints nothing** (quiet-by-default). It never reimplements audit rules — severity/finding vocabulary stays in `glimpse-audit.js`. Finding kinds: `page-horizontal-overflow`, `element-overflow`, `clipped-text`, `overlapping-text`, and `invisible-text` (WCAG contrast below ~1.5:1 → error, ~1.5–2.0:1 → warning; targets genuinely unreadable text such as a dark-on-dark mermaid label, not mere low-emphasis text — helpers `parseColor`/`contrastRatio`/`contrastFinding` in `glimpse-audit.js`).
 - **Warn-only stays fast; the gate is opt-in.** Without a gate, the auto-audit only runs when the canvas is already live (`_canvas_live`: both the static server and a debuggable Chrome answer on the loopback ports) — a scripted/headless publish stays a pure file write and never launches Chrome. `--gate` (or `GLIMPSE_AUDIT_GATE=1`) turns an **error-severity** finding into a non-zero exit so an agent/CI can enforce layout quality; because the audit needs a real render, the gate brings the canvas up itself. The publish is **flagged, not rolled back** — the rendered artifact is left in place (the auditor needs it on disk) and the message says so. `--no-audit` (or `GLIMPSE_AUDIT=0`) skips the whole step.
 - **One capture, one renderer — no drift.** `_audit_capture <slug>` is the single CDP navigate+reload+poll path; both the standalone `audit` verb and auto-audit consume its raw `window.__glimpse_audit` JSON. `lib/glimpse-audit-report.mjs` is the single output renderer (`MODE=full` reproduces `glimpse audit`'s detailed report + compact machine JSON; `MODE=brief` is the publish one-liner) and the single source of the gate exit code (2 iff any error-severity finding). Keep formatting/counting there; keep detection in `glimpse-audit.js`.
 
