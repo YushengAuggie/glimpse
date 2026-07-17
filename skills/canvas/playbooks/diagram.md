@@ -41,6 +41,16 @@ and `edgeLabelBackground` set to the card surface so labels blend. Give `.diagra
 `overflow:auto`, and prefer **`LR`** for a cyclic/wide flow so every node stays
 above the laptop fold. The example wires all of this up.
 
+**Sequence diagrams use their OWN text vars.** `primaryTextColor` colors
+flowchart node labels — but sequence-diagram arrow labels read from
+`signalTextColor`, participants from `actorTextColor`, and notes from
+`noteTextColor`, none of which reliably inherit high contrast. A theme that only
+sets `primaryTextColor` renders a *readable flowchart and a faint, near-invisible
+sequence diagram*. Set the sequence vars explicitly (the snippet does). And keep
+the diagram off any dark code surface: Mermaid's SVG background is transparent, so
+a global `pre{background:<dark>}` bleeds through — `base.html` now resets
+`pre.mermaid{background:transparent}`; keep that if you hand-roll the page.
+
 ## Snippet
 
 ```html
@@ -63,9 +73,18 @@ flowchart LR
   // Brand-matched vars — swap the hexes for your page tokens.
   const vars = m => m === 'dark'
     ? { background:'transparent', mainBkg:'#1b2140', nodeBorder:'#93a4ff', lineColor:'#7c8bff',
-        primaryTextColor:'#e6e8f0', edgeLabelBackground:'#171923' }
+        primaryTextColor:'#e6e8f0', textColor:'#e6e8f0', edgeLabelBackground:'#171923',
+        // sequence diagrams read from these, NOT primaryTextColor — set them or labels go faint:
+        actorBkg:'#1b2140', actorBorder:'#93a4ff', actorTextColor:'#e6e8f0', actorLineColor:'#7c8bff',
+        signalColor:'#c9cfea', signalTextColor:'#e6e8f0',
+        noteBkgColor:'#2a2140', noteBorderColor:'#c9a94a', noteTextColor:'#f2e7c4',
+        labelBoxBkgColor:'#1b2140', labelTextColor:'#e6e8f0', sequenceNumberColor:'#171923' }
     : { background:'transparent', mainBkg:'#eef1ff', nodeBorder:'#4c5fd5', lineColor:'#7784d8',
-        primaryTextColor:'#1a1b26', edgeLabelBackground:'#ffffff' };
+        primaryTextColor:'#1a1b26', textColor:'#1a1b26', edgeLabelBackground:'#ffffff',
+        actorBkg:'#eef1ff', actorBorder:'#4c5fd5', actorTextColor:'#1a1b26', actorLineColor:'#7784d8',
+        signalColor:'#3a4260', signalTextColor:'#1a1b26',
+        noteBkgColor:'#fff3c4', noteBorderColor:'#e0c15a', noteTextColor:'#5a4b00',
+        labelBoxBkgColor:'#eef1ff', labelTextColor:'#1a1b26', sequenceNumberColor:'#ffffff' };
   function renderMermaid(mode){
     document.querySelectorAll('.mermaid').forEach(n => {
       n.removeAttribute('data-processed'); n.textContent = n.dataset.src;
@@ -82,7 +101,10 @@ flowchart LR
 
 **Pitfalls:** don't hand-build boxes-and-arrows from `<div>`s for a flow (no edge
 routing, reads worse than Mermaid); don't let default diagram colors clash with
-the page or become invisible in one mode; don't present unverified architecture
-as fact — cite the files that back it.
+the page or become invisible in one mode — a dark `pre` background behind a
+transparent Mermaid SVG, or an unset `signalTextColor`, both produce dark-on-dark
+sequence labels; don't present unverified architecture as fact — cite the files
+that back it. (`glimpse publish` now audits contrast and warns with an
+`invisible-text` finding when text is near-invisible against its background.)
 
 Worked example: [`examples/playbooks/diagram.html`](../../../examples/playbooks/diagram.html).
