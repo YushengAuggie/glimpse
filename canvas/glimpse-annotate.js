@@ -584,6 +584,7 @@
   explainBtn.addEventListener("mousedown", function (e) { e.preventDefault(); });
 
   document.addEventListener("selectionchange", debounce(function () {
+    if (window.__GLIMPSE_EXPLAIN__?.blockAskOnly) { hideToolbar(); return; }
     var sel = document.getSelection();
     if (!sel || sel.isCollapsed || sel.rangeCount === 0) { hideToolbar(); return; }
     var txt = sel.toString();
@@ -930,6 +931,7 @@
 
   // The thread file is authoritative. Group its turns by anchor into conversations,
   // preserving in-flight optimistic turns not yet persisted.
+  var previousNodeIds = [];
   function ingestThread(turns) {
     // Node-anchored turns belong to the code-explainer renderer, not the text rail.
     // When that renderer exposes a hook, peel those turns off (grouped by node id,
@@ -940,11 +942,11 @@
     if (EX && typeof EX.mountNodeReply === "function") {
       var nodeIdOf = function (a) { return (a && a.kind === "node" && a.id) ? a.id : null; };
       // user turn id -> node id, for routing agent replies to the right group.
-      var userNode = {};
+      var userNode = Object.create(null);
       turns.forEach(function (t) {
         if (t.role === "user") { var nid = nodeIdOf(t.anchor); if (nid) userNode[t.id] = nid; }
       });
-      var groups = {}, rest = [];
+      var groups = Object.create(null), rest = [];
       turns.forEach(function (t) {
         var nid = null;
         if (t.role === "user") nid = nodeIdOf(t.anchor);
@@ -952,6 +954,8 @@
         if (nid) { (groups[nid] = groups[nid] || []).push(t); }
         else rest.push(t);
       });
+      previousNodeIds.forEach(function (nid) { if (!groups[nid]) groups[nid] = []; });
+      previousNodeIds = Object.keys(groups);
       Object.keys(groups).forEach(function (nid) {
         try { EX.mountNodeReply(nid, groups[nid]); } catch (e) {}
       });

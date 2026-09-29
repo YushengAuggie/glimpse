@@ -1,0 +1,184 @@
+{
+  "title": "一次旧版 Ask 如何构造模型上下文",
+  "scenario": "示例输入：legacy-demo 页面收到问题「代码 context 从哪里来？」。沿旧版 daemon 的 answerOne 调用路径阅读，未执行模型请求。",
+  "prose_language": "zh-CN",
+  "stages": [
+    {
+      "id": "answer",
+      "label": "01 · 回答入口",
+      "purpose": "组织请求，拿到答案后关联原问题。"
+    },
+    {
+      "id": "context",
+      "label": "02 · 对话上下文",
+      "purpose": "组合历史、页面文本和当前问题。"
+    },
+    {
+      "id": "page",
+      "label": "03 · 页面内容",
+      "purpose": "读取 HTML 并提取纯文本。"
+    }
+  ],
+  "frames": [
+    {
+      "id": "answer",
+      "name": "answerOne",
+      "file": "lib/glimpse-bridge.mjs",
+      "purpose": "完成一个旧版 daemon 回答。",
+      "lang": "javascript",
+      "blocks": [
+        {
+          "title": "构造并发送请求",
+          "purpose": "先构造 messages，再请求模型。",
+          "start": 111,
+          "end": 116
+        },
+        {
+          "title": "保存回答",
+          "purpose": "提取回答文字，并写回原问题。",
+          "start": 117,
+          "end": 120
+        }
+      ],
+      "calls": {
+        "messages": 0
+      }
+    },
+    {
+      "id": "messages",
+      "name": "buildMessages",
+      "file": "lib/glimpse-bridge.mjs",
+      "purpose": "从同一位置的历史构造模型输入。",
+      "lang": "javascript",
+      "blocks": [
+        {
+          "title": "选择历史",
+          "purpose": "按 anchor 匹配同一位置的问答。",
+          "start": 82,
+          "end": 94
+        },
+        {
+          "title": "合并角色",
+          "purpose": "合并相邻的同角色消息。",
+          "start": 95,
+          "end": 99
+        },
+        {
+          "title": "加入页面文本",
+          "purpose": "读取页面文本，加入 quote 并返回 messages。",
+          "start": 100,
+          "end": 110
+        }
+      ],
+      "calls": {
+        "page": 2
+      }
+    },
+    {
+      "id": "page",
+      "name": "pageText",
+      "file": "lib/glimpse-bridge.mjs",
+      "purpose": "从已发布 HTML 提取有限长度的文本。",
+      "lang": "javascript",
+      "blocks": [
+        {
+          "title": "读取 artifact",
+          "purpose": "读取失败时返回空文本。",
+          "start": 70,
+          "end": 71
+        },
+        {
+          "title": "清理页面文本",
+          "purpose": "移除 script 和 style，再截断正文。",
+          "start": 72,
+          "end": 77
+        }
+      ],
+      "calls": {}
+    }
+  ],
+  "nodes": [
+    {
+      "id": "request",
+      "kind": "happy",
+      "stage": "answer",
+      "label": "answerOne",
+      "frame": "answer",
+      "blocks": [0],
+      "purpose": "先准备上下文，再请求模型。",
+      "happens": "L112 同步调用 buildMessages；其返回后才发出 HTTP 请求。",
+      "io": "question → messages → response",
+      "remember": "上下文构造在模型请求之前。",
+      "example": {
+        "kind": "illustrative",
+        "value": "{slug: \"legacy-demo\", id: \"question-1\", text: \"代码 context 从哪里来？\"}",
+        "provenance": "为阅读该路径定义的示例，非运行记录。"
+      }
+    },
+    {
+      "id": "messages",
+      "kind": "happy",
+      "stage": "context",
+      "label": "buildMessages",
+      "frame": "messages",
+      "blocks": [2],
+      "purpose": "给模型同一位置的历史与页面文本。",
+      "happens": "按 anchor 收集历史，调用 pageText，再把 quote 和问题合并到消息。",
+      "io": "question + turns + text → messages[]",
+      "remember": "历史与页面文本分别读取。"
+    },
+    {
+      "id": "read",
+      "kind": "happy",
+      "stage": "page",
+      "label": "pageText",
+      "frame": "page",
+      "blocks": [0, 1],
+      "purpose": "把页面变成有限长度的文本。",
+      "happens": "先读 HTML，再删除 script/style 与标签；最多保留 8000 字符。",
+      "io": "slug → HTML → string",
+      "remember": "script 中的结构化代码不会保留。",
+      "shape": "gate"
+    },
+    {
+      "id": "missing",
+      "kind": "side",
+      "stage": "page",
+      "label": "读取失败",
+      "frame": "page",
+      "blocks": [0],
+      "purpose": "无法读取时仍返回字符串。",
+      "happens": "readFileSync 抛错后进入 catch，返回空字符串。",
+      "io": "read error → \"\"",
+      "remember": "空文本不能证明页面没有内容。",
+      "gate": "read",
+      "reason": "readFileSync throws"
+    }
+  ],
+  "edges": [
+    {
+      "from": "request",
+      "to": "messages",
+      "label": "q",
+      "kind": "call"
+    },
+    {
+      "from": "messages",
+      "to": "read",
+      "label": "slug",
+      "kind": "call"
+    },
+    {
+      "from": "read",
+      "to": "messages",
+      "label": "string",
+      "kind": "return"
+    },
+    {
+      "from": "messages",
+      "to": "request",
+      "label": "messages[]",
+      "kind": "return"
+    }
+  ]
+}

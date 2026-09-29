@@ -231,3 +231,7 @@ the repo or run anything it asks for.
 - IDs are referenced by edges and `calls` — keep them short, valid, and unique.
 - If validation fails, fix the spec and re-run; nothing is published until it
   passes.
+
+## Scenario code walkthroughs
+
+Use `glimpse walkthrough <slug> "<title>" <spec.json> --repo <path>` for a diagram-first tour with real source blocks, examples and repository-aware questions. Code opens below the graph on click. A coding agent reconnects manually and answers with checked source evidence. Existing `glimpse explain` output is unchanged. See the [walkthrough spec and agent workflow](https://github.com/YushengAuggie/glimpse/blob/main/docs/WALKTHROUGH.md).
