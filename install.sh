@@ -97,6 +97,9 @@ echo "→ seeding canvas at $GLIMPSE_DIR"
 mkdir -p "$GLIMPSE_DIR/artifacts"
 cp "$REPO/canvas/index.html" "$GLIMPSE_DIR/index.html"
 cp "$REPO/canvas/glimpse-annotate.js" "$GLIMPSE_DIR/glimpse-annotate.js"   # highlight-chat helper (injected at render time)
+cp "$REPO/canvas/glimpse-explain.js" "$GLIMPSE_DIR/glimpse-explain.js"
+cp "$REPO/canvas/glimpse-walkthrough.js" "$GLIMPSE_DIR/glimpse-walkthrough.js"
+cp "$REPO/canvas/glimpse-walkthrough.css" "$GLIMPSE_DIR/glimpse-walkthrough.css"
 cp "$REPO/canvas/glimpse-audit.js" "$GLIMPSE_DIR/glimpse-audit.js"         # render-correctness auditor (injected at render time)
 mkdir -p "$GLIMPSE_DIR"
 # CLI lib code the dispatcher shells out to (Node ops + the CDP client/bridge).

@@ -96,3 +96,19 @@ test("shouldSend: non-Enter keys and bad input don't send", () => {
   assert.strictEqual(AN.shouldSend(null), false);
   assert.strictEqual(AN.shouldSend({}), false);
 });
+
+test("node replay supports object-property IDs and clears removed conversations", () => {
+  const fs = require("node:fs"), vm = require("node:vm");
+  const source = fs.readFileSync(path.join(__dirname, "../canvas/glimpse-annotate.js"), "utf8");
+  const start = source.indexOf("var previousNodeIds = [];");
+  const end = source.indexOf("    var agentByReply = {};", start);
+  const received = new Map();
+  const sandbox = { window: { __GLIMPSE_EXPLAIN__: { mountNodeReply: (id, turns) => received.set(id, turns) } } };
+  vm.runInNewContext(source.slice(start, end) + "}\nthis.ingest = ingestThread;", sandbox);
+  for (const id of ["constructor", "__proto__", "toString"]) {
+    sandbox.ingest([{ id: "q", role: "user", anchor: { kind: "node", id } }, { role: "agent", replyTo: "q", text: "Answer" }]);
+    assert.equal(received.get(id).length, 2);
+  }
+  sandbox.ingest([]);
+  assert.equal(received.get("toString").length, 0);
+});

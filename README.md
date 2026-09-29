@@ -537,3 +537,7 @@ data flow, alternatives considered, and threat model are in
 
 ## License
 MIT — see [`LICENSE`](LICENSE).
+
+## Scenario code walkthroughs
+
+Use `glimpse walkthrough <slug> "<title>" <spec.json> --repo <path>` for a diagram-first tour with real source blocks, examples and repository-aware questions. Code opens below the graph on click. A coding agent reconnects manually and answers with checked source evidence. Existing `glimpse explain` output is unchanged. See the [walkthrough spec and agent workflow](docs/WALKTHROUGH.md).

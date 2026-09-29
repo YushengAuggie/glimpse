@@ -416,3 +416,7 @@ copy-pasteable `→ <fix>` under every `✗`/`⚠`. A "down" service (`server`,
 - **Port already in use** → set `GLIMPSE_PORT` / `GLIMPSE_CDP_PORT`.
 - **A site won't load logged-in** → log into it once in the Glimpse Chrome
   window; the dedicated profile persists across runs.
+
+## Scenario code walkthroughs
+
+Use `glimpse walkthrough <slug> "<title>" <spec.json> --repo <path>` for a diagram-first tour with real source blocks, examples and repository-aware questions. Code opens below the graph on click. A coding agent reconnects manually and answers with checked source evidence. Existing `glimpse explain` output is unchanged. See the [walkthrough spec and agent workflow](WALKTHROUGH.md).

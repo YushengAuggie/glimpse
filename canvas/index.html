@@ -891,15 +891,17 @@ async function pollThread(){
   if(!current) return;
   const f = document.querySelector('#stage iframe');
   if(!f || !f.contentWindow || !currentChannel) return;
+  const slug = current, channel = currentChannel;
   try {
-    const r = await fetch('threads/' + encodeURIComponent(current) + '.json?v=' + Date.now());
+    const r = await fetch('threads/' + encodeURIComponent(slug) + '.json?v=' + Date.now());
     if(!r.ok) return;                              // 404 = no thread yet, that's fine
     const data = await r.json();
+    if (current !== slug || currentChannel !== channel || f !== document.querySelector('#stage iframe')) return;
     const turns = data.turns || [];
-    const sig = JSON.stringify(turns.map(t=>[t.id,t.role,t.status||'',(t.text||'').length]));
+    const sig = JSON.stringify([turns.map(t=>[t.id,t.role,t.status||'',(t.text||'').length]),data.walkthrough||null]);
     if(sig === threadSig) return;
     threadSig = sig;
-    f.contentWindow.postMessage({ type:"glimpse:thread", v:1, channelId:currentChannel, slug:current, turns:turns }, "*");
+    f.contentWindow.postMessage({ type:"glimpse:thread", v:1, channelId:currentChannel, slug:current, turns:turns, walkthrough:data.walkthrough||null }, "*");
   } catch(e){}
 }
 
