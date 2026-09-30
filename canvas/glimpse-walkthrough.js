@@ -138,8 +138,90 @@
     };
     return state;
   }
+  // Route through row gaps and stage gutters, never through intervening cards.
+  function routeEdge(edge, positions, col, gap) {
+    const a = positions.get(edge.from),
+      b = positions.get(edge.to);
+    const center = (p) => p.x + p.w / 2;
+    const gutter = (p, right) => p.stage * (col + gap) + (right ? col - 6 : 6);
+    const sourceY = a.y + a.h + 24,
+      targetY = b.y - 24;
+    let points,
+      tx = center(a),
+      ty = sourceY - 7;
+    if (a.stage === b.stage) {
+      if (edge.kind === "side") {
+        const x = gutter(a, true);
+        points = [
+          [a.x + a.w, a.y + a.h / 2],
+          [x, a.y + a.h / 2],
+          [x, b.y + b.h / 2],
+          [b.x + b.w, b.y + b.h / 2],
+        ];
+        tx = center(b);
+        ty = b.y - 10;
+      } else {
+        if (edge.kind === "return") tx = (center(a) + gutter(a, true)) / 2;
+        else ty = targetY - 7;
+        const blocked = [...positions.values()].some(
+          (p) =>
+            p !== a &&
+            p !== b &&
+            p.stage === a.stage &&
+            p.y < Math.max(sourceY, targetY) &&
+            p.y + p.h > Math.min(sourceY, targetY),
+        );
+        points =
+          b.y >= a.y + a.h && !blocked && edge.kind !== "return"
+            ? [
+                [center(a), a.y + a.h],
+                [center(a), targetY],
+                [center(b), targetY],
+                [center(b), b.y],
+              ]
+            : [
+                [center(a), a.y + a.h],
+                [center(a), sourceY],
+                [gutter(a, edge.kind === "return"), sourceY],
+                [gutter(b, edge.kind === "return"), targetY],
+                [center(b), targetY],
+                [center(b), b.y],
+              ];
+      }
+    } else {
+      const forward = b.stage > a.stage;
+      const exit = a.stage * (col + gap) + (forward ? col + gap / 2 : -gap / 2);
+      const entry =
+        b.stage * (col + gap) + (forward ? -gap / 2 : col + gap / 2);
+      points = [
+        [center(a), a.y + a.h],
+        [center(a), sourceY],
+        [exit, sourceY],
+      ];
+      tx = (center(a) + exit) / 2;
+      // Nonadjacent stages cross above all cards, below the stage headings.
+      if (Math.abs(a.stage - b.stage) > 1) {
+        points.push([exit, 80], [entry, 80]);
+        tx = (exit + entry) / 2;
+        ty = 73;
+      }
+      points.push([entry, targetY], [center(b), targetY], [center(b), b.y]);
+    }
+    return {
+      points,
+      tx,
+      ty,
+      d: points.map(([x, y], i) => `${i ? "L" : "M"} ${x} ${y}`).join(" "),
+    };
+  }
   if (typeof module !== "undefined" && module.exports)
-    module.exports = { createState, acceptMessage, connected, shouldSend };
+    module.exports = {
+      createState,
+      acceptMessage,
+      connected,
+      shouldSend,
+      routeEdge,
+    };
   if (
     typeof document === "undefined" ||
     !document.getElementById("walkthrough-spec")
@@ -410,7 +492,7 @@
           x = si * (col + gap) + (side ? 32 : 16),
           w = col - (side ? 48 : 32),
           h = node.shape === "gate" ? 128 : 76;
-        positions.set(node.id, { x, y, w, h });
+        positions.set(node.id, { x, y, w, h, stage: si });
         y += h + 48;
       }
       height = Math.max(height, y + 8);
@@ -465,30 +547,7 @@
       const a = positions.get(edge.from),
         b = positions.get(edge.to);
       if (!a || !b) continue;
-      const same = Math.abs(a.x - b.x) < col / 2,
-        reverse = edge.kind === "return";
-      let d, tx, ty;
-      if (same && reverse) {
-        const x = Math.max(a.x + a.w, b.x + b.w) + 10;
-        d = `M ${a.x + a.w} ${a.y + a.h / 2} H ${x} V ${b.y + b.h / 2} H ${b.x + b.w}`;
-        tx = x - 65;
-        ty = (a.y + b.y) / 2 + 14;
-      } else if (same) {
-        const x1 = a.x + a.w / 2,
-          x2 = b.x + b.w / 2;
-        d = `M ${x1} ${a.y + a.h} V ${(a.y + a.h + b.y) / 2} H ${x2} V ${b.y}`;
-        tx = x1;
-        ty = (a.y + a.h + b.y) / 2 - 7;
-      } else {
-        const x1 = a.x + a.w / 2,
-          x2 = b.x + b.w / 2;
-        const y1 = reverse ? a.y + a.h : a.y,
-          y2 = reverse ? b.y + b.h : b.y;
-        const routeY = reverse ? Math.max(y1, y2) + 24 : Math.min(y1, y2) - 22;
-        d = `M ${x1} ${y1} V ${routeY} H ${x2} V ${y2}`;
-        tx = (x1 + x2) / 2;
-        ty = routeY - 6;
-      }
+      const { d, tx, ty } = routeEdge(edge, positions, col, gap);
       const p = svgEl("path", {
         d,
         class: "wt-edge wt-edge-" + edge.kind,
@@ -875,6 +934,13 @@
     drawGraph();
   });
   setInterval(updateConnection, 1000);
+  // A canvas iframe can execute while hidden. Refit when its real width arrives.
+  let graphWidth = 0;
+  new ResizeObserver(() => {
+    if (graph.clientWidth === graphWidth) return;
+    graphWidth = graph.clientWidth;
+    drawGraph();
+  }).observe(graph);
   visibility();
   drawGraph();
   updateConnection();

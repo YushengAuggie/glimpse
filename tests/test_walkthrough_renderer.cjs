@@ -127,3 +127,84 @@ test("retry reuses the original identity and sending is IME safe", () => {
   assert.equal(api.shouldSend({ key: "Enter", shiftKey: true }), false);
   assert.equal(api.shouldSend({ key: "Enter" }), true);
 });
+
+test("connectors avoid intervening branch and stage cards", () => {
+  const col = 380,
+    gap = 30;
+  const positions = new Map([
+    ["gate", { x: 16, y: 104, w: 348, h: 128, stage: 0 }],
+    ["side1", { x: 32, y: 280, w: 332, h: 76, stage: 0 }],
+    ["side2", { x: 32, y: 404, w: 332, h: 76, stage: 0 }],
+    ["next", { x: 16, y: 528, w: 348, h: 76, stage: 0 }],
+    ["second", { x: 426, y: 104, w: 348, h: 76, stage: 1 }],
+    ["secondEnd", { x: 426, y: 228, w: 348, h: 76, stage: 1 }],
+    ["third", { x: 836, y: 104, w: 348, h: 76, stage: 2 }],
+  ]);
+  const edges = [
+    { from: "gate", to: "next", kind: "data" },
+    { from: "gate", to: "side1", kind: "side" },
+    { from: "gate", to: "side2", kind: "side" },
+    { from: "next", to: "gate", kind: "return" },
+    { from: "next", to: "gate", kind: "data" },
+    { from: "next", to: "second", kind: "data" },
+    { from: "secondEnd", to: "gate", kind: "return" },
+    { from: "next", to: "third", kind: "call" },
+    { from: "third", to: "gate", kind: "return" },
+    { from: "second", to: "secondEnd", kind: "data" },
+  ];
+  for (const edge of edges) {
+    const { points } = api.routeEdge(edge, positions, col, gap);
+    for (let i = 1; i < points.length; i++) {
+      const [x1, y1] = points[i - 1],
+        [x2, y2] = points[i];
+      assert.ok(x1 === x2 || y1 === y2, "orthogonal path");
+      for (const [id, r] of positions) {
+        const crosses =
+          x1 === x2
+            ? x1 > r.x &&
+              x1 < r.x + r.w &&
+              Math.max(y1, y2) > r.y &&
+              Math.min(y1, y2) < r.y + r.h
+            : y1 > r.y &&
+              y1 < r.y + r.h &&
+              Math.max(x1, x2) > r.x &&
+              Math.min(x1, x2) < r.x + r.w;
+        assert.equal(crosses, false, `${edge.from} → ${edge.to} crosses ${id}`);
+      }
+    }
+  }
+});
+
+test("outgoing cross-stage labels and converging return labels stay distinct", () => {
+  const positions = new Map([
+    ["left", { x: 16, y: 104, w: 348, h: 76, stage: 0 }],
+    ["center", { x: 426, y: 104, w: 348, h: 76, stage: 1 }],
+    ["right", { x: 836, y: 104, w: 348, h: 76, stage: 2 }],
+    ["later", { x: 426, y: 228, w: 348, h: 76, stage: 1 }],
+    ["last", { x: 426, y: 352, w: 348, h: 76, stage: 1 }],
+  ]);
+  const label = (from, to, kind) => {
+    const { tx, ty } = api.routeEdge({ from, to, kind }, positions, 380, 30);
+    return [tx, ty];
+  };
+  assert.notDeepEqual(
+    label("left", "center", "call"),
+    label("left", "right", "call"),
+  );
+  assert.notDeepEqual(
+    label("center", "left", "return"),
+    label("center", "right", "call"),
+  );
+  assert.notDeepEqual(
+    label("center", "later", "data"),
+    label("center", "last", "call"),
+  );
+  assert.notDeepEqual(
+    label("later", "center", "return"),
+    label("later", "last", "data"),
+  );
+  assert.notDeepEqual(
+    label("later", "center", "return"),
+    label("last", "center", "return"),
+  );
+});
