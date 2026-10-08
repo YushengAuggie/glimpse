@@ -183,3 +183,19 @@ test("oversized_asset_left_as_link", () => {
   assert.ok(verdict.leftAsLink);
   assert.ok(verdict.tooLarge);
 });
+
+// Regression: `glimpse share` pipes the bundle (`export | share`). Node writes to a
+// pipe asynchronously, so a process.exit() right after the write cut every bundle
+// at the 64 KiB pipe buffer and shared a broken page. Pipe a large artifact
+// through a real shell pipe and require every byte to arrive.
+test("large_bundle_survives_a_pipe", () => {
+  const d = mkTmp();
+  const body = "<p>" + "x".repeat(200 * 1024) + "</p>";
+  const src = _write(d, "big.html", `<!doctype html><html><body>${body}</body></html>`);
+  const expected = Buffer.byteLength(fs.readFileSync(src, "utf8"));
+  const res = spawnSync("bash", ["-c", 'node "$0" "$1" | wc -c', MODULE, src], {
+    encoding: "utf8",
+  });
+  assert.equal(res.status, 0, `pipe failed: ${res.stderr}`);
+  assert.equal(Number(res.stdout.trim()), expected);
+});
