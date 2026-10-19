@@ -448,7 +448,7 @@ _audit_capture(){
       let v; try{ v=(await send("Runtime.evaluate",{expression:"JSON.stringify((window.__glimpse_audit||{})["+JSON.stringify(slug)+"]||null)",returnByValue:true})).result.value; }catch{ continue; }
       if(!v) continue;
       let o; try{ o=JSON.parse(v); }catch{ continue; }
-      if(o && o.slug===slug){
+      if(o && o.slug===slug && o.viewportWidth){     // no viewport = unsized frame, not a measurement
         stable = (audit && audit.ts===o.ts) ? stable+1 : 0;
         audit=o;
         if(stable>=2 && waited>=1000) break;        // settled

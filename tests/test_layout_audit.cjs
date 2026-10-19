@@ -99,3 +99,29 @@ test("contrastFinding: readable → null; low-contrast band → warning not erro
 test("contrastFinding: unparseable color yields no finding (never crashes)", () => {
   assert.equal(A.contrastFinding({ selector: "p", color: "none", bg: "rgb(255,255,255)" }), null);
 });
+
+// The canvas renders artifacts in a sandboxed (out-of-process) iframe, which can run
+// its scripts before the parent has given it a size. An audit taken then measures a
+// 0px viewport with no layout, so it finds nothing and would report a false "clean".
+// Drive the real browser entry in a vm sandbox with a frame that is unsized at first.
+test("browser entry: never reports an unsized (0px) frame; audits once it has a size", () => {
+  const fs = require("node:fs");
+  const vm = require("node:vm");
+  const src = fs.readFileSync(require.resolve("../canvas/glimpse-audit.js"), "utf8");
+  const posts = [], timers = [];
+  const documentElement = { clientWidth: 0, scrollWidth: 0 };
+  const document = { documentElement, body: null, readyState: "complete",
+    addEventListener() {}, querySelectorAll: () => [] };
+  const window = { __GLIMPSE__: { channelId: "ch-test" }, addEventListener() {},
+    parent: { postMessage: (m) => posts.push(m) } };
+  vm.runInNewContext(src, { window, document, getComputedStyle: () => ({}),
+    setTimeout: (fn) => { timers.push(fn); return timers.length; }, clearTimeout() {} });
+  const tick = () => { const fns = timers.splice(0); fns.forEach((fn) => fn()); };
+  tick(); tick(); tick();
+  assert.equal(posts.length, 0, "an unsized frame must not post a (clean) audit");
+  documentElement.clientWidth = 800; documentElement.scrollWidth = 1600;   // parent sizes the frame
+  tick();
+  assert.equal(posts.length, 1);
+  assert.equal(posts[0].viewportWidth, 800);
+  assert.equal(posts[0].findings[0].kind, "page-horizontal-overflow");
+});

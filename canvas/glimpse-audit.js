@@ -263,10 +263,17 @@
         return { viewportWidth: vw, findings: findings };
       }
 
-      var lastSig = null;
+      var lastSig = null, unsizedRetries = 0;
       function run() {
         var res;
         try { res = auditLayout(); } catch (e) { return; }
+        // The sandboxed iframe runs out of process and can run before the parent has
+        // sized it: a 0px viewport has no layout, so it would report a false "clean".
+        // That is not a measurement. Retry briefly (~10s) and never post it.
+        if (!res.viewportWidth) {
+          if (unsizedRetries++ < 40) schedule(250);
+          return;
+        }
         var sig = JSON.stringify(res.findings);
         if (sig === lastSig) return;          // only post when the picture changes
         lastSig = sig;
