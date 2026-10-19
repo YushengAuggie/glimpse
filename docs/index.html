@@ -3,18 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Glimpse — a real browser for your AI coding agent</title>
+<title>Glimpse: a real browser for your AI coding agent</title>
 <meta name="description" content="Glimpse gives your AI coding agent a real Chrome over CDP: it renders its work as live HTML, drives and inspects your running app, and you highlight anything to talk back. Local, serverless, private.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" type="image/svg+xml" href="assets/glimpse-icon.svg">
 <!-- Open Graph / social -->
-<meta property="og:title" content="Glimpse — a real browser for your AI coding agent">
+<meta property="og:title" content="Glimpse: a real browser for your AI coding agent">
 <meta property="og:description" content="Your agent renders its work as live HTML, drives and inspects your running app over CDP, and you highlight anything to talk back. Local, serverless, private.">
 <meta property="og:type" content="website">
 <meta property="og:image" content="assets/shots/diagram-dark.png">
 <style>
   /* ============================================================================
-     Design tokens — mirror skills/canvas/playbooks/base.html. Light is default;
+     Design tokens: mirror skills/canvas/playbooks/base.html. Light is default;
      dark overrides under prefers-color-scheme AND an explicit [data-theme="dark"]
      so the toggle always beats the OS. Indigo accent; monospace eyebrows.
   ============================================================================ */
@@ -205,7 +205,7 @@
     background:var(--good-soft);border:1px solid color-mix(in srgb,var(--good) 30%,transparent);border-radius:999px;padding:8px 12px;}
   .app-toast svg{width:14px;height:14px;}
 
-  /* CDP drawer — a docked terminal strip; dark in BOTH themes (code surface). */
+  /* CDP drawer: a docked terminal strip; dark in BOTH themes (code surface). */
   .drawer{background:var(--code-bg);border-top:1px solid rgba(255,255,255,.07);}
   .drawer-head{display:flex;align-items:center;gap:9px;padding:11px 18px;border-bottom:1px solid rgba(255,255,255,.06);
     font:600 11.5px/1 var(--mono);letter-spacing:.05em;color:var(--code-dim);}
@@ -278,7 +278,7 @@
 
   /* ---- Playbook viewer (featured stage + thumbnail strip) ------------------ */
   /* One large, readable render at a time; a thumbnail strip swaps the selection.
-     Count-agnostic — 5, 7, or 8 artifacts all read as intentional, never an orphan. */
+     Count-agnostic: 5, 7, or 8 artifacts all read as intentional, never an orphan. */
   .viewer{display:flex;flex-direction:column;gap:16px;min-width:0;}
   /* Featured stage: the biggest, clearest preview. Click opens the full render in the lightbox. */
   .stage{position:relative;display:block;width:100%;min-width:0;margin:0;padding:0;text-align:left;font:inherit;color:inherit;
@@ -294,7 +294,7 @@
     color:#fff;background:color-mix(in srgb,var(--accent) 88%,#000);padding:6px 9px;border-radius:7px;
     opacity:0;transform:translateY(-3px);transition:opacity .15s ease,transform .15s ease;pointer-events:none;}
   .stage:hover .stage-hint,.stage:focus-visible .stage-hint{opacity:1;transform:none;}
-  /* Carousel prev/next controls — siblings of the stage button (can't nest buttons),
+  /* Carousel prev/next controls: siblings of the stage button (can't nest buttons),
      overlaid on the stage edges. Revealed on panel hover; always shown on focus. */
   .stage-panel{position:relative;min-width:0;}
   .stage-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:3;
@@ -306,7 +306,7 @@
   .stage-panel:hover .stage-nav{opacity:1;}
   .stage-nav:hover{background:var(--accent-soft);color:var(--accent-ink);border-color:color-mix(in srgb,var(--accent) 40%,var(--line));}
   .stage-nav:focus-visible{opacity:1;outline:2px solid var(--accent);outline-offset:2px;}
-  /* Caption under the stage — eyebrow label + one line; updates with the selection. */
+  /* Caption under the stage: eyebrow label + one line; updates with the selection. */
   .stage-cap{display:flex;flex-wrap:wrap;gap:5px 10px;align-items:baseline;min-width:0;}
   .stage-cap .k{font:600 12px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent);flex:none;}
   .stage-cap .d{color:var(--ink-2);font-size:14px;min-width:0;}
@@ -315,7 +315,7 @@
      start-alignment (no clipped/unreachable leading thumb) when it must scroll. */
   .strip{display:flex;gap:12px;min-width:0;justify-content:safe center;overflow-x:auto;padding:6px;margin:0 auto;
     max-width:100%;scroll-snap-type:x proximity;scrollbar-width:thin;-webkit-overflow-scrolling:touch;}
-  .thumb{flex:0 0 140px;min-width:0;position:relative;margin:0;padding:0;aspect-ratio:16/10;cursor:pointer;scroll-snap-align:start;
+  .thumb{flex:0 0 120px;min-width:0;position:relative;margin:0;padding:0;aspect-ratio:16/10;cursor:pointer;scroll-snap-align:start;
     background:var(--bg-sunk);border:1px solid var(--line);border-radius:10px;overflow:hidden;box-shadow:var(--shadow-sm);
     transition:border-color .12s ease,box-shadow .12s ease,transform .12s ease;}
   .thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top center;display:block;}
@@ -373,11 +373,25 @@
   tbody tr:last-child td{border-bottom:none;}
   td code, .cli-cmd{font:600 13px/1.5 var(--mono);color:var(--accent-ink);white-space:nowrap;}
   td.desc{color:var(--ink-2);}
+  td.desc code{white-space:normal;overflow-wrap:anywhere;font-weight:500;}
   .grp-row td{background:color-mix(in srgb,var(--accent-soft) 60%,var(--bg-elev));
     font:600 11px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent-ink);padding:9px 18px;}
   /* Full-width section (edges match the page); cap the table so rows stay readable. */
   #cli .table-wrap{max-width:900px;}
   #cli td.desc{max-width:520px;}
+  /* Phones: stack each row (command over description) instead of a sideways scroll. */
+  @media (max-width:640px){
+    #cli table{min-width:0;}
+    #cli thead{display:none;}
+    #cli tr, #cli td{display:block;}
+    #cli td{border-bottom:none;padding:0 16px;}
+    #cli tbody tr{border-bottom:1px solid var(--line-2);padding:12px 0;}
+    #cli tbody tr:last-child{border-bottom:none;}
+    #cli tr.grp-row{padding:0;}
+    #cli .grp-row td{padding:9px 16px;}
+    #cli td code{white-space:normal;overflow-wrap:anywhere;}
+    #cli td.desc{max-width:none;margin-top:4px;}
+  }
 
   /* ---- Final CTA ----------------------------------------------------------- */
   .cta-band{background:linear-gradient(135deg,var(--bg-elev),var(--bg-tint));
@@ -407,7 +421,7 @@
     <a class="brand" href="#top"><img src="assets/glimpse-icon.svg" alt="">Glimpse</a>
     <nav class="nav-links" aria-label="Primary">
       <a class="nav-hide" href="#pillars">Why Glimpse</a>
-      <a class="nav-hide" href="#playbooks">Playbooks</a>
+      <a class="nav-hide" href="#playbooks">Gallery</a>
       <a class="nav-hide" href="#quickstart">Quickstart</a>
       <a class="nav-hide" href="#cli">CLI</a>
       <a href="https://github.com/YushengAuggie/glimpse" rel="noopener">GitHub ↗</a>
@@ -423,7 +437,7 @@
 <!-- ===== Hero ===== -->
 <section class="hero">
   <div class="wrap">
-    <div class="hero-badge"><span class="pip"></span>Local · real Chrome over CDP · two-way</div>
+    <div class="hero-badge"><span class="pip"></span><span>Local · real Chrome over CDP · <span style="white-space:nowrap">two-way</span></span></div>
     <h1>Your AI coding agent gets a <span class="grad">real browser</span>.</h1>
     <p class="hero-lede">Glimpse renders your agent's work as live HTML and <b>drives your running app
       through a real Chrome</b>. Your agent inspects the real page; you <b>highlight anything on screen
@@ -439,7 +453,7 @@
       </a>
     </div>
     <p class="trust">
-      <span class="t"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg>Runs entirely on your machine</span>
+      <span class="t"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg>Local by default</span>
       <span class="sep" aria-hidden="true"></span>
       <span class="t">Real Chrome + Node</span>
       <span class="sep" aria-hidden="true"></span>
@@ -453,7 +467,7 @@
     <!-- Hero scene: a live app under review + the CDP command drawer driving it.
          Built inline so it themes flawlessly in light AND dark (no raster). -->
     <div class="frame hero-scene" role="img"
-         aria-label="A live web app in a browser window, with a Glimpse CDP session drawer below it running glimpse open, read, click, and wait commands — showing the agent driving and inspecting the real app.">
+         aria-label="A live web app in a browser window, with a Glimpse CDP session drawer below it running glimpse open, read, click, and wait commands. The agent drives and inspects the real app.">
       <div class="frame-bar">
         <div class="frame-dots"><i></i><i></i><i></i></div>
         <div class="frame-url"><span class="lock">🔒</span><span class="u">localhost:5173 · your app</span></div>
@@ -498,21 +512,21 @@
   <div class="wrap">
     <div class="section-head center">
       <div class="eyebrow center">Why Glimpse</div>
-      <h2 class="section-title">Three things a terminal can't do.</h2>
-      <p class="section-lede">A terminal can't show your agent what it built, let it drive a real app, or
-        let you point at the screen and reply. A real Chrome can.</p>
+      <h2 class="section-title">Three reasons your agent needs more than a terminal.</h2>
+      <p class="section-lede">A terminal shows text. Glimpse gives your agent a real browser to test your
+        app, gives you a live page you answer by highlighting, and keeps your work on your machine.</p>
     </div>
 
-    <!-- Pillar 1 — real Chrome over CDP (lead) -->
+    <!-- Pillar 1: real Chrome over CDP (lead) -->
     <div class="pillar-split">
       <div>
         <div class="pillar-num"><span class="b">1</span>Real Chrome over CDP</div>
-        <h2 class="section-title">It doesn't just render. It drives your live app.</h2>
-        <p class="section-lede">Glimpse renders through a real Chrome, so the same connection also opens
-          your running app. Your agent inspects the live page: state, console, network and all, which a
-          static-artifact tool never sees.</p>
+        <h2 class="section-title">Your agent tests the real app, not a guess.</h2>
+        <p class="section-lede">Glimpse renders through a real Chrome, and the same connection opens your
+          running app. Your agent sees the live page: its text, console logs, and errors. A screenshot
+          or a static page can't show that.</p>
         <ul class="feature-list">
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>Inspect, read-only:</b> <code>read</code> a page's text + console + uncaught errors, capture a <code>shot</code>, or take an a11y-tree <code>snapshot</code>.</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>Inspect, read-only:</b> <code>read</code> returns page text, console output, and uncaught errors. <code>shot</code> saves a screenshot. <code>snapshot</code> prints the accessibility tree, a text outline of the page.</span></li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>Interact:</b> <code>click</code>, <code>scroll</code>, and <code>wait</code> for elements. These are the only intentionally state-changing verbs, never a side effect of reading.</span></li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>A dedicated profile:</b> the CDP Chrome doesn't see your everyday logins or tabs, only what you load into it.</span></li>
         </ul>
@@ -533,7 +547,7 @@
       </div>
     </div>
 
-    <!-- Pillar 2 — live two-way review -->
+    <!-- Pillar 2: live two-way review -->
     <div class="pillar-split">
       <div class="chat-mock" role="img" aria-label="An artifact with a highlighted passage and a margin thread: a question anchored to the highlight and the agent's answer beneath it.">
         <div class="chat-doc">
@@ -550,36 +564,38 @@
       <div>
         <div class="pillar-num"><span class="b">2</span>Two-way · durable threads</div>
         <h2 class="section-title">Highlight anything. Ask in place. It sticks.</h2>
-        <p class="section-lede">Feedback isn't a chat log that scrolls away. Select any passage and ask:
-          the answer threads in the margin, anchored to your highlight and saved per document, so it
-          survives refreshes, restarts, and fresh sessions.</p>
+        <p class="section-lede">Select any passage and ask. The answer appears in the margin, next to your
+          highlight. Each thread is saved with its document, so it survives refreshes, restarts, and new
+          sessions.</p>
         <ul class="feature-list">
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span><b><code>glimpse poll</code></b> is one blocking call an agent parks on. It waits for feedback, prints a token-efficient record, and returns.</span></li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span><b><code>glimpse ask</code></b> flips it around: the agent publishes an interactive form and blocks until you approve, pick, or note.</span></li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>No inbound endpoint.</b> The bridge <i>pulls</i> questions over the CDP channel that's already open. Nothing new listens on the network.</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span><b><code>glimpse walkthrough</code></b> turns a code path into a clickable graph tied to real source lines. Ask about any step. The agent answers with cited source lines, and a citation to code that changed is rejected.</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span><b>No new network port.</b> Your agent <i>pulls</i> your questions over the Chrome connection that is already open. Nothing new listens on the network.</span></li>
         </ul>
       </div>
     </div>
 
-    <!-- Pillar 3 — local, private, always-on -->
+    <!-- Pillar 3: local, private, always-on -->
     <div class="pillar-split">
       <div>
         <div class="pillar-num"><span class="b">3</span>Local · private · serverless</div>
-        <h2 class="section-title">Private by default. Nothing leaves your machine.</h2>
+        <h2 class="section-title">Private by default. Nothing leaves unless you say so.</h2>
         <p class="section-lede">Everything runs on your machine: a static file server and a Chrome window,
-          both on loopback. No account, no hosted server, no telemetry. An optional macOS menu-bar daemon
-          can keep answering even when you're not at the keyboard.</p>
+          both on loopback. No account, no hosted server, no telemetry. When you step away, an optional
+          daemon can keep answering your questions.</p>
         <ul class="feature-list">
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg><span><b>Sandboxed artifacts:</b> each renders in an <code>allow-scripts</code>-only iframe (opaque origin), so artifact JS can't reach the shell or a sibling.</span></li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg><span><b>Egress is loud, never silent:</b> feedback is treated as untrusted data and secret-scrubbed; <code>share</code> prints a notice before anything leaves your machine.</span></li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg><span><b>Always-on, optional:</b> <code>glimpse daemon</code> auto-answers via an Anthropic-compatible proxy: Q&amp;A only, no tools, writes nothing but the answer.</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg><span><b>Egress is loud, never silent:</b> feedback is treated as untrusted data and secret-scrubbed. <code>share</code> (or the canvas Share button) is private and password-protected by default, and it tells you before anything leaves your machine.</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg><span><b>Always-on, optional:</b> <code>glimpse daemon</code> sends each highlighted question to the Anthropic-compatible endpoint you configure. Q&amp;A only: no tools, and it writes nothing but the answer. On macOS, <code>glimpse menubar</code> keeps it running.</span></li>
         </ul>
       </div>
       <div class="trust-card">
         <div class="shield"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg></div>
-        <h2 class="section-title" style="font-size:19px;">Local &amp; private by design</h2>
-        <p class="section-lede" style="font-size:15px;">No walls of terminal text, and no data you didn't send.
-          The one part that can call out, the optional daemon, is explicit about exactly what it sends.</p>
+        <h2 class="section-title" style="font-size:19px;">What leaves your machine</h2>
+        <p class="section-lede" style="font-size:15px;">Only what you send. <code>share</code> uploads a private,
+          password-protected copy and warns you first. The optional daemon sends a highlighted question to your
+          configured endpoint. Nothing else calls out.</p>
         <div class="callout good">
           <p>Don't take our word for it: the data flow, alternatives, and full threat model are in
             <a href="https://github.com/YushengAuggie/glimpse/blob/main/docs/DESIGN.md" rel="noopener">docs/DESIGN.md</a> and
@@ -594,19 +610,19 @@
 <section id="playbooks">
   <div class="wrap">
     <div class="section-head center">
-      <div class="eyebrow center">Authoring playbooks</div>
-      <h2 class="section-title">What a published artifact looks like.</h2>
-      <p class="section-lede">Your agent's output doesn't have to be a wall of text. Glimpse ships authoring
-        playbooks that turn plans, diagrams, tables, and diffs into clean, readable artifacts, in light and
-        dark. <b>Every render below follows your theme.</b></p>
+      <div class="eyebrow center">Gallery</div>
+      <h2 class="section-title">What your agent can put on screen.</h2>
+      <p class="section-lede">Agents usually answer in plain text. With Glimpse they publish plans, diagrams,
+        tables, diffs, and code walkthroughs as pages you can read, highlight, and reply to.
+        <b>Every render below follows your theme.</b></p>
     </div>
     <div class="viewer">
       <!-- Featured stage: the currently-selected artifact, large. Click opens the full render. -->
       <div class="stage-panel" role="tabpanel" id="pbPanel" aria-labelledby="pbTab-diagram">
-        <button type="button" class="stage" id="pbStage" aria-label="View the Diagram playbook artifact full render">
+        <button type="button" class="stage" id="pbStage" aria-label="View the full Diagram render">
           <span class="stage-imgs">
-            <img class="light" id="pbStageLight" src="assets/shots/diagram-light.png" alt="Diagram playbook artifact, light mode — a request-flow Mermaid graph with component cards.">
-            <img class="dark" id="pbStageDark" src="assets/shots/diagram-dark.png" alt="Diagram playbook artifact, dark mode — a request-flow Mermaid graph with component cards.">
+            <img class="light" id="pbStageLight" src="assets/shots/diagram-light.png" alt="Diagram playbook artifact, light mode: a request-flow Mermaid graph with component cards.">
+            <img class="dark" id="pbStageDark" src="assets/shots/diagram-dark.png" alt="Diagram playbook artifact, dark mode: a request-flow Mermaid graph with component cards.">
           </span>
           <span class="stage-hint" aria-hidden="true">View full</span>
         </button>
@@ -617,52 +633,59 @@
       <!-- Thumbnail strip: pick an artifact to feature. -->
       <div class="strip" role="tablist" aria-label="Playbook artifacts">
         <button type="button" role="tab" id="pbTab-diagram" class="thumb" aria-selected="true" aria-controls="pbPanel" tabindex="0"
-          aria-label="Diagram — flows, state, and architecture"
+          aria-label="Diagram: flows, state, and architecture"
           data-label="Diagram" data-desc="Flows, state, and architecture"
           data-light="assets/shots/diagram-light.png" data-dark="assets/shots/diagram-dark.png"
-          data-alt="Diagram playbook artifact — a request-flow Mermaid graph with component cards.">
+          data-alt="Diagram playbook artifact: a request-flow Mermaid graph with component cards.">
           <img class="light" src="assets/shots/diagram-light.png" alt=""><img class="dark" src="assets/shots/diagram-dark.png" alt="">
         </button>
+        <button type="button" role="tab" id="pbTab-walkthrough" class="thumb" aria-selected="false" aria-controls="pbPanel" tabindex="-1"
+          aria-label="Walkthrough: a clickable code path tied to real source"
+          data-label="Walkthrough" data-desc="A clickable code path tied to real source"
+          data-light="assets/shots/walkthrough-light.png" data-dark="assets/shots/walkthrough-dark.png"
+          data-alt="Code walkthrough: a call graph of three functions, with the selected step's source lines open in an inspector.">
+          <img class="light" src="assets/shots/walkthrough-light.png" alt=""><img class="dark" src="assets/shots/walkthrough-dark.png" alt="">
+        </button>
         <button type="button" role="tab" id="pbTab-plan" class="thumb" aria-selected="false" aria-controls="pbPanel" tabindex="-1"
-          aria-label="Plan — a technical plan before implementation"
+          aria-label="Plan: a technical plan before implementation"
           data-label="Plan" data-desc="A technical plan before implementation"
           data-light="assets/shots/plan-light.png" data-dark="assets/shots/plan-dark.png"
-          data-alt="Plan playbook artifact — a technical plan before implementation.">
+          data-alt="Plan playbook artifact: a technical plan before implementation.">
           <img class="light" src="assets/shots/plan-light.png" alt=""><img class="dark" src="assets/shots/plan-dark.png" alt="">
         </button>
         <button type="button" role="tab" id="pbTab-code" class="thumb" aria-selected="false" aria-controls="pbPanel" tabindex="-1"
-          aria-label="Code — source, patches and before/after diffs"
+          aria-label="Code: source, patches and before/after diffs"
           data-label="Code" data-desc="Source, patches &amp; before/after diffs"
           data-light="assets/shots/code-light.png" data-dark="assets/shots/code-dark.png"
-          data-alt="Code playbook artifact — source, patches and before/after diffs.">
+          data-alt="Code playbook artifact: source, patches and before/after diffs.">
           <img class="light" src="assets/shots/code-light.png" alt=""><img class="dark" src="assets/shots/code-dark.png" alt="">
         </button>
         <button type="button" role="tab" id="pbTab-table" class="thumb" aria-selected="false" aria-controls="pbPanel" tabindex="-1"
-          aria-label="Table — dense records, scan-friendly"
+          aria-label="Table: dense records, scan-friendly"
           data-label="Table" data-desc="Dense records, scan-friendly"
           data-light="assets/shots/table-light.png" data-dark="assets/shots/table-dark.png"
-          data-alt="Table playbook artifact — dense records, scan-friendly.">
+          data-alt="Table playbook artifact: dense records, scan-friendly.">
           <img class="light" src="assets/shots/table-light.png" alt=""><img class="dark" src="assets/shots/table-dark.png" alt="">
         </button>
         <button type="button" role="tab" id="pbTab-comparison" class="thumb" aria-selected="false" aria-controls="pbPanel" tabindex="-1"
-          aria-label="Comparison — options, tradeoffs, current vs target"
+          aria-label="Comparison: options, tradeoffs, current vs target"
           data-label="Comparison" data-desc="Options, tradeoffs, current vs target"
           data-light="assets/shots/comparison-light.png" data-dark="assets/shots/comparison-dark.png"
-          data-alt="Comparison playbook artifact — options, tradeoffs, current vs target.">
+          data-alt="Comparison playbook artifact: options, tradeoffs, current vs target.">
           <img class="light" src="assets/shots/comparison-light.png" alt=""><img class="dark" src="assets/shots/comparison-dark.png" alt="">
         </button>
         <button type="button" role="tab" id="pbTab-input" class="thumb" aria-selected="false" aria-controls="pbPanel" tabindex="-1"
-          aria-label="Input — native, accessible decision forms"
+          aria-label="Input: native, accessible decision forms"
           data-label="Input" data-desc="Native, accessible decision forms"
           data-light="assets/shots/input-light.png" data-dark="assets/shots/input-dark.png"
-          data-alt="Input playbook artifact — a native, accessible decision form.">
+          data-alt="Input playbook artifact: a native, accessible decision form.">
           <img class="light" src="assets/shots/input-light.png" alt=""><img class="dark" src="assets/shots/input-dark.png" alt="">
         </button>
         <button type="button" role="tab" id="pbTab-slides" class="thumb" aria-selected="false" aria-controls="pbPanel" tabindex="-1"
-          aria-label="Slides — a paced, one-idea-per-screen deck"
+          aria-label="Slides: a paced, one-idea-per-screen deck"
           data-label="Slides" data-desc="A paced, one-idea-per-screen deck"
           data-light="assets/shots/slides-light.png" data-dark="assets/shots/slides-dark.png"
-          data-alt="Slides playbook artifact — a paced, one-idea-per-screen deck.">
+          data-alt="Slides playbook artifact: a paced, one-idea-per-screen deck.">
           <img class="light" src="assets/shots/slides-light.png" alt=""><img class="dark" src="assets/shots/slides-dark.png" alt="">
         </button>
       </div>
@@ -690,17 +713,17 @@
       <div class="step">
         <div class="n">2</div>
         <h3>Open the canvas</h3>
-        <p><code>glimpse open</code> starts the loopback static server, launches a dedicated Chrome, and opens the dashboard.</p>
+        <p><code>glimpse open</code> starts the loopback server, launches a dedicated Chrome, and opens the canvas. The first run shows a short guide.</p>
       </div>
       <div class="step">
         <div class="n">3</div>
-        <h3>Publish &amp; talk back</h3>
-        <p>Publish an example, then <b>select a sentence and ask</b>. Run <code>glimpse poll</code> to receive it and <code>glimpse reply</code> to answer.</p>
+        <h3>Try it &amp; talk back</h3>
+        <p><code>glimpse demo</code> loads three examples. <b>Select a sentence and ask a question.</b> Your agent receives it with <code>glimpse poll</code> and answers with <code>glimpse reply</code>.</p>
       </div>
     </div>
 
     <div class="terminal" role="img" aria-label="Quickstart shell commands">
-      <div class="frame-bar"><div class="frame-dots"><i></i><i></i><i></i></div><span class="lbl">zsh — quickstart</span></div>
+      <div class="frame-bar"><div class="frame-dots"><i></i><i></i><i></i></div><span class="lbl">zsh · quickstart</span></div>
 <pre><span class="c"># 1 · clone &amp; install (CLI → ~/.local/bin, canvas → ~/.glimpse)</span>
 <span class="p">git clone</span> <span class="s">https://github.com/YushengAuggie/glimpse.git</span>
 <span class="p">cd</span> glimpse &amp;&amp; <span class="p">./install.sh</span>
@@ -709,8 +732,16 @@
 <span class="p">glimpse doctor</span>
 <span class="p">glimpse open</span>
 
-<span class="c"># 3 · publish an example artifact — it opens automatically</span>
-<span class="p">glimpse publish</span> guide <span class="s">"How to use Glimpse"</span> ~/.glimpse/examples/glimpse-guide.html
+<span class="c"># 3 · load the demo set: a guide, a diagram, and a highlight-chat example</span>
+<span class="p">glimpse demo</span>
+
+<span class="c"># 4 · agent side: wait for a highlighted question, then answer it in place</span>
+<span class="p">glimpse poll</span>
+<span class="p">glimpse reply</span> glimpse-guide <span class="s">"Here is why..."</span> --to <span class="s">&lt;id&gt;</span>
+
+<span class="c"># 5 · agent side: open your running app and read what the user sees</span>
+<span class="p">glimpse open</span> <span class="s">http://localhost:3000</span>
+<span class="p">glimpse read</span>
 
 <span class="c"># optional: register the chrome-devtools MCP server for MCP-capable agents</span>
 <span class="p">./install.sh</span> --mcp claude</pre>
@@ -730,38 +761,49 @@
   <div class="wrap">
     <div class="section-head">
       <div class="eyebrow">CLI reference</div>
-      <h2 class="section-title">Every verb, grouped.</h2>
-      <p class="section-lede">Or just talk: Glimpse ships <code>canvas</code>, <code>chrome-cdp</code>, and
-        <code>explain</code> skills for Claude Code and compatible agents, so you never type the plumbing.</p>
+      <h2 class="section-title">Every command, by task.</h2>
+      <p class="section-lede">Usually your agent runs these for you: Glimpse ships <code>canvas</code>,
+        <code>chrome-cdp</code>, and <code>explain</code> skills for Claude Code and compatible agents.
+        You can also run any command yourself.</p>
     </div>
     <div class="table-wrap">
       <table>
         <thead><tr><th scope="col">Command</th><th scope="col">What it does</th></tr></thead>
         <tbody>
-          <tr class="grp-row"><td colspan="2">Publish</td></tr>
-          <tr><td><code>glimpse open [url|#slug]</code></td><td class="desc">Serve + launch Chrome + navigate to the canvas.</td></tr>
-          <tr><td><code>glimpse publish &lt;slug&gt; &lt;title&gt; [file]</code></td><td class="desc">Publish an HTML artifact (stdin if no file); re-slug updates in place.</td></tr>
+          <tr class="grp-row"><td colspan="2">Canvas</td></tr>
+          <tr><td><code>glimpse open [url|#slug]</code></td><td class="desc">Serve, launch Chrome, and open the canvas. The first run shows a short guide.</td></tr>
+          <tr><td><code>glimpse demo</code></td><td class="desc">Load three bundled examples (guide, diagram, highlight-chat) and open the canvas.</td></tr>
+          <tr><td><code>glimpse publish &lt;slug&gt; &lt;title&gt; [file] [--gate]</code></td><td class="desc">Publish an HTML artifact (stdin if no file); the same slug updates in place. When the canvas is live, it checks the real render and warns about layout problems. <code>--gate</code> fails the run on a layout error.</td></tr>
           <tr><td><code>glimpse explain &lt;slug&gt; &lt;title&gt; [spec]</code></td><td class="desc">Publish an interactive code explainer (architecture · data flow · call stack).</td></tr>
-          <tr><td><code>glimpse ask &lt;slug&gt; &lt;title&gt; [file] --form</code></td><td class="desc">Publish interactive, block for a structured response (JSON).</td></tr>
+          <tr><td><code>glimpse walkthrough &lt;slug&gt; &lt;title&gt; &lt;spec&gt; --repo &lt;path&gt;</code></td><td class="desc">Publish a clickable code walkthrough, each step tied to real source lines.</td></tr>
+          <tr><td><code>glimpse ask &lt;slug&gt; &lt;title&gt; [file] [--form]</code></td><td class="desc">Publish a form and block until you answer; prints your choice as JSON.</td></tr>
+          <tr><td><code>glimpse audit &lt;slug&gt;</code></td><td class="desc">Report real-render layout issues: overflow, clipped or overlapping text, and text too faint to read.</td></tr>
 
           <tr class="grp-row"><td colspan="2">Converse</td></tr>
           <tr><td><code>glimpse poll [--json] [--timeout N]</code></td><td class="desc">Block until there's human feedback, print it, return. One call an agent parks on.</td></tr>
           <tr><td><code>glimpse reply &lt;slug&gt; "answer" --to &lt;id&gt;</code></td><td class="desc">Answer a highlighted question, pinned to its anchor.</td></tr>
-          <tr><td><code>glimpse thread[s] [--json|--clear]</code></td><td class="desc">Print one conversation thread, or list all of them.</td></tr>
-          <tr><td><code>glimpse daemon</code></td><td class="desc">Always-on: bridge + auto-answer via the API proxy.</td></tr>
+          <tr><td><code>glimpse walkthrough connect · context · evidence · reply</code></td><td class="desc">Answer questions on a walkthrough with cited source evidence. Pair with <code>glimpse poll --walkthrough &lt;slug&gt; --session &lt;token&gt;</code>.</td></tr>
+          <tr><td><code>glimpse thread &lt;slug&gt; · threads</code></td><td class="desc">Print one conversation thread, or list all of them.</td></tr>
+          <tr><td><code>glimpse daemon</code></td><td class="desc">Optional, always-on: answer highlighted questions with an LLM while you're away. Sends each question to your configured endpoint.</td></tr>
 
           <tr class="grp-row"><td colspan="2">Drive Chrome</td></tr>
           <tr><td><code>glimpse read [url]</code></td><td class="desc">Navigate + print {title, url, text, console, errors}.</td></tr>
           <tr><td><code>glimpse shot &lt;out.png&gt; [url]</code></td><td class="desc">Screenshot the current (or given) page.</td></tr>
           <tr><td><code>glimpse snapshot [#slug|url]</code></td><td class="desc">Print the page's accessibility tree as an indented outline.</td></tr>
-          <tr><td><code>glimpse click · scroll · wait</code></td><td class="desc">Interact with a live page (the only state-changing verbs).</td></tr>
-          <tr><td><code>glimpse audit &lt;slug&gt;</code></td><td class="desc">Report real-render layout issues (overflow / clipped / overlap).</td></tr>
+          <tr><td><code>glimpse click · scroll · wait</code></td><td class="desc">Interact with a live page (the only state-changing commands).</td></tr>
+          <tr><td><code>glimpse gc [--all]</code></td><td class="desc">Close leftover tabs in the canvas Chrome. The canvas tab always stays.</td></tr>
 
           <tr class="grp-row"><td colspan="2">Share &amp; manage</td></tr>
-          <tr><td><code>glimpse export &lt;slug&gt; [--out path]</code></td><td class="desc">Write a single self-contained offline HTML file.</td></tr>
-          <tr><td><code>glimpse share &lt;slug&gt; [--public]</code></td><td class="desc">Upload a portable copy (private &amp; password-protected by default).</td></tr>
-          <tr><td><code>glimpse list · rm · clear · pin</code></td><td class="desc">Keep the sidebar tidy (pinned artifacts are always kept).</td></tr>
-          <tr><td><code>glimpse doctor</code></td><td class="desc">Check dependencies and running state; loud and scriptable.</td></tr>
+          <tr><td><code>glimpse export &lt;slug&gt; [--out path]</code></td><td class="desc">Write a single self-contained offline HTML file. The canvas Export button does the same.</td></tr>
+          <tr><td><code>glimpse share &lt;slug&gt; [--public] [--password pw] [--update]</code></td><td class="desc">Upload a portable copy, private and password-protected by default. <code>--update</code> keeps the same link. The canvas Share button opens the same choice.</td></tr>
+          <tr><td><code>glimpse shares [&lt;slug&gt;] [--json]</code></td><td class="desc">Show your shared links and passwords again, from local records. Nothing is uploaded.</td></tr>
+          <tr><td><code>glimpse list · rm · clear · pin · unpin</code></td><td class="desc">Keep the sidebar tidy (pinned artifacts are always kept).</td></tr>
+
+          <tr class="grp-row"><td colspan="2">Advanced</td></tr>
+          <tr><td><code>glimpse doctor</code></td><td class="desc">Check dependencies and running state. Exits non-zero when a required check fails.</td></tr>
+          <tr><td><code>glimpse bridge [--wait]</code></td><td class="desc">Stream highlight-questions as JSON lines, for an agent that prefers a stream to <code>poll</code>.</td></tr>
+          <tr><td><code>glimpse menubar</code></td><td class="desc">macOS menu-bar app that keeps the always-on agent running.</td></tr>
+          <tr><td><code>glimpse serve · stop · chrome</code></td><td class="desc">Start or stop the static server, or launch the debuggable Chrome, on its own.</td></tr>
         </tbody>
       </table>
     </div>
@@ -773,9 +815,9 @@
   <div class="wrap">
     <div class="cta-band">
       <div class="eyebrow center">Get started</div>
-      <h2>Give your agent a real browser.</h2>
-      <p>Clone the repo, run one install script, and your next agent session can render its work,
-        drive your live app, and take the feedback you point at on screen. All on your machine.</p>
+      <h2>Try it in your next agent session.</h2>
+      <p>Clone the repo and run one install script. Then ask your agent to open your app, check it,
+        and show you what it found. Your work stays on your machine unless you share it.</p>
       <div class="hero-cta">
         <a class="btn btn-primary" href="https://github.com/YushengAuggie/glimpse" rel="noopener">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.7.5.5 5.7.5 12a11.5 11.5 0 0 0 7.9 10.9c.6.1.8-.2.8-.6v-2c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.7 1.3 3.4 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.4 11.4 0 0 1 6 0C17.3 4.6 18.3 5 18.3 5c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .4.2.7.8.6A11.5 11.5 0 0 0 23.5 12C23.5 5.7 18.3.5 12 .5Z"/></svg>
@@ -939,7 +981,7 @@
       stageD.src=tab.getAttribute('data-dark'); stageD.alt=alt+' (dark)';
       capK.textContent=label; capD.textContent=d;
       panel.setAttribute('aria-labelledby',tab.id);
-      stage.setAttribute('aria-label','View the '+label+' playbook artifact full render');
+      stage.setAttribute('aria-label','View the full '+label+' render');
       if(focusIt){tab.focus(); tab.scrollIntoView({block:'nearest',inline:'nearest'});}
     }
 
