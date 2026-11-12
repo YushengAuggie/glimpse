@@ -189,3 +189,24 @@ test("delete removes one conversation's questions and answers only", () => {
   // a question deleted before the canvas saw its turn id is matched by client id
   assert.equal(_op(root, "delete", { SLUG: "alpha", TURN_IDS: "c3" }), "1");
 });
+
+test("a deleted question that a drainer persists again is deleted by its client id", () => {
+  const root = newRoot();
+  const q = _add_user(root, "alpha", "first?", "passage", "c1");
+  assert.equal(_op(root, "delete", { SLUG: "alpha", TURN_IDS: `${q},c1` }), "1");
+  // a new `glimpse poll` re-drains the old ask entry: it gets a new turn id
+  const again = _add_user(root, "alpha", "first?", "passage", "c1");
+  assert.notEqual(again, q);
+  assert.equal(_op(root, "delete", { SLUG: "alpha", TURN_IDS: `${q},c1` }), "1");
+  assert.equal(JSON.parse(_op(root, "print_json", { SLUG: "alpha" })).turns.length, 0);
+});
+
+test("add_user refuses a question with no text", () => {
+  const root = newRoot();
+  const r = spawnSync("node", [THREADS, "op"], {
+    env: { ...process.env, GLIMPSE_DIR: root, ACTION: "add_user", SLUG: "alpha", TEXT: " ", CLIENT_TURN_ID: "x" },
+    encoding: "utf8",
+  });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /empty question/);
+});

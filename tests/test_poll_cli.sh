@@ -70,4 +70,12 @@ let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{
   console.log("ok: timeout → exit 3 + marker (compact) / timeout payload (--json)");
 })' || true
 
+# 4) `glimpse thread --delete` removes a question; poll never delivers it.
+rc=0; "$GLIMPSE" thread demo --delete >/dev/null 2>&1 || rc=$?
+[ "$rc" != 0 ] || fail "--delete with no id should fail"
+seed demo c9 "doomed question"
+"$GLIMPSE" thread demo --delete c9 | grep -q '^deleted 1 turns' || fail "--delete by client id did not report 1"
+"$GLIMPSE" __pending | grep -q 'doomed question' && fail "deleted question still pending"
+echo "ok: thread --delete removes the question from the pending queue"
+
 echo "ALL OK"

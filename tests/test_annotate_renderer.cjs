@@ -196,3 +196,23 @@ test("deleting a question not yet persisted sends its client id and keeps it hid
   api.ingest([persisted(1, turn, "c"), reply(1, "u1")]);   // the ask lands after the delete
   assert.equal(api.comments.length, 0);
 });
+
+test("deleting a persisted question sends its turn id and its client id", () => {
+  const api = loadConversations();
+  api.quickAsk(null, "d", "q?");
+  const turn = api.comments[0].turns[0];
+  api.ingest([persisted(1, turn, "d")]);
+  api.del(api.comments[0]);
+  assert.deepEqual(api.posted.at(-1).turnIds, ["u1", turn.cid]);
+});
+
+test("after deleting a re-keyed conversation, a new ask on the passage opens a bubble", () => {
+  const api = loadConversations();
+  api.quickAsk(null, "raw sk-proj-secret", "q?");
+  const turn = api.comments[0].turns[0];
+  api.ingest([persisted(1, turn, "raw [REDACTED]")]);   // the store scrubbed the quote
+  api.del(api.comments[0]);
+  api.quickAsk(null, "raw sk-proj-secret", "again?");
+  assert.equal(api.comments.length, 1);
+  assert.equal(api.comments[0].turns.at(-1).text, "again?");
+});

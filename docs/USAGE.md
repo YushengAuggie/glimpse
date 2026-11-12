@@ -216,6 +216,11 @@ glimpse thread arch --delete <id>   # delete one conversation: its questions + a
 glimpse threads              # list all threads
 ```
 
+To delete a conversation in the canvas, click **×** on its bubble, then click
+**Delete?** to confirm. The delete is saved to the thread file only while
+`glimpse poll`, `bridge`, or `daemon` runs. Otherwise the canvas shows a notice,
+and the next one of them to run saves it.
+
 How it works, and why it's safe:
 - The selection helper is **injected at render time** into the same `allow-scripts`
   sandbox (opaque origin) — the artifact file on disk is never modified. A per-iframe

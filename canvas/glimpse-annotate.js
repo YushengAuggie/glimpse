@@ -402,9 +402,11 @@
     ".bubble .hd{ display:flex; align-items:center; gap:8px; padding:8px 10px; flex:0 0 auto; cursor:pointer; border-bottom:1px solid " + (dark ? "#2a3040" : "#eef0f6") + "; }",
     ".bubble.collapsed .hd{ border-bottom:0; }",
     ".bubble .count{ flex:0 0 auto; font-size:10.5px; opacity:.55; }",
-    ".bubble .tog, .bubble .del{ flex:0 0 auto; background:none; border:0; color:inherit; opacity:.55; cursor:pointer; font-size:12px; line-height:1; padding:2px 3px; }",
+    ".bubble .tog, .bubble .del{ flex:0 0 auto; min-width:24px; min-height:24px; background:none; border:0; border-radius:4px; color:inherit; opacity:.55; cursor:pointer; font-size:12px; line-height:1; padding:2px 3px; }",
     ".bubble .tog:hover, .bubble .del:hover{ opacity:1; }",
-    ".bubble .del.armed{ opacity:1; color:" + (dark ? "#f7768e" : "#c92a2a") + "; font-weight:600; }",
+    ".bubble .tog:focus-visible, .bubble .del:focus-visible{ opacity:1; outline:2px solid #7aa2f7; outline-offset:1px; }",
+    ".bubble .del:hover, .bubble .del.armed{ opacity:1; color:" + (dark ? "#f7768e" : "#c92a2a") + "; }",
+    ".bubble .del.armed{ font-weight:600; }",
     ".scroll{ overflow-y:auto; min-height:0; padding:8px 10px; display:flex; flex-direction:column; gap:8px; }",   // turns scroll so the footer stays pinned
     ".foot{ flex:0 0 auto; padding:8px 10px; border-top:1px solid " + (dark ? "#2a3040" : "#eef0f6") + "; }",
     ".bubble.collapsed .scroll, .bubble.collapsed .foot{ display:none; }",
@@ -746,17 +748,20 @@
       c._collapsed = !c._collapsed; b.classList.toggle("collapsed", c._collapsed); syncTog(); queueReposition();
     });
     hd.appendChild(tog);
-    // delete — a two-step inline confirm (the sandbox has no confirm() dialog).
+    // delete: a two-step inline confirm (the sandbox has no confirm() dialog).
     if (c.state !== "composing") {
       var del = el("button", "del"); del.type = "button";
       del.textContent = c._delArmed ? "Delete?" : "×";
-      del.title = c._delArmed ? "Click again to delete this conversation" : "Delete conversation";
+      del.title = c._delArmed ? "Press again to delete this conversation" : "Delete conversation";
       del.setAttribute("aria-label", del.title);
       if (c._delArmed) del.classList.add("armed");
       del.addEventListener("click", function (e) {
         e.stopPropagation();
-        if (c._delArmed) { deleteComment(c); return; }
-        c._delArmed = true; renderAll();
+        // the confirm only counts after a short pause, so a double-click cannot delete
+        if (c._delArmed) { if (Date.now() - c._delArmedAt > 400) deleteComment(c); return; }
+        c._delArmed = true; c._delArmedAt = Date.now(); renderAll();
+        var nb = bubbleEl(c.gid), nd = nb && nb.querySelector(".del");
+        if (nd) nd.focus();   // the re-render replaced the button: keep keyboard focus on it
         setTimeout(function () { if (c._delArmed) { c._delArmed = false; renderAll(); } }, 3000);
       });
       hd.appendChild(del);
@@ -930,9 +935,10 @@
   // Delete a whole conversation: ask the agent side to drop its persisted turns
   // (questions + answers), and hide it here at once.
   function deleteComment(c) {
-    // a question not yet seen persisted is known only by its client id
-    var ids = c.turns.filter(function (t) { return t.role === "user" && (t.id || t.cid); })
-                     .map(function (t) { return t.id || t.cid; });
+    // send both ids: a question not yet seen persisted is known only by its client
+    // id, and the client id also stops a re-drained ask from persisting it again
+    var ids = [];
+    c.turns.forEach(function (t) { if (t.role === "user") { if (t.id) ids.push(t.id); if (t.cid) ids.push(t.cid); } });
     ids.forEach(function (id) { deletedIds[id] = 1; });
     if (ids.length) post({ type: "glimpse:annotate", v: 1, channelId: CHANNEL, intent: "delete", turnIds: ids });
     dropComment(c);
@@ -1012,6 +1018,7 @@
         // or just sent) starts minimized, so opening a doc shows a clean rail. Only set
         // it on first creation — a comment the user later expands stays expanded.
         if (!c) { c = newComment(u.anchor, u.quote); c._collapsed = true; }
+        if (c.key && byKey[c.key] === c) delete byKey[c.key];   // the store may cut or scrub the quote: drop the old key
         c.key = k; byKey[k] = c;
       }
       c.anchor = u.anchor || c.anchor; c.quote = u.quote || c.quote; c.unanchored = !c.anchor;

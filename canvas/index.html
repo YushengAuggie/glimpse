@@ -551,11 +551,16 @@ window.addEventListener('message', (e)=>{
     if(d.channelId !== currentChannel) return;     // nonce: only the iframe we injected into
     if(readingMode || !slug) return;               // reading mode suppresses the relay
     try { if(JSON.stringify(d).length > 64*1024) return; } catch(_){ return; }
-    // delete a conversation: forward its question turn ids (server-minted) only.
+    // delete a conversation: forward its question turn ids and client ids only.
     if(d.intent === "delete"){
       const ids = (Array.isArray(d.turnIds) ? d.turnIds : []).map(String)
         .filter(x => /^[A-Za-z0-9_-]{1,64}$/.test(x)).slice(0, 500);
-      if(ids.length) pushOutbox({ id: GL_EPOCH + '-' + (++glSeq), intent: "delete", slug: slug, turnIds: ids, ts: Date.now() });
+      if(!ids.length) return;
+      // drop its queued asks too, so a later drain cannot persist a deleted question again
+      const drop = new Set(ids), o = window.__glimpse_outbox;
+      for(let i = o.length - 1; i >= 0; i--) if(o[i].slug === slug && drop.has(o[i].clientTurnId)) o.splice(i, 1);
+      pushOutbox({ id: GL_EPOCH + '-' + (++glSeq), intent: "delete", slug: slug, turnIds: ids, ts: Date.now() });
+      if(!bridgeUsable()) toast('Deleted here. It is saved when `glimpse poll`, `bridge`, or `daemon` runs.');
       return;
     }
     pushOutbox({
