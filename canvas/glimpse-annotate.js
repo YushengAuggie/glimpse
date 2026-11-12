@@ -210,9 +210,15 @@
     if (a && a.kind === "node" && a.id) return "node:" + a.id;
     return (a && a.exact) ? ("a:" + a.exact + "#" + (a.occurrence || 0)) : null;
   }
+  // The conversation key. An unanchored conversation (its selection could not be
+  // anchored) falls back to its quote, which every follow-up re-sends unchanged,
+  // so all of its turns stay in one bubble.
+  function convKey(anchor, quote) {
+    return anchorKey(anchor) || (quote ? "q:" + quote : null);
+  }
   function getByGid(gid) { for (var i = 0; i < comments.length; i++) if (comments[i].gid === gid) return comments[i]; return null; }
   function newComment(anchor, quote) {
-    var c = { gid: "c" + (++gidSeq), key: anchorKey(anchor), anchor: anchor || null, quote: quote || "",
+    var c = { gid: "c" + (++gidSeq), key: convKey(anchor, quote), anchor: anchor || null, quote: quote || "",
               num: comments.length + 1, color: hueFor(comments.length), unanchored: !anchor,
               state: "composing", turns: [], draft: "", _expanded: false, _collapsed: false };
     comments.push(c); if (c.key) byKey[c.key] = c;
@@ -632,7 +638,7 @@
   });
 
   function openComposer(anchor, quote) {
-    var k = anchorKey(anchor);
+    var k = convKey(anchor, quote);
     var c = (k && byKey[k]) ? byKey[k] : newComment(anchor, quote);   // re-asking on a passage reuses its comment
     renderAll();
     var b = bubbleEl(c.gid); var ta = b && b.querySelector("textarea"); if (ta) ta.focus();
@@ -641,7 +647,7 @@
   // One-click question with a canned prompt (the Explain button): create/append
   // the turn and send immediately, skipping the composer.
   function quickAsk(anchor, quote, text) {
-    var k = anchorKey(anchor);
+    var k = convKey(anchor, quote);
     var c = (k && byKey[k]) ? byKey[k] : newComment(anchor, quote);
     sendTurn(c, text);
   }
@@ -964,7 +970,7 @@
     var agentByReply = {};
     turns.forEach(function (t) { if (t.role === "agent" && t.replyTo) { (agentByReply[t.replyTo] = agentByReply[t.replyTo] || []).push(t); } });
     var users = turns.filter(function (t) { return t.role === "user"; });
-    var keyOf = function (u) { return anchorKey(u.anchor) || ("u:" + u.id); };
+    var keyOf = function (u) { return convKey(u.anchor, u.quote) || ("u:" + u.id); };
     // ensure a comment exists for each anchor group
     users.forEach(function (u) {
       var k = keyOf(u), c = byKey[k];

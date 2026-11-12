@@ -112,3 +112,60 @@ test("node replay supports object-property IDs and clears removed conversations"
   sandbox.ingest([]);
   assert.equal(received.get("toString").length, 0);
 });
+
+// Drive the real conversation state (newComment / quickAsk / sendTurn /
+// ingestThread) out of glimpse-annotate.js with the DOM-facing calls stubbed.
+function loadConversations() {
+  const fs = require("node:fs"), vm = require("node:vm");
+  const source = fs.readFileSync(path.join(__dirname, "../canvas/glimpse-annotate.js"), "utf8");
+  const slice = (from, to) => {
+    const s = source.indexOf(from), e = source.indexOf(to, s);
+    assert.ok(s >= 0 && e > s, "slice not found: " + from);
+    return source.slice(s, e);
+  };
+  let seq = 0;
+  const sandbox = { window: {}, CHANNEL: "ch", hueFor: () => "#000", renderAll: () => {},
+                    post: () => {}, armAck: () => {}, uuid: () => "cid-" + (++seq) };
+  vm.runInNewContext([
+    slice("  var comments = [];", "  // A textarea bound"),
+    slice("  function sendTurn(", "  function resendTurn("),
+    slice("  function quickAsk(", "  /* ="),
+    slice("  var previousNodeIds = [];", "  // Light re-render"),
+    "this.api = { comments: comments, quickAsk: quickAsk, sendTurn: sendTurn, ingest: ingestThread };",
+  ].join("\n"), sandbox);
+  return sandbox.api;
+}
+// What the store persists for a turn the client sent (anchor is null when the
+// selection could not be anchored, e.g. a triple-click ending on an element).
+const persisted = (n, turn, quote) =>
+  ({ id: "u" + n, role: "user", anchor: null, quote: quote, text: turn.text, clientTurnId: turn.cid });
+const reply = (n, to) => ({ id: "a" + n, role: "agent", replyTo: to, text: "answer " + n });
+
+test("unanchored conversation keeps earlier turns when a follow-up is sent", () => {
+  const api = loadConversations(), quote = "ECR octo-tools/sia-mcp";
+  api.quickAsk(null, quote, "first?");
+  const c = api.comments[0];
+  const thread = [persisted(1, c.turns[0], quote), reply(1, "u1")];
+  api.ingest(thread);
+  api.sendTurn(c, "second?");
+  thread.push(persisted(2, c.turns[2], quote));
+  api.ingest(thread);
+  thread.push(reply(2, "u2"));
+  api.ingest(thread);
+  assert.equal(api.comments.length, 1);
+  assert.deepEqual(api.comments[0].turns.map((t) => t.text), ["first?", "answer 1", "second?", "answer 2"]);
+});
+
+test("unanchored conversation reloads as one bubble and a re-ask reuses it", () => {
+  const api = loadConversations(), quote = "Pods + ExternalSecrets";
+  api.ingest([
+    { id: "u1", role: "user", anchor: null, quote: quote, text: "q1" }, reply(1, "u1"),
+    { id: "u2", role: "user", anchor: null, quote: "other passage", text: "q2" }, reply(2, "u2"),
+    { id: "u3", role: "user", anchor: null, quote: quote, text: "q3" }, reply(3, "u3"),
+  ]);
+  assert.equal(api.comments.length, 2);
+  assert.deepEqual(api.comments[0].turns.map((t) => t.text), ["q1", "answer 1", "q3", "answer 3"]);
+  api.quickAsk(null, quote, "q4");
+  assert.equal(api.comments.length, 2);
+  assert.equal(api.comments[0].turns.at(-1).text, "q4");
+});
