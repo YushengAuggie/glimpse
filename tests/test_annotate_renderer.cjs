@@ -124,15 +124,18 @@ function loadConversations() {
     return source.slice(s, e);
   };
   let seq = 0;
+  const posted = [];
   const sandbox = { window: {}, CHANNEL: "ch", hueFor: () => "#000", renderAll: () => {},
-                    post: () => {}, armAck: () => {}, uuid: () => "cid-" + (++seq) };
+                    post: (m) => posted.push(m), armAck: () => {}, uuid: () => "cid-" + (++seq) };
   vm.runInNewContext([
     slice("  var comments = [];", "  // A textarea bound"),
     slice("  function sendTurn(", "  function resendTurn("),
     slice("  function quickAsk(", "  /* ="),
+    slice("  function dropComment(", "  function post("),
     slice("  var previousNodeIds = [];", "  // Light re-render"),
-    "this.api = { comments: comments, quickAsk: quickAsk, sendTurn: sendTurn, ingest: ingestThread };",
+    "this.api = { comments: comments, quickAsk: quickAsk, sendTurn: sendTurn, ingest: ingestThread, del: deleteComment };",
   ].join("\n"), sandbox);
+  sandbox.api.posted = posted;
   return sandbox.api;
 }
 // What the store persists for a turn the client sent (anchor is null when the
@@ -168,4 +171,28 @@ test("unanchored conversation reloads as one bubble and a re-ask reuses it", () 
   api.quickAsk(null, quote, "q4");
   assert.equal(api.comments.length, 2);
   assert.equal(api.comments[0].turns.at(-1).text, "q4");
+});
+
+test("deleting a conversation asks to drop its questions and hides it at once", () => {
+  const api = loadConversations();
+  const thread = [
+    { id: "u1", role: "user", anchor: null, quote: "a", text: "q1" }, reply(1, "u1"),
+    { id: "u2", role: "user", anchor: null, quote: "b", text: "q2" }, reply(2, "u2"),
+    { id: "u3", role: "user", anchor: null, quote: "a", text: "q3" },
+  ];
+  api.ingest(thread);
+  api.del(api.comments[0]);
+  assert.deepEqual(api.posted.map((m) => [m.intent, m.turnIds]), [["delete", ["u1", "u3"]]]);
+  api.ingest(thread);   // a thread push that lands before the store drops the turns
+  assert.deepEqual(api.comments.map((c) => c.quote), ["b"]);
+});
+
+test("deleting a question not yet persisted sends its client id and keeps it hidden", () => {
+  const api = loadConversations();
+  api.quickAsk(null, "c", "fresh?");
+  const turn = api.comments[0].turns[0];
+  api.del(api.comments[0]);
+  assert.deepEqual(api.posted.at(-1).turnIds, [turn.cid]);
+  api.ingest([persisted(1, turn, "c"), reply(1, "u1")]);   // the ask lands after the delete
+  assert.equal(api.comments.length, 0);
 });

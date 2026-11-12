@@ -170,3 +170,22 @@ test("same client turn id across artifacts does not collide", () => {
   // Re-delivering the SAME slug+cid is idempotent (returns the existing turn).
   assert.equal(_add_user(root, "alpha", "q A again", "", "dup"), a);
 });
+
+test("delete removes one conversation's questions and answers only", () => {
+  const root = newRoot();
+  const q1 = _add_user(root, "alpha", "first?", "passage", "c1");
+  _op(root, "add_agent", { SLUG: "alpha", TEXT: "answer 1", TO: q1 });
+  const q2 = _add_user(root, "alpha", "follow-up?", "passage", "c2");
+  _op(root, "add_agent", { SLUG: "alpha", TEXT: "answer 2", TO: q2 });
+  const keep = _add_user(root, "alpha", "other?", "elsewhere", "c3");
+  _add_user(root, "beta", "q B", "passage", "cB");
+
+  assert.equal(_op(root, "delete", { SLUG: "alpha", TURN_IDS: `${q1},${q2}` }), "4");
+  const left = JSON.parse(_op(root, "print_json", { SLUG: "alpha" }));
+  assert.deepEqual(left.turns.map((t) => t.id), [keep]);
+  assert.equal(JSON.parse(_op(root, "print_json", { SLUG: "beta" })).turns.length, 1);
+  // Re-delivering the same delete is a no-op.
+  assert.equal(_op(root, "delete", { SLUG: "alpha", TURN_IDS: `${q1},${q2}` }), "0");
+  // a question deleted before the canvas saw its turn id is matched by client id
+  assert.equal(_op(root, "delete", { SLUG: "alpha", TURN_IDS: "c3" }), "1");
+});

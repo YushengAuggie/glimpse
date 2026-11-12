@@ -32,6 +32,7 @@
 #   glimpse menubar              macOS menu-bar app to toggle / keep the agent online (needs uv, or rumps installed)
 #   glimpse reply <slug> "answer" --to <turnId>   answer a highlighted question
 #   glimpse thread <slug> [--json|--clear]   print one conversation thread
+#   glimpse thread <slug> --delete <id>[,<id>…]  delete those questions and their answers
 #   glimpse threads              list conversation threads
 #   glimpse serve                start the static server only
 #   glimpse stop                 stop the static server
@@ -232,6 +233,7 @@ _feed_op(){
 # static server never serves a half-written file. ACTION (env) ∈
 #   add_user   SLUG ANCHOR(json) QUOTE TEXT CLIENT_TURN_ID ARTIFACT_TS TS  → prints the turn id
 #   add_agent  SLUG TEXT TO TS                                            → prints the turn id, flips TO→answered
+#   delete     SLUG TURN_IDS(a,b,…)                                       → removes those questions + their answers, prints the count
 #   clear      SLUG
 #   print      SLUG            (readable transcript)
 #   print_json SLUG            (raw file)
@@ -1330,13 +1332,17 @@ cmd_reply(){
 
 cmd_thread(){
   local slug="${1:-}"
-  [ -n "$slug" ] || die "usage: glimpse thread <slug> [--json|--clear]"
+  local usage="usage: glimpse thread <slug> [--json|--clear|--delete <id>[,<id>…]]"
+  [ -n "$slug" ] || die "$usage"
   _validate_slug "$slug"
   case "${2:-}" in
     --json)  ACTION=print_json SLUG="$slug" _thread_op;;
     --clear) ACTION=clear      SLUG="$slug" _thread_op >/dev/null && { rm -f "$THREADS/$slug.json.lock"; echo "cleared thread $slug"; };;
+    --delete)
+      [ -n "${3:-}" ] || die "$usage"
+      local n; n="$(ACTION=delete SLUG="$slug" TURN_IDS="$3" _thread_op)" && echo "deleted $n turns from thread $slug";;
     "")      ACTION=print      SLUG="$slug" _thread_op;;
-    *) die "usage: glimpse thread <slug> [--json|--clear]";;
+    *) die "$usage";;
   esac
 }
 

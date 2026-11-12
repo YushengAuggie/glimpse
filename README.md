@@ -448,6 +448,7 @@ glimpse daemon [--wait]              always-on: bridge + auto-answer via the API
 glimpse menubar                      macOS menu-bar app to toggle / keep the agent online (needs uv, or rumps)
 glimpse reply <slug> "answer" --to <turnId>   answer a highlighted question
 glimpse thread <slug> [--json|--clear]   print one conversation thread
+glimpse thread <slug> --delete <id>[,<id>…]  delete those questions and their answers
 glimpse threads                      list conversation threads
 ```
 

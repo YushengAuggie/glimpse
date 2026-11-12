@@ -206,6 +206,7 @@
   var comments = [];    // [{gid, key, anchor, quote, num, color, unanchored, state, turns:[], draft, _expanded}]
   var byKey = {};       // anchorKey -> comment
   var gidSeq = 0;       // safe DOM id source (anchor text is unsafe as an id)
+  var deletedIds = {};  // question ids (turn or client) deleted here; hidden until the store drops them
   function anchorKey(a) {
     if (a && a.kind === "node" && a.id) return "node:" + a.id;
     return (a && a.exact) ? ("a:" + a.exact + "#" + (a.occurrence || 0)) : null;
@@ -401,8 +402,9 @@
     ".bubble .hd{ display:flex; align-items:center; gap:8px; padding:8px 10px; flex:0 0 auto; cursor:pointer; border-bottom:1px solid " + (dark ? "#2a3040" : "#eef0f6") + "; }",
     ".bubble.collapsed .hd{ border-bottom:0; }",
     ".bubble .count{ flex:0 0 auto; font-size:10.5px; opacity:.55; }",
-    ".bubble .tog{ flex:0 0 auto; background:none; border:0; color:inherit; opacity:.55; cursor:pointer; font-size:12px; line-height:1; padding:2px 3px; }",
-    ".bubble .tog:hover{ opacity:1; }",
+    ".bubble .tog, .bubble .del{ flex:0 0 auto; background:none; border:0; color:inherit; opacity:.55; cursor:pointer; font-size:12px; line-height:1; padding:2px 3px; }",
+    ".bubble .tog:hover, .bubble .del:hover{ opacity:1; }",
+    ".bubble .del.armed{ opacity:1; color:" + (dark ? "#f7768e" : "#c92a2a") + "; font-weight:600; }",
     ".scroll{ overflow-y:auto; min-height:0; padding:8px 10px; display:flex; flex-direction:column; gap:8px; }",   // turns scroll so the footer stays pinned
     ".foot{ flex:0 0 auto; padding:8px 10px; border-top:1px solid " + (dark ? "#2a3040" : "#eef0f6") + "; }",
     ".bubble.collapsed .scroll, .bubble.collapsed .foot{ display:none; }",
@@ -730,9 +732,10 @@
     var badge = el("div", "badge"); badge.style.background = c.color; badge.textContent = String(c.num);
     var quote = el("div", "quote"); quote.textContent = c.quote || "(selection)";
     hd.appendChild(badge); hd.appendChild(quote);
-    if (c.unanchored) { var w = el("span", "tag warn"); w.textContent = "passage changed"; hd.appendChild(w); }
+    // an armed delete hides the tag and count so "Delete?" never squeezes the quote out
+    if (c.unanchored && !c._delArmed) { var w = el("span", "tag warn"); w.textContent = "passage changed"; hd.appendChild(w); }
     var nTurns = (c.turns || []).length;
-    if (nTurns) { var cnt = el("span", "count"); cnt.textContent = String(nTurns); hd.appendChild(cnt); }
+    if (nTurns && !c._delArmed) { var cnt = el("span", "count"); cnt.textContent = String(nTurns); hd.appendChild(cnt); }
     // minimize / expand toggle — keeps the rail clean and stops long threads from
     // covering the Send button or other comments.
     var tog = el("button", "tog"); tog.type = "button";
@@ -743,7 +746,22 @@
       c._collapsed = !c._collapsed; b.classList.toggle("collapsed", c._collapsed); syncTog(); queueReposition();
     });
     hd.appendChild(tog);
-    hd.addEventListener("click", function (e) { if (e.target !== tog && c._collapsed) tog.click(); });   // header click expands a collapsed bubble
+    // delete — a two-step inline confirm (the sandbox has no confirm() dialog).
+    if (c.state !== "composing") {
+      var del = el("button", "del"); del.type = "button";
+      del.textContent = c._delArmed ? "Delete?" : "×";
+      del.title = c._delArmed ? "Click again to delete this conversation" : "Delete conversation";
+      del.setAttribute("aria-label", del.title);
+      if (c._delArmed) del.classList.add("armed");
+      del.addEventListener("click", function (e) {
+        e.stopPropagation();
+        if (c._delArmed) { deleteComment(c); return; }
+        c._delArmed = true; renderAll();
+        setTimeout(function () { if (c._delArmed) { c._delArmed = false; renderAll(); } }, 3000);
+      });
+      hd.appendChild(del);
+    }
+    hd.addEventListener("click", function (e) { if (e.target !== tog && e.target !== del && c._collapsed) tog.click(); });   // header click expands a collapsed bubble
     b.appendChild(hd);
 
     var scroll = el("div", "scroll");   // the turns (scrolls)
@@ -909,6 +927,16 @@
     if (c.key && byKey[c.key] === c) delete byKey[c.key];
     renderAll();
   }
+  // Delete a whole conversation: ask the agent side to drop its persisted turns
+  // (questions + answers), and hide it here at once.
+  function deleteComment(c) {
+    // a question not yet seen persisted is known only by its client id
+    var ids = c.turns.filter(function (t) { return t.role === "user" && (t.id || t.cid); })
+                     .map(function (t) { return t.id || t.cid; });
+    ids.forEach(function (id) { deletedIds[id] = 1; });
+    if (ids.length) post({ type: "glimpse:annotate", v: 1, channelId: CHANNEL, intent: "delete", turnIds: ids });
+    dropComment(c);
+  }
   function post(msg) { try { window.parent.postMessage(msg, "*"); } catch (e) {} }
 
   window.addEventListener("message", function (e) {
@@ -967,6 +995,9 @@
       });
       turns = rest;
     }
+    var gone = {};
+    turns.forEach(function (t) { if (t.role === "user" && (deletedIds[t.id] || deletedIds[t.clientTurnId])) gone[t.id] = 1; });
+    turns = turns.filter(function (t) { return !gone[t.role === "user" ? t.id : t.replyTo]; });
     var agentByReply = {};
     turns.forEach(function (t) { if (t.role === "agent" && t.replyTo) { (agentByReply[t.replyTo] = agentByReply[t.replyTo] || []).push(t); } });
     var users = turns.filter(function (t) { return t.role === "user"; });

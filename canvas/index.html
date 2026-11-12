@@ -551,6 +551,13 @@ window.addEventListener('message', (e)=>{
     if(d.channelId !== currentChannel) return;     // nonce: only the iframe we injected into
     if(readingMode || !slug) return;               // reading mode suppresses the relay
     try { if(JSON.stringify(d).length > 64*1024) return; } catch(_){ return; }
+    // delete a conversation: forward its question turn ids (server-minted) only.
+    if(d.intent === "delete"){
+      const ids = (Array.isArray(d.turnIds) ? d.turnIds : []).map(String)
+        .filter(x => /^[A-Za-z0-9_-]{1,64}$/.test(x)).slice(0, 500);
+      if(ids.length) pushOutbox({ id: GL_EPOCH + '-' + (++glSeq), intent: "delete", slug: slug, turnIds: ids, ts: Date.now() });
+      return;
+    }
     pushOutbox({
       id: GL_EPOCH + '-' + (++glSeq),
       slug: slug,

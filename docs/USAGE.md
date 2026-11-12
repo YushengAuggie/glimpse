@@ -212,6 +212,7 @@ conversation:
 
 ```bash
 glimpse thread arch          # readable transcript  (--json for raw, --clear to wipe)
+glimpse thread arch --delete <id>   # delete one conversation: its questions + answers
 glimpse threads              # list all threads
 ```
 
